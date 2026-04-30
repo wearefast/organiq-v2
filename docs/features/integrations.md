@@ -5,8 +5,8 @@
 | Service | Purpose | API Docs |
 |---------|---------|----------|
 | Ahrefs v3 | Domain metrics, top pages, keyword expansion, content gap | [docs](https://docs.ahrefs.com/) |
-| SerpAPI | SERP competitor discovery, AI Overview detection | [docs](https://serpapi.com/search-api) |
-| OpenAI (GPT-5.4) | Business profiling, report copy, content generation | [docs](https://platform.openai.com/docs) |
+| Serper.dev | Google SERP competitor discovery (replaced SerpAPI) | [docs](https://serper.dev/docs) |
+| OpenAI (GPT-5.4) | Business profiling, keyword classification, competitor classification, report copy | [docs](https://platform.openai.com/docs) |
 | PageSpeed Insights | Core Web Vitals, performance, SEO score | [docs](https://developers.google.com/speed/docs/insights/v5/get-started) |
 
 ## Ahrefs Endpoints Used
@@ -31,7 +31,7 @@ Redis token bucket per API to prevent quota exhaustion:
 
 - `server/src/features/integrations/integrations.module.ts`
 - `server/src/features/integrations/services/ahrefs.service.ts`
-- `server/src/features/integrations/services/serpapi.service.ts`
+- `server/src/features/integrations/services/serp.service.ts`
 - `server/src/features/integrations/services/openai.service.ts`
 - `server/src/features/integrations/services/pagespeed.service.ts`
 - `server/src/features/integrations/services/scraper.service.ts`

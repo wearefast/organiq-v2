@@ -114,3 +114,167 @@
     @apply inline-flex items-center rounded-pill bg-teal-50 px-2.5 py-0.5 text-xs font-medium text-teal-700;
   }
 }
+
+/* ─── Pipeline Visualization Animations ───────────────────── */
+
+@keyframes pipeline-pulse-glow {
+  0%, 100% { box-shadow: 0 0 0 0 rgba(218, 48, 79, 0); }
+  50% { box-shadow: 0 0 16px 2px rgba(218, 48, 79, 0.15); }
+}
+
+@keyframes pipeline-flow-down {
+  0% { background-position: 0 -200%; }
+  100% { background-position: 0 200%; }
+}
+
+@keyframes pipeline-fade-in-up {
+  from { opacity: 0; transform: translateY(12px); }
+  to { opacity: 1; transform: translateY(0); }
+}
+
+@keyframes pipeline-expand-data {
+  from { opacity: 0; max-height: 0; }
+  to { opacity: 1; max-height: 300px; }
+}
+
+@keyframes pipeline-spin-slow {
+  from { transform: rotate(0deg); }
+  to { transform: rotate(360deg); }
+}
+
+@keyframes pipeline-typing {
+  0%, 80%, 100% { opacity: 0.3; }
+  40% { opacity: 1; }
+}
+
+@keyframes pipeline-orbit-slow {
+  from { transform: rotate(0deg); }
+  to { transform: rotate(360deg); }
+}
+
+@keyframes pipeline-orbit-reverse {
+  from { transform: rotate(360deg); }
+  to { transform: rotate(0deg); }
+}
+
+@keyframes pipeline-core-pulse {
+  0%, 100% { transform: scale(0.96); opacity: 0.72; }
+  50% { transform: scale(1.06); opacity: 1; }
+}
+
+@keyframes pipeline-beam-move {
+  0% { background-position: 0% 50%; }
+  100% { background-position: 200% 50%; }
+}
+
+@keyframes pipeline-grid-drift {
+  0% { transform: translate3d(0, 0, 0); }
+  100% { transform: translate3d(0, 24px, 0); }
+}
+
+.animate-pipeline-glow {
+  animation: pipeline-pulse-glow 2s ease-in-out infinite;
+}
+
+.animate-pipeline-fade-in-up {
+  animation: pipeline-fade-in-up 0.4s ease-out forwards;
+}
+
+.animate-pipeline-expand {
+  animation: pipeline-expand-data 0.4s ease-out forwards;
+  overflow: hidden;
+}
+
+.animate-pipeline-spin-slow {
+  animation: pipeline-spin-slow 3s linear infinite;
+}
+
+.pipeline-connector {
+  background: linear-gradient(180deg, var(--cc-navy) 0%, var(--cc-red) 50%, var(--cc-navy) 100%);
+  background-size: 100% 200%;
+  animation: pipeline-flow-down 3s linear infinite;
+}
+
+.pipeline-typing-dot {
+  animation: pipeline-typing 1.4s ease-in-out infinite;
+}
+.pipeline-typing-dot:nth-child(2) { animation-delay: 0.2s; }
+.pipeline-typing-dot:nth-child(3) { animation-delay: 0.4s; }
+
+.pipeline-grid {
+  background-image:
+    linear-gradient(rgba(86, 119, 160, 0.1) 1px, transparent 1px),
+    linear-gradient(90deg, rgba(86, 119, 160, 0.1) 1px, transparent 1px);
+  background-size: 48px 48px;
+  animation: pipeline-grid-drift 14s linear infinite alternate;
+}
+
+.pipeline-noise {
+  background-image:
+    radial-gradient(circle at 20% 20%, rgba(255, 255, 255, 0.04) 0, transparent 24%),
+    radial-gradient(circle at 80% 30%, rgba(123, 195, 255, 0.05) 0, transparent 20%),
+    radial-gradient(circle at 60% 75%, rgba(233, 131, 149, 0.05) 0, transparent 22%);
+}
+
+.pipeline-rail {
+  background: linear-gradient(180deg, rgba(38, 72, 112, 0) 0%, rgba(75, 121, 181, 0.65) 22%, rgba(218, 48, 79, 0.8) 50%, rgba(75, 121, 181, 0.55) 78%, rgba(38, 72, 112, 0) 100%);
+  background-size: 100% 180%;
+  animation: pipeline-flow-down 4s linear infinite;
+}
+
+.pipeline-core-ring {
+  transform-origin: center;
+}
+
+.pipeline-core-ring-outer {
+  animation: pipeline-orbit-slow 24s linear infinite;
+}
+
+.pipeline-core-ring-mid {
+  animation: pipeline-orbit-reverse 18s linear infinite;
+}
+
+.pipeline-core-ring-inner {
+  animation: pipeline-orbit-slow 12s linear infinite;
+}
+
+.pipeline-core-grid {
+  backdrop-filter: blur(12px);
+}
+
+.pipeline-core-pulse {
+  animation: pipeline-core-pulse 2.8s ease-in-out infinite;
+}
+
+.pipeline-beam-horizontal {
+  background: linear-gradient(90deg, rgba(123, 195, 255, 0) 0%, rgba(123, 195, 255, 0.82) 25%, rgba(246, 166, 180, 0.95) 50%, rgba(123, 195, 255, 0.82) 75%, rgba(123, 195, 255, 0) 100%);
+  background-size: 200% 100%;
+  animation: pipeline-beam-move 3.4s linear infinite;
+}
+
+.pipeline-signal-card {
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.03);
+}
+
+.pipeline-scan-lines {
+  background-image: linear-gradient(180deg, transparent, rgba(255, 255, 255, 0.04), transparent);
+  background-size: 100% 12px;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .animate-pipeline-glow,
+  .animate-pipeline-fade-in-up,
+  .animate-pipeline-expand,
+  .animate-pipeline-spin-slow,
+  .pipeline-connector,
+  .pipeline-typing-dot,
+  .pipeline-grid,
+  .pipeline-rail,
+  .pipeline-core-ring-outer,
+  .pipeline-core-ring-mid,
+  .pipeline-core-ring-inner,
+  .pipeline-core-pulse,
+  .pipeline-beam-horizontal {
+    animation: none !important;
+  }
+}

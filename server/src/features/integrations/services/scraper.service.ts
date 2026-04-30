@@ -9,6 +9,9 @@ export interface ScrapeResult {
   internalLinkCount: number;
   imageAltCoverage: number;
   schemaMarkupPresent: boolean;
+  siteName: string;
+  ogImage: string;
+  favicon: string;
 }
 
 @Injectable()
@@ -77,6 +80,43 @@ export class ScraperService {
       $('script[type="application/ld+json"]').length > 0 ||
       $('[itemscope]').length > 0;
 
+    // Organisation name: og:site_name → JSON-LD → title tag
+    let siteName = $('meta[property="og:site_name"]').attr('content')?.trim() || '';
+    if (!siteName) {
+      try {
+        const ldScripts = $('script[type="application/ld+json"]');
+        ldScripts.each((_, el) => {
+          if (siteName) return;
+          try {
+            const ld = JSON.parse($(el).text());
+            const items = Array.isArray(ld) ? ld : [ld];
+            for (const item of items) {
+              if (item.name && (item['@type'] === 'Organization' || item['@type'] === 'WebSite')) {
+                siteName = item.name;
+                break;
+              }
+            }
+          } catch { /* ignore malformed JSON-LD */ }
+        });
+      } catch { /* ignore */ }
+    }
+    if (!siteName) siteName = title.split(/[|\-–—]/).map(s => s.trim()).pop() || title;
+
+    // Logo / OG image
+    const ogImage = $('meta[property="og:image"]').attr('content')?.trim() || '';
+
+    // Favicon: apple-touch-icon → icon link → /favicon.ico fallback
+    let favicon = $('link[rel="apple-touch-icon"]').attr('href')?.trim()
+      || $('link[rel="icon"]').attr('href')?.trim()
+      || $('link[rel="shortcut icon"]').attr('href')?.trim()
+      || '';
+    if (favicon && !favicon.startsWith('http')) {
+      try { favicon = new URL(favicon, url).href; } catch { /* keep as-is */ }
+    }
+    if (!favicon) {
+      favicon = `${parsedUrl.origin}/favicon.ico`;
+    }
+
     this.logger.log(
       `Scraped ${url}: title="${title.slice(0, 50)}", ${h1s.length} H1s, ${internalLinkCount} internal links, ${totalImages} images (${imageAltCoverage}% alt), schema=${schemaMarkupPresent}`,
     );
@@ -89,6 +129,9 @@ export class ScraperService {
       internalLinkCount,
       imageAltCoverage,
       schemaMarkupPresent,
+      siteName,
+      ogImage,
+      favicon,
     };
   }
 }

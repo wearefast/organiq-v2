@@ -30,9 +30,17 @@ export class AuditService {
       DEEPREAD_COMPLETE: { step: 'Deep Read', progress: 20, message: 'Deep-read analysis complete.' },
       PAGESPEED_RUNNING: { step: 'PageSpeed', progress: 22, message: 'Running PageSpeed analysis...' },
       PAGESPEED_COMPLETE: { step: 'PageSpeed', progress: 30, message: 'PageSpeed analysis complete.' },
-      KEYWORDS_RUNNING: { step: 'Keywords', progress: 32, message: 'Identifying core keywords & topics...' },
+      KEYWORDS_RUNNING: { step: 'Keywords', progress: 32, message: 'Fetching keyword data from Ahrefs...' },
+      KW_AHREFS_COMPLETE: { step: 'Keywords · Ahrefs', progress: 33, message: 'Keyword pool assembled from Ahrefs.' },
+      KW_STEP_31: { step: 'Keywords · 3.1', progress: 34, message: 'Extracting website context...' },
+      KW_STEP_32: { step: 'Keywords · 3.2', progress: 36, message: 'Classifying core & money keywords...' },
+      KW_STEP_33: { step: 'Keywords · 3.3', progress: 38, message: 'Building topic clusters...' },
+      KW_STEP_34: { step: 'Keywords · 3.4', progress: 40, message: 'Discovering niche entities...' },
+      KW_STEP_35: { step: 'Keywords · 3.5', progress: 44, message: 'Deduplicating & finalizing core topics...' },
       KEYWORDS_COMPLETE: { step: 'Keywords', progress: 45, message: 'Keyword classification complete.' },
-      // TODO: add steps as pipeline grows
+      COMPETITORS_RUNNING: { step: 'Competitors', progress: 46, message: 'Searching Google for competitors...' },
+      SERP_COMPLETE: { step: 'Competitors · SERP', progress: 48, message: 'SERP discovery complete.' },
+      COMPETITORS_COMPLETE: { step: 'Competitors', progress: 50, message: 'Competitor classification complete.' },
       // COMPLETE / FAILED
       COMPLETE: { step: 'Done', progress: 100, message: 'Audit complete!' },
       FAILED: { step: 'Failed', progress: 0, message: 'Audit failed' },
@@ -51,7 +59,9 @@ export class AuditService {
     return {
       auditId: audit.id,
       status: audit.status,
+      currentStep: currentStep || audit.status,
       ...info,
+      completedSteps: this.buildCompletedSteps(rawData, audit.businessProfile as Record<string, unknown> | null),
       scores: audit.status === 'COMPLETE'
         ? {
             technicalSeo: audit.seoScore,
@@ -61,6 +71,171 @@ export class AuditService {
           }
         : null,
     };
+  }
+
+  private buildCompletedSteps(
+    rawData: Record<string, unknown>,
+    businessProfile: Record<string, unknown> | null,
+  ): Array<{ key: string; label: string; summary: Record<string, unknown> }> {
+    const steps: Array<{ key: string; label: string; summary: Record<string, unknown> }> = [];
+    const currentStep = (rawData.currentStep as string) || '';
+
+    // Ordered step keys — a step is complete if its data exists in rawData
+    const scrape = rawData.scrape as Record<string, unknown> | undefined;
+    if (scrape) {
+      steps.push({
+        key: 'SCRAPE',
+        label: 'Website crawl',
+        summary: {
+          title: scrape.title || '',
+          h1Count: Array.isArray(scrape.h1s) ? scrape.h1s.length : 0,
+          internalLinkCount: scrape.internalLinkCount ?? 0,
+          imageCount: scrape.imageAltCoverage ?? 0,
+          schemaDetected: !!scrape.schemaMarkupPresent,
+        },
+      });
+    }
+
+    if (businessProfile) {
+      steps.push({
+        key: 'PROFILE',
+        label: 'AI business profile',
+        summary: {
+          brandIdentity: (businessProfile.brandIdentity as string) || '',
+          targetMarket: (businessProfile.targetMarket as string) || '',
+          serviceCount: Array.isArray(businessProfile.services) ? businessProfile.services.length : 0,
+          seedKeywordCount: Array.isArray(businessProfile.seedKeywords) ? businessProfile.seedKeywords.length : 0,
+        },
+      });
+    }
+
+    const deepRead = rawData.deepRead as Record<string, unknown> | undefined;
+    if (deepRead) {
+      steps.push({
+        key: 'DEEPREAD',
+        label: 'Deep-read analysis',
+        summary: {
+          whatTheySell: deepRead.whatTheySell || '',
+          whoTheyServe: deepRead.whoTheyServe || '',
+          howTheyPosition: deepRead.howTheyPosition || '',
+          whatMakesThemDifferent: deepRead.whatMakesThemDifferent || '',
+        },
+      });
+    }
+
+    const pageSpeed = rawData.pageSpeed as Record<string, unknown> | undefined;
+    if (pageSpeed) {
+      const mobile = (pageSpeed.mobile as Record<string, unknown>) || {};
+      const desktop = (pageSpeed.desktop as Record<string, unknown>) || {};
+      steps.push({
+        key: 'PAGESPEED',
+        label: 'PageSpeed analysis',
+        summary: {
+          mobilePerf: mobile.performanceScore ?? null,
+          desktopPerf: desktop.performanceScore ?? null,
+          mobileSeo: mobile.seoScore ?? null,
+          lcp: mobile.lcp ?? null,
+        },
+      });
+    }
+
+    const ahrefsSummary = rawData.ahrefsSummary as Record<string, unknown> | undefined;
+    if (ahrefsSummary) {
+      steps.push({
+        key: 'KW_AHREFS',
+        label: 'Ahrefs keyword data',
+        summary: {
+          organicCount: ahrefsSummary.organicCount ?? 0,
+          matchingCount: ahrefsSummary.matchingCount ?? 0,
+          poolSize: ahrefsSummary.poolSize ?? 0,
+        },
+      });
+    }
+
+    // Keyword sub-steps from keywordSteps
+    const kwSteps = rawData.keywordSteps as Record<string, unknown> | undefined;
+    if (kwSteps) {
+      const s31 = kwSteps.step31 as Record<string, unknown> | null;
+      if (s31) {
+        steps.push({
+          key: 'KW_STEP_31',
+          label: 'Context extraction',
+          summary: {
+            offeringCount: Array.isArray(s31.offerings) ? s31.offerings.length : 0,
+            conversionPhraseCount: Array.isArray(s31.conversionPhrases) ? s31.conversionPhrases.length : 0,
+            pageCount: Array.isArray(s31.pageMapping) ? s31.pageMapping.length : 0,
+          },
+        });
+      }
+
+      const s32 = kwSteps.step32 as Record<string, unknown> | null;
+      if (s32) {
+        steps.push({
+          key: 'KW_STEP_32',
+          label: 'Core & money keywords',
+          summary: {
+            coreCount: Array.isArray(s32.coreKeywords) ? s32.coreKeywords.length : 0,
+            moneyCount: Array.isArray(s32.moneyKeywords) ? s32.moneyKeywords.length : 0,
+          },
+        });
+      }
+
+      const s33 = kwSteps.step33 as Record<string, unknown> | null;
+      if (s33) {
+        steps.push({
+          key: 'KW_STEP_33',
+          label: 'Topic clusters',
+          summary: {
+            topicCount: Array.isArray(s33.primaryTopics) ? s33.primaryTopics.length : 0,
+            expansionCount: Array.isArray(s33.seedExpansions) ? s33.seedExpansions.length : 0,
+          },
+        });
+      }
+
+      const s34 = kwSteps.step34 as Record<string, unknown> | null;
+      if (s34) {
+        steps.push({
+          key: 'KW_STEP_34',
+          label: 'Entity discovery',
+          summary: {
+            entityCount: Array.isArray(s34.entities) ? s34.entities.length : 0,
+          },
+        });
+      }
+
+      const s35 = kwSteps.step35 as Record<string, unknown> | null;
+      if (s35) {
+        steps.push({
+          key: 'KW_STEP_35',
+          label: 'Dedup & core topics',
+          summary: {
+            coreTopicCount: Array.isArray(s35.coreTopics) ? s35.coreTopics.length : 0,
+          },
+        });
+      }
+    }
+
+    const serpCandidates = rawData.serpCandidates as Array<Record<string, unknown>> | undefined;
+    if (serpCandidates && serpCandidates.length > 0) {
+      steps.push({
+        key: 'SERP_COMPLETE',
+        label: 'Google SERP discovery',
+        summary: { candidateCount: serpCandidates.length },
+      });
+    }
+
+    const competitors = rawData.competitors as Record<string, unknown> | undefined;
+    if (competitors) {
+      const direct = Array.isArray(competitors.directCompetitors) ? competitors.directCompetitors.length : 0;
+      const organic = Array.isArray(competitors.organicCompetitors) ? competitors.organicCompetitors.length : 0;
+      steps.push({
+        key: 'COMPETITORS_COMPLETE',
+        label: 'Competitor classification',
+        summary: { directCount: direct, organicCount: organic },
+      });
+    }
+
+    return steps;
   }
 
   async findAll(page = 1, limit = 20) {
@@ -82,6 +257,7 @@ export class AuditService {
     if (!audit) throw new NotFoundException('Audit not found');
 
     const rawData = (audit.rawData || {}) as Record<string, unknown>;
+    const scrape = (rawData.scrape || {}) as Record<string, unknown>;
 
     return {
       id: audit.id,
@@ -90,12 +266,17 @@ export class AuditService {
       createdAt: audit.createdAt,
       updatedAt: audit.updatedAt,
       seedKeywords: audit.seedKeywords,
+      siteName: (scrape.siteName as string) || '',
+      ogImage: (scrape.ogImage as string) || '',
+      favicon: (scrape.favicon as string) || '',
       pipeline: {
         scrape: rawData.scrape ?? null,
         businessProfile: audit.businessProfile ?? null,
         deepRead: rawData.deepRead ?? null,
         pageSpeed: rawData.pageSpeed ?? null,
         keywordResearch: rawData.keywordResearch ?? null,
+        competitors: rawData.competitors ?? null,
+        serpCandidates: rawData.serpCandidates ?? null,
       },
       seedExpansions: (rawData.seedExpansions as string[]) ?? [],
       scores: {

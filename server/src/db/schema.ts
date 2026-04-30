@@ -96,6 +96,7 @@ export const audits = pgTable('audits', {
   estimatedTrafficLoss: integer('estimated_traffic_loss'),
   competitors: jsonb('competitors'),
   seedKeywords: jsonb('seed_keywords').$type<string[]>().default([]),
+  countries: jsonb('countries').$type<string[]>().default([]),
   reportUrl: text('report_url'),
   rawData: jsonb('raw_data'),
   userId: text('user_id'),

@@ -34,7 +34,7 @@ export default function AuditDetailPage() {
   }
 
   return (
-    <div className="mx-auto max-w-4xl p-8">
+    <div className="mx-auto max-w-5xl px-6 py-8">
       <AuditResults audit={audit} />
     </div>
   );

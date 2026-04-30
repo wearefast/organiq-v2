@@ -1,6 +1,6 @@
 import { Module } from '@nestjs/common';
 import { AhrefsService } from './services/ahrefs.service';
-import { SerpApiService } from './services/serpapi.service';
+import { SerpService } from './services/serp.service';
 import { OpenAIService } from './services/openai.service';
 import { PageSpeedService } from './services/pagespeed.service';
 import { ScraperService } from './services/scraper.service';
@@ -8,14 +8,14 @@ import { ScraperService } from './services/scraper.service';
 @Module({
   providers: [
     AhrefsService,
-    SerpApiService,
+    SerpService,
     OpenAIService,
     PageSpeedService,
     ScraperService,
   ],
   exports: [
     AhrefsService,
-    SerpApiService,
+    SerpService,
     OpenAIService,
     PageSpeedService,
     ScraperService,

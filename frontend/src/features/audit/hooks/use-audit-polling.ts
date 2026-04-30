@@ -4,9 +4,15 @@ import { useState, useEffect, useRef } from 'react';
 import { getAuditStatus } from '../services/audit.service';
 
 interface AuditProgress {
+  currentStep: string;
   step: string;
   progress: number;
   message: string;
+  completedSteps: Array<{
+    key: string;
+    label: string;
+    summary: Record<string, unknown>;
+  }>;
 }
 
 interface AuditScores {
@@ -32,9 +38,11 @@ export function useAuditPolling(auditId: string | null) {
         const data = await getAuditStatus(auditId);
 
         setProgress({
+          currentStep: data.currentStep || '',
           step: data.step || 'Processing',
           progress: data.progress || 0,
           message: data.message || 'Working on your audit...',
+          completedSteps: data.completedSteps || [],
         });
 
         if (data.status === 'COMPLETE') {

@@ -5,6 +5,7 @@ interface SubmitAuditPayload {
   name: string;
   email: string;
   businessDescription: string;
+  countries: string[];
 }
 
 interface SubmitAuditResponse {
@@ -22,9 +23,15 @@ export async function submitAudit(payload: SubmitAuditPayload): Promise<SubmitAu
 interface AuditStatusResponse {
   auditId: string;
   status: string;
+  currentStep: string;
   step: string;
   progress: number;
   message: string;
+  completedSteps: Array<{
+    key: string;
+    label: string;
+    summary: Record<string, unknown>;
+  }>;
   scores: Record<string, number> | null;
 }
 
@@ -106,6 +113,18 @@ export interface KeywordResearchData {
   }>;
 }
 
+export interface CompetitorData {
+  directCompetitors: Array<{ domain: string; reason: string }>;
+  organicCompetitors: Array<{ domain: string; reason: string }>;
+}
+
+export interface SerpCandidateData {
+  domain: string;
+  occurrences: number;
+  avgPosition: number;
+  sampleUrls: string[];
+}
+
 export interface AuditDetailResponse {
   id: string;
   websiteUrl: string;
@@ -114,12 +133,17 @@ export interface AuditDetailResponse {
   updatedAt: string;
   seedKeywords: string[];
   seedExpansions: string[];
+  siteName: string;
+  ogImage: string;
+  favicon: string;
   pipeline: {
     scrape: ScrapeData | null;
     businessProfile: BusinessProfileData | null;
     deepRead: DeepReadData | null;
     pageSpeed: { mobile: PageSpeedMetricsData; desktop: PageSpeedMetricsData } | null;
     keywordResearch: KeywordResearchData | null;
+    competitors: CompetitorData | null;
+    serpCandidates: SerpCandidateData[] | null;
   };
   scores: {
     seoScore: number | null;

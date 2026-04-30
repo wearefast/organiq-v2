@@ -49,6 +49,9 @@ export interface ScrapeResult {
   internalLinkCount: number;
   imageAltCoverage: number;
   schemaMarkupPresent: boolean;
+  siteName: string;
+  ogImage: string;
+  favicon: string;
 }
 
 // ─── PageSpeed ───────────────────────────────────────────────

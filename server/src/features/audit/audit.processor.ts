@@ -4,9 +4,10 @@ import { Job } from 'bullmq';
 import { eq } from 'drizzle-orm';
 import { DatabaseService } from '../../shared/database/database.service';
 import { ScraperService } from '../integrations/services/scraper.service';
-import { OpenAIService, BusinessProfile, DeepRead, KeywordResearchSteps } from '../integrations/services/openai.service';
+import { OpenAIService, BusinessProfile, DeepRead, KeywordResearchSteps, CompetitorClassification } from '../integrations/services/openai.service';
 import { PageSpeedService } from '../integrations/services/pagespeed.service';
 import { AhrefsService } from '../integrations/services/ahrefs.service';
+import { SerpService, CompetitorCandidate } from '../integrations/services/serp.service';
 import { audits, leads } from '../../db/schema';
 
 interface AuditJobData {
@@ -25,6 +26,7 @@ export class AuditProcessor extends WorkerHost {
     private readonly openaiService: OpenAIService,
     private readonly pageSpeedService: PageSpeedService,
     private readonly ahrefsService: AhrefsService,
+    private readonly serpService: SerpService,
   ) {
     super();
   }
@@ -37,6 +39,13 @@ export class AuditProcessor extends WorkerHost {
       // Mark as processing
       await this.updateAudit(auditId, { status: 'PROCESSING', currentStep: 'SCRAPING' });
       await job.updateProgress(5);
+
+      // Read user-selected countries from audit record
+      const [auditRow] = await this.database.db
+        .select({ countries: audits.countries })
+        .from(audits)
+        .where(eq(audits.id, auditId));
+      const userCountries = (auditRow?.countries as string[]) ?? [];
 
       // Step 1a: Scrape
       const scrapeResult = await this.scraperService.scrape(websiteUrl);
@@ -107,8 +116,10 @@ export class AuditProcessor extends WorkerHost {
       await this.updateAudit(auditId, { currentStep: 'KEYWORDS_RUNNING' });
       await job.updateProgress(32);
 
-      // Parse country from geography (e.g. "United States" → "us")
-      const countryCode = this.parseCountryCode(businessProfile.geography);
+      // Parse country: prefer user-selected countries, fallback to geography-based detection
+      const countryCode = userCountries.length > 0
+        ? userCountries[0]
+        : this.parseCountryCode(businessProfile.geography);
 
       // Collect keyword data from Ahrefs (returns null if no API key)
       const domain = new URL(websiteUrl).hostname;
@@ -134,14 +145,49 @@ export class AuditProcessor extends WorkerHost {
         `Audit ${auditId}: keyword pool assembled — ${organicKeywords?.length ?? 0} organic + ${matchingTerms?.length ?? 0} matching = ${poolSize} unique`,
       );
 
+      // Persist Ahrefs data collection as its own step
+      await this.updateAudit(auditId, {
+        currentStep: 'KW_AHREFS_COMPLETE',
+        rawData: {
+          ahrefsSummary: {
+            organicCount: organicKeywords?.length ?? 0,
+            matchingCount: matchingTerms?.length ?? 0,
+            poolSize,
+          },
+        },
+      });
+      await job.updateProgress(33);
+
       // Classify via 5-step intelligence chain (works in degraded mode with empty pool — uses seedKeywords only)
       const { research: keywordResearch, steps: keywordSteps } = await this.openaiService.classifyKeywords(
         businessProfile,
         deepRead,
         poolSize > 0 ? keywordPool : null,
         scrapeResult.bodyText,
-        async (pct) => { await job.updateProgress(pct); },
+        async (pct, subStepKey, partialSteps) => {
+          await job.updateProgress(pct);
+          await this.updateAudit(auditId, {
+            currentStep: subStepKey,
+            rawData: { keywordSteps: partialSteps },
+          });
+        },
       );
+
+      // Enrich volume/KD from Ahrefs data (GPT may hallucinate metrics — trust Ahrefs only)
+      if (poolSize > 0) {
+        const metricsMap = new Map(keywordPool.map(kw => [kw.keyword.toLowerCase(), kw]));
+        for (const kw of keywordResearch.coreKeywords) {
+          const match = metricsMap.get(kw.keyword.toLowerCase());
+          kw.volume = match?.volume ?? null;
+          kw.difficulty = match?.difficulty ?? null;
+        }
+        for (const kw of keywordResearch.moneyKeywords) {
+          const match = metricsMap.get(kw.keyword.toLowerCase());
+          kw.volume = match?.volume ?? null;
+          kw.difficulty = match?.difficulty ?? null;
+        }
+        this.logger.log(`Audit ${auditId}: enriched keyword metrics from Ahrefs pool`);
+      }
 
       await this.updateAudit(auditId, {
         currentStep: 'KEYWORDS_COMPLETE',
@@ -152,13 +198,74 @@ export class AuditProcessor extends WorkerHost {
         `Audit ${auditId}: keyword chain complete — ${keywordResearch.coreKeywords.length} core, ${keywordResearch.moneyKeywords.length} money, ${keywordResearch.primaryTopics.length} topics, ${keywordResearch.coreTopics.length} core topics`,
       );
 
-      // TODO: Step 4 — Competitor Discovery (SerpAPI)
+      // Step 04: Competitor Discovery via Google SERP + Classification
+      await this.updateAudit(auditId, { currentStep: 'COMPETITORS_RUNNING' });
+      await job.updateProgress(46);
+
+      // Pick top keywords to search: up to 5 seed + top 5 money keywords = max 10 queries
+      const searchKeywords = [
+        ...businessProfile.seedKeywords.slice(0, 5),
+        ...keywordResearch.moneyKeywords.slice(0, 5).map(k => k.keyword),
+      ];
+      const uniqueSearchKeywords = [...new Set(searchKeywords)];
+
+      this.logger.log(
+        `Audit ${auditId}: searching SERP for ${uniqueSearchKeywords.length} keywords (country=${countryCode})`,
+      );
+
+      const competitorCandidates: CompetitorCandidate[] = await this.serpService.discoverCompetitors(
+        uniqueSearchKeywords,
+        domain,
+        countryCode,
+      );
+
+      // Persist raw SERP competitor candidates
+      await this.updateAudit(auditId, {
+        currentStep: 'SERP_COMPLETE',
+        rawData: {
+          serpCandidates: competitorCandidates.slice(0, 20).map(c => ({
+            domain: c.domain,
+            occurrences: c.occurrences,
+            avgPosition: Math.round(c.positions.reduce((a, b) => a + b, 0) / c.positions.length),
+            sampleUrls: c.sampleUrls,
+          })),
+        },
+      });
+      await job.updateProgress(48);
+      this.logger.log(
+        `Audit ${auditId}: SERP discovery found ${competitorCandidates.length} candidate domains`,
+      );
+
+      // Classify competitors via OpenAI (Direct vs Organic)
+      let competitors: CompetitorClassification = { directCompetitors: [], organicCompetitors: [] };
+      if (competitorCandidates.length > 0) {
+        competitors = await this.openaiService.classifyCompetitors(
+          competitorCandidates.slice(0, 15),
+          businessProfile,
+          deepRead,
+        );
+      }
+
+      await this.updateAudit(auditId, {
+        currentStep: 'COMPETITORS_COMPLETE',
+        rawData: { competitors },
+      });
+      await job.updateProgress(50);
+      this.logger.log(
+        `Audit ${auditId}: competitor classification complete — ${competitors.directCompetitors.length} direct, ${competitors.organicCompetitors.length} organic`,
+      );
+
       // TODO: Step 5 — Competitor Metrics (Ahrefs)
       // TODO: Step 6 — Competitor Top Pages (Ahrefs)
       // TODO: Step 7 — Content Gap (Ahrefs)
       // TODO: Step 8 — Scoring
       // TODO: Step 9 — Report Generation
       // TODO: Step 10 — Email Delivery
+
+      // Mark audit as complete (end of currently implemented pipeline)
+      await this.updateAudit(auditId, { status: 'COMPLETE', currentStep: 'COMPLETE' });
+      await job.updateProgress(100);
+      this.logger.log(`Audit ${auditId}: pipeline complete`);
 
     } catch (error) {
       this.logger.error(`Audit ${auditId} failed: ${error}`);
@@ -210,10 +317,18 @@ export class AuditProcessor extends WorkerHost {
       };
     }
 
-    await this.database.db
-      .update(audits)
-      .set(updateFields)
-      .where(eq(audits.id, auditId));
+    try {
+      await this.database.db
+        .update(audits)
+        .set(updateFields)
+        .where(eq(audits.id, auditId));
+    } catch (err) {
+      const snapshot = JSON.stringify(updateFields).slice(0, 2000);
+      this.logger.error(
+        `updateAudit failed for ${auditId} at step=${data.currentStep || 'N/A'}: ${err}\nPayload: ${snapshot}`,
+      );
+      throw err;
+    }
   }
 
   private parseCountryCode(geography: string): string {

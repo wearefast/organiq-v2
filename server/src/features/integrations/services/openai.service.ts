@@ -89,6 +89,11 @@ export interface DeepRead {
   whatMakesThemDifferent: string;
 }
 
+export interface CompetitorClassification {
+  directCompetitors: Array<{ domain: string; reason: string }>;
+  organicCompetitors: Array<{ domain: string; reason: string }>;
+}
+
 @Injectable()
 export class OpenAIService {
   private readonly logger = new Logger(OpenAIService.name);
@@ -198,7 +203,7 @@ Return a JSON object with these exact keys:
     deepRead: DeepRead,
     ahrefsKeywords: Array<{ keyword: string; volume: number | null; difficulty: number | null; traffic: number | null; intent: Record<string, boolean> }> | null,
     scrapeBodyText?: string,
-    onProgress?: (pct: number) => Promise<void>,
+    onProgress?: (pct: number, subStepKey: string, partialSteps: KeywordResearchSteps) => Promise<void>,
   ): Promise<{ research: KeywordResearch; steps: KeywordResearchSteps }> {
     this.logger.log('Starting 5-step keyword intelligence chain via GPT-5.4');
 
@@ -211,7 +216,7 @@ Return a JSON object with these exact keys:
     } catch (e) {
       this.logger.error(`Step 3.1 failed: ${e}`);
     }
-    if (onProgress) await onProgress(34);
+    if (onProgress) await onProgress(34, 'KW_STEP_31', { ...steps });
 
     // Step 3.2 — Core + Money Keywords
     try {
@@ -220,7 +225,7 @@ Return a JSON object with these exact keys:
     } catch (e) {
       this.logger.error(`Step 3.2 failed: ${e}`);
     }
-    if (onProgress) await onProgress(36);
+    if (onProgress) await onProgress(36, 'KW_STEP_32', { ...steps });
 
     // Step 3.3 — Topic Clusters + Expansion
     try {
@@ -229,7 +234,7 @@ Return a JSON object with these exact keys:
     } catch (e) {
       this.logger.error(`Step 3.3 failed: ${e}`);
     }
-    if (onProgress) await onProgress(38);
+    if (onProgress) await onProgress(38, 'KW_STEP_33', { ...steps });
 
     // Step 3.4 — Entity Discovery
     try {
@@ -238,7 +243,7 @@ Return a JSON object with these exact keys:
     } catch (e) {
       this.logger.error(`Step 3.4 failed: ${e}`);
     }
-    if (onProgress) await onProgress(40);
+    if (onProgress) await onProgress(40, 'KW_STEP_34', { ...steps });
 
     // Step 3.5 — Deduplication + Core Topics
     try {
@@ -247,7 +252,7 @@ Return a JSON object with these exact keys:
     } catch (e) {
       this.logger.error(`Step 3.5 failed: ${e}`);
     }
-    if (onProgress) await onProgress(44);
+    if (onProgress) await onProgress(44, 'KW_STEP_35', { ...steps });
 
     // Merge all step outputs into final result
     const research: KeywordResearch = {
@@ -365,6 +370,35 @@ Return a JSON object with these exact keys:
       entities: JSON.stringify(step34?.entities?.map(e => ({ entity: e.entity, type: e.type })) || []),
     });
     return JSON.parse(await this.callGpt(system, interpolated)) as Step35Output;
+  }
+
+  async classifyCompetitors(
+    candidates: Array<{ domain: string; occurrences: number; positions: number[] }>,
+    profile: BusinessProfile,
+    deepRead: DeepRead,
+  ): Promise<CompetitorClassification> {
+    this.logger.log(`Classifying ${candidates.length} competitor candidates via GPT-5.4`);
+
+    const { system, user } = loadPrompt('4.0 - Competitor Classification Prompt.md');
+    const interpolated = interpolatePrompt(user, {
+      profile: {
+        brandIdentity: profile.brandIdentity,
+        services: profile.services.join(', '),
+        targetMarket: profile.targetMarket,
+        geography: profile.geography,
+      },
+      deepRead,
+      candidatesJson: JSON.stringify(
+        candidates.map(c => ({ domain: c.domain, occurrences: c.occurrences, avgPosition: Math.round(c.positions.reduce((a, b) => a + b, 0) / c.positions.length) })),
+        null, 2,
+      ),
+    });
+
+    const parsed = JSON.parse(await this.callGpt(system, interpolated)) as CompetitorClassification;
+    this.logger.log(
+      `Competitor classification complete: ${parsed.directCompetitors.length} direct, ${parsed.organicCompetitors.length} organic`,
+    );
+    return parsed;
   }
 
   async generateReportCopy(auditData: Record<string, unknown>) {

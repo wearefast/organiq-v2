@@ -16,7 +16,7 @@ export class LeadsService {
   async create(dto: CreateLeadDto) {
     const [audit] = await this.database.db
       .insert(audits)
-      .values({ websiteUrl: dto.websiteUrl, status: 'PENDING' })
+      .values({ websiteUrl: dto.websiteUrl, status: 'PENDING', countries: dto.countries ?? [] })
       .returning();
 
     const [lead] = await this.database.db
@@ -35,6 +35,9 @@ export class LeadsService {
       auditId: audit.id,
       leadId: lead.id,
       websiteUrl: dto.websiteUrl,
+    }, {
+      attempts: 3,
+      backoff: { type: 'exponential', delay: 5000 },
     });
 
     return { auditId: audit.id, leadId: lead.id };
