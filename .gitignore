@@ -1,0 +1,32 @@
+# Dependencies
+node_modules/
+
+# Build outputs
+dist/
+.next/
+out/
+
+# Environment
+.env
+.env.local
+.env.*.local
+
+# IDE
+.vscode/settings.json
+.idea/
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Drizzle
+server/drizzle/
+
+# Docker
+docker-data/
+
+# Debug
+npm-debug.log*
+
+# Coverage
+coverage/
