@@ -7,6 +7,8 @@ import type {
   CompetitorData,
   SerpCandidateData,
   PageSpeedMetricsData,
+  ContentGapData,
+  ContentGapKeyword,
 } from '../services/audit.service';
 
 /* ═══════════════════════════════════════════════════════════
@@ -17,7 +19,7 @@ interface Props {
   audit: AuditDetailResponse;
 }
 
-type TabKey = 'overview' | 'keywords' | 'competitors' | 'performance';
+type TabKey = 'overview' | 'keywords' | 'competitors' | 'content-gap' | 'performance';
 
 /* ═══════════════════════════════════════════════════════════
    Root
@@ -31,7 +33,8 @@ export function AuditResults({ audit }: Props) {
     { key: 'overview', label: 'Overview', available: true },
     { key: 'keywords', label: 'Keywords & Topics', available: !!pipeline.keywordResearch },
     { key: 'competitors', label: 'Competitors', available: !!pipeline.competitors },
-    { key: 'performance', label: 'Performance', available: !!pipeline.pageSpeed },
+    { key: 'content-gap', label: 'Content Gap', available: !!pipeline.contentGap },
+    { key: 'performance', label: 'Performance', available: true },
   ];
 
   return (
@@ -67,8 +70,13 @@ export function AuditResults({ audit }: Props) {
       {tab === 'competitors' && pipeline.competitors && (
         <CompetitorsTab competitors={pipeline.competitors} serpCandidates={pipeline.serpCandidates} />
       )}
-      {tab === 'performance' && pipeline.pageSpeed && (
-        <PerformanceTab data={pipeline.pageSpeed} scrape={pipeline.scrape} />
+      {tab === 'content-gap' && pipeline.contentGap && (
+        <ContentGapTab data={pipeline.contentGap} />
+      )}
+      {tab === 'performance' && (
+        pipeline.pageSpeed
+          ? <PerformanceTab data={pipeline.pageSpeed} scrape={pipeline.scrape} />
+          : <PerformanceEmptyState status={pipeline.pageSpeedStatus} />
       )}
     </div>
   );
@@ -517,6 +525,231 @@ function CompetitorsTab({ competitors, serpCandidates }: { competitors: Competit
 }
 
 /* ═══════════════════════════════════════════════════════════
+   CONTENT GAP TAB
+   ═══════════════════════════════════════════════════════════ */
+
+function ContentGapTab({ data }: { data: ContentGapData }) {
+  const [sortKey, setSortKey] = useState<'opportunity' | 'volume' | 'difficulty'>('opportunity');
+  const sorted = [...data.keywords].sort((a, b) => {
+    if (sortKey === 'opportunity') return b.opportunity - a.opportunity;
+    if (sortKey === 'volume') return b.volume - a.volume;
+    return a.difficulty - b.difficulty;
+  });
+  const displayed = sorted.slice(0, 50);
+
+  const funnelColor = (f: string) => {
+    if (f === 'TOFU') return 'bg-teal-50 text-teal-700';
+    if (f === 'MOFU') return 'bg-amber-50 text-amber-700';
+    return 'bg-red-50 text-red-700';
+  };
+  const intentColor = (i: string) => {
+    if (i === 'informational') return 'bg-blue-50 text-blue-700';
+    if (i === 'commercial') return 'bg-purple-50 text-purple-700';
+    return 'bg-red-50 text-red-700';
+  };
+
+  return (
+    <div className="space-y-5">
+      {/* Summary Strip */}
+      <div className="grid grid-cols-3 gap-3">
+        <div className="rounded-xl border border-[#DA304F]/20 bg-gradient-to-br from-[#FCF4F6] to-white p-5">
+          <p className="text-[11px] font-semibold uppercase tracking-widest text-[#DA304F]/70">Gap Keywords</p>
+          <p className="mt-1 text-[32px] font-bold text-[#DA304F]">{data.summary.totalGapKeywords}</p>
+          <p className="mt-0.5 text-xs text-[#9CA3AF]">Keywords competitors rank for</p>
+        </div>
+        <div className="rounded-xl border border-[#6366F1]/20 bg-gradient-to-br from-[#EEF2FF] to-white p-5">
+          <p className="text-[11px] font-semibold uppercase tracking-widest text-[#6366F1]/70">Missed Traffic/mo</p>
+          <p className="mt-1 text-[32px] font-bold text-[#6366F1]">{formatTraffic(data.summary.estimatedMissedTraffic)}</p>
+          <p className="mt-0.5 text-xs text-[#9CA3AF]">Estimated lost monthly visits</p>
+        </div>
+        <div className="rounded-xl border border-[#D97706]/20 bg-gradient-to-br from-[#FFFBEB] to-white p-5">
+          <p className="text-[11px] font-semibold uppercase tracking-widest text-[#D97706]/70">Avg Difficulty</p>
+          <p className="mt-1 text-[32px] font-bold text-[#D97706]">{data.summary.avgDifficulty}<span className="text-lg text-[#9CA3AF]">/100</span></p>
+          <p className="mt-0.5 text-xs text-[#9CA3AF]">Average keyword difficulty</p>
+        </div>
+      </div>
+
+      {/* Gap Keywords Table */}
+      <Card title={`Gap Keywords (${data.keywords.length})`} icon={IconTarget}>
+        <div className="mb-3 flex gap-2">
+          {(['opportunity', 'volume', 'difficulty'] as const).map(k => (
+            <button
+              key={k}
+              onClick={() => setSortKey(k)}
+              className={`rounded-lg px-3 py-1.5 text-xs font-medium transition-all ${
+                sortKey === k ? 'bg-[#071932] text-white' : 'bg-[#F8F9FC] text-[#6B7280] hover:bg-[#E8EAF0]'
+              }`}
+            >
+              Sort by {k}
+            </button>
+          ))}
+        </div>
+        <div className="overflow-x-auto">
+          <table className="w-full text-sm">
+            <thead>
+              <tr className="border-b border-[#E8EAF0]">
+                <Th>Keyword</Th><Th align="right">Volume</Th><Th align="right">KD</Th><Th>Intent</Th><Th>Funnel</Th><Th align="right">Competitors</Th><Th>Content Type</Th><Th align="right">Opportunity</Th>
+              </tr>
+            </thead>
+            <tbody>
+              {displayed.map(kw => (
+                <tr key={kw.keyword} className="border-b border-[#F3F4F6] transition-colors hover:bg-[#FAFAFB]">
+                  <td className="py-2.5 pr-4 font-medium text-[#111827]">{kw.keyword}</td>
+                  <td className="py-2.5 pr-4 text-right font-mono text-[#4B5563]">{kw.volume.toLocaleString()}</td>
+                  <td className="py-2.5 pr-4 text-right"><KdBadge value={kw.difficulty} /></td>
+                  <td className="py-2.5 pr-4">
+                    <span className={`rounded-pill px-2 py-0.5 text-xs font-medium ${intentColor(kw.intent)}`}>{kw.intent}</span>
+                  </td>
+                  <td className="py-2.5 pr-4">
+                    <span className={`rounded-pill px-2 py-0.5 text-xs font-medium ${funnelColor(kw.funnel)}`}>{kw.funnel}</span>
+                  </td>
+                  <td className="py-2.5 pr-4 text-right font-mono text-[#4B5563]">{kw.competitorCount}/{data.summary.competitorsAnalyzed.length}</td>
+                  <td className="py-2.5 pr-4 text-xs text-[#6B7280]">{kw.contentType}</td>
+                  <td className="py-2.5 text-right">
+                    <span className="rounded-pill bg-[#EEF2FF] px-2 py-0.5 text-xs font-bold text-[#6366F1]">{kw.opportunity}</span>
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      </Card>
+
+      {/* Topic Groups */}
+      {data.topicGroups.length > 0 && (
+        <Card title={`Topic Clusters (${data.topicGroups.length})`} icon={IconCluster}>
+          <div className="space-y-3">
+            {data.topicGroups.map(group => (
+              <div key={group.topic} className="rounded-lg border border-[#E8EAF0] bg-[#FAFAFB] p-4">
+                <div className="flex flex-wrap items-center gap-2">
+                  <span className="font-medium text-[#111827]">{group.topic}</span>
+                  <span className="rounded-pill bg-[#EEF2FF] px-2 py-0.5 text-xs font-mono text-[#6366F1]">~{group.totalVolume.toLocaleString()} vol</span>
+                  <KdBadge value={group.avgDifficulty} />
+                  <span className={`rounded-pill px-2 py-0.5 text-xs font-medium ${funnelColor(group.dominantFunnel)}`}>{group.dominantFunnel}</span>
+                  <span className="rounded-pill bg-[#F8F9FC] px-2 py-0.5 text-xs text-[#6B7280]">{group.keywords.length} keywords</span>
+                </div>
+                <div className="mt-2 flex flex-wrap gap-1.5">
+                  {group.keywords.slice(0, 8).map(kw => (
+                    <span key={kw} className="rounded-pill border border-[#E8EAF0] bg-white px-2.5 py-0.5 text-xs text-[#4B5563]">{kw}</span>
+                  ))}
+                  {group.keywords.length > 8 && (
+                    <span className="rounded-pill border border-[#E8EAF0] bg-white px-2.5 py-0.5 text-xs text-[#9CA3AF]">+{group.keywords.length - 8} more</span>
+                  )}
+                </div>
+              </div>
+            ))}
+          </div>
+        </Card>
+      )}
+
+      {/* Competitor Coverage Matrix */}
+      {data.topicGroups.length > 0 && data.summary.competitorsAnalyzed.length > 0 && (
+        <Card title="Competitor Coverage Matrix" icon={IconChart}>
+          <div className="overflow-x-auto">
+            <table className="w-full text-sm">
+              <thead>
+                <tr className="border-b border-[#E8EAF0]">
+                  <Th>Topic</Th>
+                  {data.summary.competitorsAnalyzed.map(d => (
+                    <Th key={d} align="right">{d.replace(/\.(com|io|org|net|co\.\w+)$/, '')}</Th>
+                  ))}
+                </tr>
+              </thead>
+              <tbody>
+                {data.topicGroups.slice(0, 15).map(group => {
+                  // Check which competitors have keywords in this topic
+                  const topicKws = new Set(group.keywords.map(k => k.toLowerCase()));
+                  return (
+                    <tr key={group.topic} className="border-b border-[#F3F4F6]">
+                      <td className="py-2 pr-4 font-medium text-[#111827]">{group.topic}</td>
+                      {data.summary.competitorsAnalyzed.map(compDomain => {
+                        const hasPresence = data.keywords.some(
+                          kw => topicKws.has(kw.keyword.toLowerCase()) && kw.competitorPositions.some(cp => cp.domain === compDomain),
+                        );
+                        return (
+                          <td key={compDomain} className="py-2 text-center">
+                            {hasPresence ? (
+                              <span className="inline-flex h-5 w-5 items-center justify-center rounded-full bg-teal-100 text-xs text-teal-700">✓</span>
+                            ) : (
+                              <span className="inline-flex h-5 w-5 items-center justify-center rounded-full bg-[#F8F9FC] text-xs text-[#D1D5DB]">—</span>
+                            )}
+                          </td>
+                        );
+                      })}
+                    </tr>
+                  );
+                })}
+              </tbody>
+            </table>
+          </div>
+        </Card>
+      )}
+
+      {/* Emerging Opportunities */}
+      {data.emergingOpportunities.length > 0 && (
+        <Card title={`Emerging Opportunities (${data.emergingOpportunities.length})`} icon={IconExpand}>
+          <p className="mb-3 text-xs text-[#6B7280]">Keywords where only one high-DR competitor ranks — lower competition, higher chance of ranking quickly.</p>
+          <div className="overflow-x-auto">
+            <table className="w-full text-sm">
+              <thead>
+                <tr className="border-b border-[#E8EAF0]">
+                  <Th>Keyword</Th><Th align="right">Volume</Th><Th align="right">KD</Th><Th align="right">Opportunity</Th><Th>Competitor</Th>
+                </tr>
+              </thead>
+              <tbody>
+                {data.emergingOpportunities.slice(0, 20).map(kw => (
+                  <tr key={kw.keyword} className="border-b border-[#F3F4F6] transition-colors hover:bg-[#FAFAFB]">
+                    <td className="py-2.5 pr-4 font-medium text-[#111827]">{kw.keyword}</td>
+                    <td className="py-2.5 pr-4 text-right font-mono text-[#4B5563]">{kw.volume.toLocaleString()}</td>
+                    <td className="py-2.5 pr-4 text-right"><KdBadge value={kw.difficulty} /></td>
+                    <td className="py-2.5 pr-4 text-right">
+                      <span className="rounded-pill bg-[#EEF2FF] px-2 py-0.5 text-xs font-bold text-[#6366F1]">{kw.opportunity}</span>
+                    </td>
+                    <td className="py-2.5 text-xs text-[#6B7280]">{kw.competitorPositions[0]?.domain ?? '—'} (#{kw.competitorPositions[0]?.position ?? '—'})</td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        </Card>
+      )}
+    </div>
+  );
+}
+
+/* ═══════════════════════════════════════════════════════════
+   PERFORMANCE EMPTY STATE
+   ═══════════════════════════════════════════════════════════ */
+
+function PerformanceEmptyState({ status }: { status: string | null }) {
+  const isRunning = status === 'running' || status === 'background';
+  return (
+    <section className="rounded-xl border border-[#E8EAF0] bg-white p-8 text-center shadow-sm">
+      <div className="mx-auto mb-4 flex h-12 w-12 items-center justify-center rounded-full bg-[#F8F9FC]">
+        {isRunning ? (
+          <svg className="h-5 w-5 animate-spin text-[#9CA3AF]" fill="none" viewBox="0 0 24 24">
+            <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" />
+            <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z" />
+          </svg>
+        ) : (
+          <svg className="h-5 w-5 text-[#9CA3AF]" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.5}>
+            <path strokeLinecap="round" strokeLinejoin="round" d="M3 13.125C3 12.504 3.504 12 4.125 12h2.25c.621 0 1.125.504 1.125 1.125v6.75C7.5 20.496 6.996 21 6.375 21h-2.25A1.125 1.125 0 013 19.875v-6.75zM9.75 8.625c0-.621.504-1.125 1.125-1.125h2.25c.621 0 1.125.504 1.125 1.125v11.25c0 .621-.504 1.125-1.125 1.125h-2.25a1.125 1.125 0 01-1.125-1.125V8.625zM16.5 4.125c0-.621.504-1.125 1.125-1.125h2.25C20.496 3 21 3.504 21 4.125v15.75c0 .621-.504 1.125-1.125 1.125h-2.25a1.125 1.125 0 01-1.125-1.125V4.125z" />
+          </svg>
+        )}
+      </div>
+      <h3 className="text-[15px] font-semibold text-[#111827]">
+        {isRunning ? 'Performance analysis in progress' : 'No performance data available'}
+      </h3>
+      <p className="mt-1.5 text-sm text-[#6B7280]">
+        {isRunning
+          ? 'PageSpeed analysis is still running in the background. Refresh this page to check for updated results.'
+          : 'PageSpeed Insights and local Lighthouse analysis could not be completed for this website.'}
+      </p>
+    </section>
+  );
+}
+
+/* ═══════════════════════════════════════════════════════════
    PERFORMANCE TAB
    ═══════════════════════════════════════════════════════════ */
 
@@ -758,4 +991,10 @@ function scoreGradient(score: number): string {
   if (score >= 90) return 'from-[#10B981] to-[#34D399]';
   if (score >= 50) return 'from-[#F59E0B] to-[#FBBF24]';
   return 'from-[#EF4444] to-[#F87171]';
+}
+
+function formatTraffic(value: number): string {
+  if (value >= 1_000_000) return `${(value / 1_000_000).toFixed(1)}M`;
+  if (value >= 1_000) return `${(value / 1_000).toFixed(1)}K`;
+  return String(value);
 }

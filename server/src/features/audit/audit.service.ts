@@ -1,11 +1,36 @@
 import { Injectable, NotFoundException } from '@nestjs/common';
+import { InjectQueue } from '@nestjs/bullmq';
+import { Queue } from 'bullmq';
 import { eq, desc } from 'drizzle-orm';
 import { DatabaseService } from '../../shared/database/database.service';
 import { audits } from '../../db/schema';
+import { CreateAuditDto } from './dto/create-audit.dto';
 
 @Injectable()
 export class AuditService {
-  constructor(private readonly database: DatabaseService) {}
+  constructor(
+    private readonly database: DatabaseService,
+    @InjectQueue('audit-queue') private readonly auditQueue: Queue,
+  ) {}
+
+  async create(dto: CreateAuditDto) {
+    const [audit] = await this.database.db
+      .insert(audits)
+      .values({
+        websiteUrl: dto.websiteUrl,
+        status: 'PENDING',
+        countries: dto.countries ?? [],
+      })
+      .returning();
+
+    await this.auditQueue.add(
+      'process-audit',
+      { auditId: audit.id, websiteUrl: dto.websiteUrl },
+      { attempts: 3, backoff: { type: 'exponential', delay: 5000 } },
+    );
+
+    return { auditId: audit.id };
+  }
 
   async getStatus(id: string) {
     const [audit] = await this.database.db
@@ -124,6 +149,7 @@ export class AuditService {
     }
 
     const pageSpeed = rawData.pageSpeed as Record<string, unknown> | undefined;
+    const pageSpeedStatus = rawData.pageSpeedStatus as string | undefined;
     if (pageSpeed) {
       const mobile = (pageSpeed.mobile as Record<string, unknown>) || {};
       const desktop = (pageSpeed.desktop as Record<string, unknown>) || {};
@@ -136,6 +162,18 @@ export class AuditService {
           mobileSeo: mobile.seoScore ?? null,
           lcp: mobile.lcp ?? null,
         },
+      });
+    } else if (pageSpeedStatus === 'background') {
+      steps.push({
+        key: 'PAGESPEED',
+        label: 'PageSpeed analysis',
+        summary: { status: 'Running in background' },
+      });
+    } else if (pageSpeedStatus === 'unavailable') {
+      steps.push({
+        key: 'PAGESPEED',
+        label: 'PageSpeed analysis',
+        summary: { status: 'No data available' },
       });
     }
 
@@ -235,6 +273,42 @@ export class AuditService {
       });
     }
 
+    const competitorMetrics = rawData.competitorMetrics as Record<string, unknown> | undefined;
+    if (competitorMetrics) {
+      const compArr = Array.isArray(competitorMetrics.competitors) ? competitorMetrics.competitors : [];
+      const avgDR = compArr.length > 0
+        ? Math.round(compArr.reduce((sum: number, c: Record<string, unknown>) => sum + ((c.metrics as Record<string, number>)?.domainRating ?? 0), 0) / compArr.length)
+        : 0;
+      steps.push({
+        key: 'COMPETITOR_METRICS_COMPLETE',
+        label: 'Competitor metrics (Ahrefs)',
+        summary: { competitorCount: compArr.length, avgDR },
+      });
+    }
+
+    const organicCompetitorMetrics = rawData.organicCompetitorMetrics as Record<string, unknown> | undefined;
+    if (organicCompetitorMetrics) {
+      const orgArr = Array.isArray(organicCompetitorMetrics.competitors) ? organicCompetitorMetrics.competitors : [];
+      const avgOverlap = orgArr.length > 0
+        ? Math.round(orgArr.reduce((sum: number, c: Record<string, unknown>) => sum + ((c.overlapMetrics as Record<string, number>)?.sharePercent ?? 0), 0) / orgArr.length)
+        : 0;
+      steps.push({
+        key: 'ORGANIC_COMPETITORS_COMPLETE',
+        label: 'Organic competitor analysis',
+        summary: { competitorCount: orgArr.length, avgOverlap },
+      });
+    }
+
+    const contentGap = rawData.contentGap as Record<string, unknown> | undefined;
+    if (contentGap) {
+      const summary = contentGap.summary as Record<string, unknown>;
+      steps.push({
+        key: 'CONTENT_GAP_COMPLETE',
+        label: 'Content gap analysis',
+        summary: { gapKeywords: summary?.totalGapKeywords ?? 0, missedTraffic: summary?.estimatedMissedTraffic ?? 0 },
+      });
+    }
+
     return steps;
   }
 
@@ -274,8 +348,12 @@ export class AuditService {
         businessProfile: audit.businessProfile ?? null,
         deepRead: rawData.deepRead ?? null,
         pageSpeed: rawData.pageSpeed ?? null,
+        pageSpeedStatus: (rawData.pageSpeedStatus as string) ?? null,
         keywordResearch: rawData.keywordResearch ?? null,
         competitors: rawData.competitors ?? null,
+        competitorMetrics: rawData.competitorMetrics ?? null,
+        organicCompetitorMetrics: rawData.organicCompetitorMetrics ?? null,
+        contentGap: rawData.contentGap ?? null,
         serpCandidates: rawData.serpCandidates ?? null,
       },
       seedExpansions: (rawData.seedExpansions as string[]) ?? [],

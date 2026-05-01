@@ -1,11 +1,18 @@
-import { Controller, Get, Param, Query } from '@nestjs/common';
+import { Controller, Get, Post, Body, Param, Query } from '@nestjs/common';
 import { ApiTags, ApiOperation } from '@nestjs/swagger';
 import { AuditService } from './audit.service';
+import { CreateAuditDto } from './dto/create-audit.dto';
 
 @ApiTags('audits')
 @Controller('audits')
 export class AuditController {
   constructor(private readonly auditService: AuditService) {}
+
+  @Post()
+  @ApiOperation({ summary: 'Create a new audit' })
+  async create(@Body() dto: CreateAuditDto) {
+    return this.auditService.create(dto);
+  }
 
   @Get(':id/status')
   @ApiOperation({ summary: 'Poll audit progress' })

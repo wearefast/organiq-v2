@@ -401,6 +401,52 @@ Return a JSON object with these exact keys:
     return parsed;
   }
 
+  async classifyContentGap(
+    gapKeywords: Array<{ keyword: string; volume: number; difficulty: number; competitorCount: number }>,
+    profile: BusinessProfile,
+  ): Promise<Array<{ keyword: string; intent: string; funnel: string; contentType: string; parentTopic: string }>> {
+    this.logger.log(`Classifying ${gapKeywords.length} content gap keywords via GPT`);
+
+    const results: Array<{ keyword: string; intent: string; funnel: string; contentType: string; parentTopic: string }> = [];
+    const batchSize = 50;
+
+    for (let i = 0; i < gapKeywords.length; i += batchSize) {
+      const batch = gapKeywords.slice(i, i + batchSize);
+      const system = `You are an SEO content strategist. Classify keywords by intent, funnel stage, and content type. Respond ONLY in valid JSON.`;
+      const user = `Business context:
+- Services: ${profile.services.join(', ')}
+- Target market: ${profile.targetMarket}
+- Geography: ${profile.geography}
+
+Classify each keyword below. For each, determine:
+- "intent": one of "informational", "commercial", "transactional"
+- "funnel": one of "TOFU", "MOFU", "BOFU"
+- "contentType": one of "Blog Post", "Guide", "Comparison", "Landing Page", "FAQ", "Tool"
+- "parentTopic": a short 2-4 word topic grouping this keyword belongs to
+
+Keywords to classify:
+${JSON.stringify(batch.map(k => ({ keyword: k.keyword, volume: k.volume, difficulty: k.difficulty })), null, 2)}
+
+Respond with JSON: { "classifications": [{ "keyword": "...", "intent": "...", "funnel": "...", "contentType": "...", "parentTopic": "..." }] }`;
+
+      try {
+        const raw = await this.callGpt(system, user);
+        const parsed = JSON.parse(raw) as { classifications: Array<{ keyword: string; intent: string; funnel: string; contentType: string; parentTopic: string }> };
+        if (parsed.classifications) {
+          results.push(...parsed.classifications);
+        }
+      } catch (err) {
+        this.logger.warn(`Content gap classification batch ${i}–${i + batch.length} failed: ${err}`);
+        // Fall back: store unclassified
+        for (const kw of batch) {
+          results.push({ keyword: kw.keyword, intent: 'informational', funnel: 'TOFU', contentType: 'Blog Post', parentTopic: 'Uncategorized' });
+        }
+      }
+    }
+
+    return results;
+  }
+
   async generateReportCopy(auditData: Record<string, unknown>) {
     this.logger.log('Generating report copy via OpenAI GPT-5.4');
     // TODO: Implement report narrative generation

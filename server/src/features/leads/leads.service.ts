@@ -46,8 +46,21 @@ export class LeadsService {
   async findAll(page = 1, limit = 20) {
     const offset = (page - 1) * limit;
     const rows = await this.database.db
-      .select()
+      .select({
+        id: leads.id,
+        email: leads.email,
+        name: leads.name,
+        websiteUrl: leads.websiteUrl,
+        businessDetails: leads.businessDetails,
+        auditId: leads.auditId,
+        score: leads.score,
+        status: leads.status,
+        createdAt: leads.createdAt,
+        auditStatus: audits.status,
+        seoScore: audits.seoScore,
+      })
       .from(leads)
+      .leftJoin(audits, eq(leads.auditId, audits.id))
       .orderBy(desc(leads.createdAt))
       .limit(limit)
       .offset(offset);

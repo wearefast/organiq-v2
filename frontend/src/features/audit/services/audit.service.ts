@@ -118,11 +118,121 @@ export interface CompetitorData {
   organicCompetitors: Array<{ domain: string; reason: string }>;
 }
 
+export interface CompetitorMetricsData {
+  clientMetrics: {
+    domain: string;
+    domainRating: number;
+    ahrefsRank: number | null;
+    backlinks: number;
+    referringDomains: number;
+    orgKeywords: number;
+    orgTraffic: number;
+    orgCost: number | null;
+  };
+  competitors: Array<{
+    domain: string;
+    type: 'direct';
+    reason: string;
+    metrics: {
+      domain: string;
+      domainRating: number;
+      ahrefsRank: number | null;
+      backlinks: number;
+      referringDomains: number;
+      orgKeywords: number;
+      orgTraffic: number;
+      orgCost: number | null;
+    };
+    topPages: Array<{
+      url: string;
+      traffic: number;
+      topKeyword: string | null;
+      topKeywordVolume: number | null;
+      topKeywordPosition: number | null;
+    }>;
+    hasBlog: boolean;
+    blogUrl: string | null;
+  }>;
+}
+
+export interface OrganicCompetitorMetricsData {
+  source: 'ahrefs' | 'gpt-only';
+  competitors: Array<{
+    domain: string;
+    source: 'ahrefs' | 'gpt';
+    reason: string;
+    overlapMetrics: { keywordsCommon: number; keywordsCompetitorOnly: number; sharePercent: number } | null;
+    metrics: {
+      domain: string;
+      domainRating: number;
+      ahrefsRank: number | null;
+      backlinks: number;
+      referringDomains: number;
+      orgKeywords: number;
+      orgTraffic: number;
+      orgCost: number | null;
+    };
+    topPages: Array<{
+      url: string;
+      traffic: number;
+      topKeyword: string | null;
+      topKeywordVolume: number | null;
+      topKeywordPosition: number | null;
+    }>;
+    contentPages: Array<{
+      url: string;
+      traffic: number;
+      topKeyword: string | null;
+      topKeywordVolume: number | null;
+      topKeywordPosition: number | null;
+    }>;
+    hasBlog: boolean;
+    blogUrl: string | null;
+  }>;
+}
+
 export interface SerpCandidateData {
   domain: string;
   occurrences: number;
   avgPosition: number;
   sampleUrls: string[];
+}
+
+export interface ContentGapKeyword {
+  keyword: string;
+  volume: number;
+  difficulty: number;
+  intent: 'informational' | 'commercial' | 'transactional';
+  funnel: 'TOFU' | 'MOFU' | 'BOFU';
+  contentType: string;
+  opportunity: number;
+  competitorCount: number;
+  competitorPositions: Array<{ domain: string; position: number }>;
+  parentTopic: string;
+}
+
+export interface ContentGapData {
+  summary: {
+    totalGapKeywords: number;
+    estimatedMissedTraffic: number;
+    avgDifficulty: number;
+    competitorsAnalyzed: string[];
+  };
+  keywords: ContentGapKeyword[];
+  emergingOpportunities: Array<{
+    keyword: string;
+    volume: number;
+    difficulty: number;
+    competitorPositions: Array<{ domain: string; position: number }>;
+    opportunity: number;
+  }>;
+  topicGroups: Array<{
+    topic: string;
+    keywords: string[];
+    totalVolume: number;
+    avgDifficulty: number;
+    dominantFunnel: 'TOFU' | 'MOFU' | 'BOFU';
+  }>;
 }
 
 export interface AuditDetailResponse {
@@ -141,8 +251,12 @@ export interface AuditDetailResponse {
     businessProfile: BusinessProfileData | null;
     deepRead: DeepReadData | null;
     pageSpeed: { mobile: PageSpeedMetricsData; desktop: PageSpeedMetricsData } | null;
+    pageSpeedStatus: 'running' | 'background' | 'complete' | 'unavailable' | null;
     keywordResearch: KeywordResearchData | null;
     competitors: CompetitorData | null;
+    competitorMetrics: CompetitorMetricsData | null;
+    organicCompetitorMetrics: OrganicCompetitorMetricsData | null;
+    contentGap: ContentGapData | null;
     serpCandidates: SerpCandidateData[] | null;
   };
   scores: {
@@ -156,4 +270,48 @@ export interface AuditDetailResponse {
 
 export async function getAuditDetail(auditId: string): Promise<AuditDetailResponse> {
   return apiFetch<AuditDetailResponse>(`/audits/${auditId}`);
+}
+
+// ─── Audit List ──────────────────────────────────────────────
+
+export interface AuditSummary {
+  id: string;
+  websiteUrl: string;
+  status: string;
+  seoScore: number | null;
+  geoScore: number | null;
+  aeoScore: number | null;
+  contentGapCount: number | null;
+  estimatedTrafficLoss: number | null;
+  createdAt: string;
+  updatedAt: string;
+}
+
+interface ListAuditsResponse {
+  audits: AuditSummary[];
+  page: number;
+  limit: number;
+}
+
+export async function listAudits(page = 1, limit = 50): Promise<ListAuditsResponse> {
+  return apiFetch<ListAuditsResponse>(`/audits?page=${page}&limit=${limit}`);
+}
+
+// ─── Create Audit (dashboard) ────────────────────────────────
+
+interface CreateAuditPayload {
+  websiteUrl: string;
+  businessDescription: string;
+  countries: string[];
+}
+
+interface CreateAuditResponse {
+  auditId: string;
+}
+
+export async function createAudit(payload: CreateAuditPayload): Promise<CreateAuditResponse> {
+  return apiFetch<CreateAuditResponse>('/audits', {
+    method: 'POST',
+    body: JSON.stringify(payload),
+  });
 }

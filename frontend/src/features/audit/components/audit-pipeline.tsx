@@ -147,6 +147,36 @@ const STEP_DEFS: StepDef[] = [
     messages: ['Deduplicating keywords…', 'Building core topics…', 'Mapping intent…'],
     compact: true,
   },
+  {
+    key: 'SERP_COMPLETE',
+    label: 'Searching Google for competitors',
+    icon: <GlobeIcon />,
+    messages: ['Querying SERPs…', 'Aggregating domains…', 'Ranking candidates…'],
+  },
+  {
+    key: 'COMPETITORS_COMPLETE',
+    label: 'Classifying competitors',
+    icon: <SparklesIcon />,
+    messages: ['Analyzing domain overlap…', 'Classifying direct vs organic…', 'Scoring relevance…'],
+  },
+  {
+    key: 'COMPETITOR_METRICS_COMPLETE',
+    label: 'Pulling competitor metrics from Ahrefs',
+    icon: <DatabaseIcon />,
+    messages: ['Fetching domain ratings…', 'Pulling top pages…', 'Measuring traffic baselines…'],
+  },
+  {
+    key: 'ORGANIC_COMPETITORS_COMPLETE',
+    label: 'Analyzing organic competitors by keyword overlap',
+    icon: <DatabaseIcon />,
+    messages: ['Finding keyword overlap…', 'Enriching organic competitors…', 'Identifying content publishers…'],
+  },
+  {
+    key: 'CONTENT_GAP_COMPLETE',
+    label: 'Identifying content gap opportunities',
+    icon: <SparklesIcon />,
+    messages: ['Comparing keyword portfolios…', 'Scoring opportunity gaps…', 'Classifying content types…'],
+  },
 ];
 
 /* ─── Step-to-running mapping (which DB currentStep maps to which STEP_DEF) ── */
@@ -168,6 +198,15 @@ const RUNNING_MAP: Record<string, string> = {
   KW_STEP_34: 'KW_STEP_34',
   KW_STEP_35: 'KW_STEP_35',
   KEYWORDS_COMPLETE: 'KW_STEP_35',
+  COMPETITORS_RUNNING: 'SERP_COMPLETE',
+  SERP_COMPLETE: 'SERP_COMPLETE',
+  COMPETITORS_COMPLETE: 'COMPETITORS_COMPLETE',
+  COMPETITOR_METRICS_RUNNING: 'COMPETITOR_METRICS_COMPLETE',
+  COMPETITOR_METRICS_COMPLETE: 'COMPETITOR_METRICS_COMPLETE',
+  ORGANIC_COMPETITORS_RUNNING: 'ORGANIC_COMPETITORS_COMPLETE',
+  ORGANIC_COMPETITORS_COMPLETE: 'ORGANIC_COMPETITORS_COMPLETE',
+  CONTENT_GAP_RUNNING: 'CONTENT_GAP_COMPLETE',
+  CONTENT_GAP_COMPLETE: 'CONTENT_GAP_COMPLETE',
 };
 
 const STAGE_COPY: Record<string, { eyebrow: string; left: string[]; right: string[] }> = {
@@ -220,6 +259,31 @@ const STAGE_COPY: Record<string, { eyebrow: string; left: string[]; right: strin
     eyebrow: 'Finalizing opportunity model',
     left: ['all prior outputs', 'intent layers', 'entity graph'],
     right: ['core topics', 'deduped themes', 'final structure'],
+  },
+  SERP_COMPLETE: {
+    eyebrow: 'Discovering who ranks for your keywords',
+    left: ['seed keywords', 'money keywords', 'country scope'],
+    right: ['candidate domains', 'position data', 'occurrence map'],
+  },
+  COMPETITORS_COMPLETE: {
+    eyebrow: 'Classifying competitive landscape',
+    left: ['SERP candidates', 'business profile', 'deep-read context'],
+    right: ['direct competitors', 'organic competitors', 'relevance scores'],
+  },
+  COMPETITOR_METRICS_COMPLETE: {
+    eyebrow: 'Benchmarking competitor authority',
+    left: ['competitor domains', 'Ahrefs API', 'country filter'],
+    right: ['domain ratings', 'traffic baselines', 'top pages'],
+  },
+  ORGANIC_COMPETITORS_COMPLETE: {
+    eyebrow: 'Mapping organic keyword competition',
+    left: ['keyword overlap', 'Ahrefs organic', 'GPT fallback'],
+    right: ['content competitors', 'overlap %', 'top content pages'],
+  },
+  CONTENT_GAP_COMPLETE: {
+    eyebrow: 'Uncovering missed content opportunities',
+    left: ['target keywords', 'competitor keywords', 'position data'],
+    right: ['gap keywords', 'topic clusters', 'opportunity scores'],
   },
 };
 
@@ -543,21 +607,20 @@ export function AuditPipeline({ currentStep, progress, message, completedSteps }
     const isKwStep = KW_STEP_KEYS.has(def.key);
     const previousDef = visibleDefs[index - 1];
     const shouldShowKwHeader = isKwStep && (!previousDef || !KW_STEP_KEYS.has(previousDef.key));
+    const absDist = Math.abs(distanceFromActive);
     const emphasisClass =
       distanceFromActive === 0
         ? 'opacity-100 scale-100'
-        : distanceFromActive < 0
-          ? absoluteIndex === visibleStart && hiddenAboveCount > 0
-            ? 'opacity-35 scale-[0.95]'
-            : distanceFromActive === -1
-              ? 'opacity-65 scale-[0.98]'
-              : 'opacity-48 scale-[0.965]'
-          : distanceFromActive === 1
-            ? 'opacity-82 scale-[0.99]'
-            : 'opacity-58 scale-[0.975]';
+        : absDist === 1
+          ? 'opacity-60 scale-[0.92]'
+          : 'opacity-30 scale-[0.86]';
 
     return (
-      <div key={def.key} className={[isKwStep ? 'sm:ml-5' : '', 'transition-all duration-500', emphasisClass].join(' ')}>
+      <div
+        key={def.key}
+        className={[isKwStep ? 'sm:ml-5' : '', 'pipeline-slot-item', emphasisClass].join(' ')}
+        style={{ transitionProperty: 'transform, opacity, filter', transitionDuration: '600ms', transitionTimingFunction: 'cubic-bezier(0.16, 1, 0.3, 1)' }}
+      >
         {shouldShowKwHeader && isInKwSection && (
           <div className="mb-1 mt-1 pl-8">
             <span className="text-[10px] font-semibold uppercase tracking-[0.28em] text-[#7BC3FF]">
@@ -608,7 +671,7 @@ export function AuditPipeline({ currentStep, progress, message, completedSteps }
         </header>
 
         <div className="grid min-h-0 gap-3 lg:grid-cols-[minmax(0,3.1fr)_minmax(280px,1.1fr)_220px] xl:grid-cols-[minmax(0,3.35fr)_minmax(300px,1.15fr)_228px]">
-          <aside className="min-h-0 overflow-hidden rounded-[24px] border border-[#163150] bg-[rgba(7,18,33,0.86)] p-3">
+          <aside className="flex min-h-0 flex-col overflow-hidden rounded-[24px] border border-[#163150] bg-[rgba(7,18,33,0.86)] p-3">
             <div className="mb-3 flex items-end justify-between gap-3">
               <div>
                 <p className="text-[11px] font-semibold uppercase tracking-[0.28em] text-[#6E89AD]">Analysis pipeline</p>
@@ -619,7 +682,7 @@ export function AuditPipeline({ currentStep, progress, message, completedSteps }
               </span>
             </div>
 
-            <div className="relative overflow-hidden rounded-[22px] border border-[#122A45] bg-[rgba(4,14,27,0.58)] px-4 py-3">
+            <div className="relative min-h-0 flex-1 overflow-hidden rounded-[22px] border border-[#122A45] bg-[rgba(4,14,27,0.58)] px-4 py-3">
               <div className="pointer-events-none absolute inset-x-0 top-0 z-20 h-14 bg-[linear-gradient(180deg,rgba(4,14,27,0.98)_0%,rgba(4,14,27,0.8)_55%,rgba(4,14,27,0)_100%)]" />
               <div className="pointer-events-none absolute inset-x-0 bottom-0 z-20 h-14 bg-[linear-gradient(0deg,rgba(4,14,27,0.98)_0%,rgba(4,14,27,0.8)_55%,rgba(4,14,27,0)_100%)]" />
               {hiddenAboveCount > 0 && (
@@ -629,7 +692,7 @@ export function AuditPipeline({ currentStep, progress, message, completedSteps }
                 </div>
               )}
 
-              <div className="relative space-y-2.5">
+              <div className="relative flex min-h-full flex-col justify-center gap-2.5">
                 <div className="pipeline-rail absolute bottom-0 left-[15px] top-3 hidden w-px sm:block" />
                 {visibleStageRows}
 

@@ -1,7 +1,7 @@
 'use client';
 
 import { useAuth } from '@/shared/hooks/use-auth';
-import { useRouter, usePathname } from 'next/navigation';
+import { usePathname } from 'next/navigation';
 import { useEffect } from 'react';
 import Link from 'next/link';
 
@@ -15,16 +15,15 @@ const NAV_ITEMS = [
 
 export default function DashboardLayout({ children }: { children: React.ReactNode }) {
   const { user, isLoaded, signOut } = useAuth();
-  const router = useRouter();
   const pathname = usePathname();
 
   useEffect(() => {
     if (isLoaded && !user) {
-      router.replace('/login');
+      window.location.replace('/login');
     }
-  }, [isLoaded, user, router]);
+  }, [isLoaded, user]);
 
-  if (!isLoaded || !user) {
+  if (!isLoaded) {
     return (
       <div className="flex min-h-screen items-center justify-center bg-[#F8F9FC]">
         <div className="flex items-center gap-3 text-[#9CA3AF]">
@@ -38,55 +37,82 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
     );
   }
 
+  if (!user) {
+    return (
+      <div className="flex min-h-screen items-center justify-center bg-[#F8F9FC] px-6">
+        <div className="text-center text-[#6B7280]">
+          <p className="text-sm font-medium">Redirecting to sign in...</p>
+          <Link href="/login" className="mt-3 inline-block text-sm font-semibold text-[#DA304F] hover:opacity-80">
+            Continue to login
+          </Link>
+        </div>
+      </div>
+    );
+  }
+
   return (
     <div className="flex min-h-screen bg-[#F8F9FC]">
       {/* Sidebar */}
       <aside className="fixed inset-y-0 left-0 z-40 flex w-60 flex-col bg-gradient-sidebar">
         {/* Logo */}
-        <div className="flex h-16 shrink-0 items-center px-6">
+        <div className="flex h-16 shrink-0 items-center border-b border-white/10 px-5">
           <Link href="/dashboard" className="flex items-center gap-2.5">
-            <div className="flex h-7 w-7 items-center justify-center rounded-md bg-[#DA304F]">
+            <div className="flex h-7 w-7 shrink-0 items-center justify-center rounded-md bg-[#DA304F]">
               <svg className="h-4 w-4 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                 <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13 10V3L4 14h7v7l9-11h-7z" />
               </svg>
             </div>
-            <span className="text-[15px] font-semibold text-white">Calibrate</span>
+            <div className="min-w-0">
+              <p className="text-[13px] font-bold leading-tight text-white">Calibrate</p>
+              <p className="text-[10px] font-medium leading-tight text-white/40 tracking-wide">Commerce</p>
+            </div>
           </Link>
         </div>
 
         {/* Nav */}
-        <nav className="flex-1 space-y-0.5 px-3 py-2">
+        <nav className="flex-1 px-3 py-4">
+          <p className="mb-2 px-3 text-[11px] font-semibold uppercase tracking-widest text-white/30">
+            Main menu
+          </p>
+          <div className="space-y-0.5">
           {NAV_ITEMS.map(({ label, href, icon: Icon }) => {
             const isActive = pathname === href || (href !== '/dashboard' && pathname.startsWith(href));
             return (
               <Link
                 key={href}
                 href={href}
-                className={`flex items-center gap-3 rounded-lg px-3 py-2 text-sm font-medium transition-colors ${
+                className={`group flex items-center gap-3 rounded-lg px-3 py-2 text-sm font-medium transition-colors ${
                   isActive
-                    ? 'bg-white/10 text-white'
-                    : 'text-white/60 hover:bg-white/5 hover:text-white/90'
+                    ? 'bg-[#DA304F]/20 text-white'
+                    : 'text-white/55 hover:bg-white/5 hover:text-white/85'
                 }`}
               >
-                <Icon className="h-4 w-4 shrink-0" />
-                {label}
+                <span className={`shrink-0 transition-colors ${isActive ? 'text-[#E98395]' : 'text-white/40 group-hover:text-white/60'}`}>
+                  <Icon className="h-4 w-4" />
+                </span>
+                <span className="flex-1">{label}</span>
+                {isActive && (
+                  <span className="h-1.5 w-1.5 shrink-0 rounded-full bg-[#DA304F]" />
+                )}
               </Link>
             );
           })}
+          </div>
         </nav>
 
         {/* Footer */}
         <div className="border-t border-white/10 p-4">
           <div className="flex items-center gap-3">
-            <div className="flex h-8 w-8 items-center justify-center rounded-full bg-[#DA304F] text-xs font-semibold text-white">
+            <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-[#DA304F] text-xs font-bold text-white">
               {user.email.charAt(0).toUpperCase()}
             </div>
             <div className="min-w-0 flex-1">
-              <p className="truncate text-xs font-medium text-white/80">{user.email}</p>
+              <p className="truncate text-[12px] font-medium text-white/70">{user.email}</p>
+              <p className="text-[11px] text-white/30">Admin</p>
             </div>
             <button
               onClick={signOut}
-              className="shrink-0 text-white/40 transition-colors hover:text-white/80"
+              className="shrink-0 rounded-md p-1 text-white/30 transition-colors hover:bg-white/10 hover:text-white/70"
               title="Sign out"
             >
               <LogOutIcon className="h-4 w-4" />
@@ -103,7 +129,7 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
             {NAV_ITEMS.find(item => item.href === pathname || (item.href !== '/dashboard' && pathname.startsWith(item.href)))?.label ?? 'Dashboard'}
           </div>
           <Link
-            href="/audit"
+            href="/dashboard/audits/new"
             className="inline-flex items-center gap-1.5 rounded-pill bg-gradient-cta px-4 py-1.5 text-xs font-semibold text-white shadow-xs transition-opacity hover:opacity-90"
           >
             <svg className="h-3 w-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">

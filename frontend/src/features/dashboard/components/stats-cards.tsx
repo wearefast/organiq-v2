@@ -1,16 +1,23 @@
 import { Card, CardHeader, CardTitle, CardContent } from '@/shared/components';
 
-const STATS = [
-  { label: 'Total leads', value: '—', delta: null },
-  { label: 'Audits completed', value: '—', delta: null },
-  { label: 'Keyword projects', value: '—', delta: null },
-  { label: 'Content pieces', value: '—', delta: null },
-];
+interface StatsCardsProps {
+  totalLeads: number;
+  auditsCompleted: number;
+  totalAudits: number;
+  avgSeoScore: number | null;
+}
 
-export function StatsCards() {
+export function StatsCards({ totalLeads, auditsCompleted, totalAudits, avgSeoScore }: StatsCardsProps) {
+  const stats = [
+    { label: 'Total leads', value: totalLeads.toString() },
+    { label: 'Audits completed', value: `${auditsCompleted} / ${totalAudits}` },
+    { label: 'Total audits', value: totalAudits.toString() },
+    { label: 'Avg SEO score', value: avgSeoScore !== null ? avgSeoScore.toString() : '—' },
+  ];
+
   return (
     <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
-      {STATS.map(({ label, value }) => (
+      {stats.map(({ label, value }) => (
         <Card key={label}>
           <CardHeader className="pb-2">
             <CardTitle className="text-xs font-semibold uppercase tracking-widest text-[#9CA3AF]">

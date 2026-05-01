@@ -94,23 +94,29 @@ export class AuditProcessor extends WorkerHost {
       await job.updateProgress(20);
       this.logger.log(`Audit ${auditId}: deep-read distillation complete`);
 
-      // Step 3: PageSpeed Insights (tech debt — skipped when rate limited)
+      // Step 3: PageSpeed Insights (non-blocking — skip on any failure)
       await this.updateAudit(auditId, { currentStep: 'PAGESPEED_RUNNING' });
       await job.updateProgress(22);
 
-      const pageSpeedResult = await this.pageSpeedService.analyze(websiteUrl);
-      await this.updateAudit(auditId, {
-        currentStep: 'PAGESPEED_COMPLETE',
-        rawData: { pageSpeed: pageSpeedResult },
-      });
-      await job.updateProgress(30);
+      let pageSpeedResult = null;
+      try {
+        pageSpeedResult = await this.pageSpeedService.analyze(websiteUrl);
+      } catch (psError) {
+        this.logger.error(`Audit ${auditId}: PageSpeed threw unexpectedly: ${psError}`);
+      }
       if (pageSpeedResult) {
+        await this.updateAudit(auditId, {
+          currentStep: 'PAGESPEED_COMPLETE',
+          rawData: { pageSpeed: pageSpeedResult },
+        });
         this.logger.log(
           `Audit ${auditId}: PageSpeed complete — mobile perf=${pageSpeedResult.mobile.performanceScore}, desktop perf=${pageSpeedResult.desktop.performanceScore}`,
         );
       } else {
-        this.logger.warn(`Audit ${auditId}: PageSpeed failed, continuing pipeline`);
+        await this.updateAudit(auditId, { currentStep: 'PAGESPEED_COMPLETE' });
+        this.logger.warn(`Audit ${auditId}: PageSpeed skipped, continuing pipeline`);
       }
+      await job.updateProgress(30);
 
       // Step 03: Identify Core Keywords (Ahrefs + OpenAI classification)
       await this.updateAudit(auditId, { currentStep: 'KEYWORDS_RUNNING' });
@@ -154,6 +160,14 @@ export class AuditProcessor extends WorkerHost {
             matchingCount: matchingTerms?.length ?? 0,
             poolSize,
           },
+          keywordPool: keywordPool.map(kw => ({
+            keyword: kw.keyword,
+            volume: kw.volume,
+            difficulty: kw.difficulty,
+            traffic: kw.traffic,
+            position: kw.position ?? null,
+            intent: kw.intent,
+          })),
         },
       });
       await job.updateProgress(33);
@@ -255,9 +269,424 @@ export class AuditProcessor extends WorkerHost {
         `Audit ${auditId}: competitor classification complete — ${competitors.directCompetitors.length} direct, ${competitors.organicCompetitors.length} organic`,
       );
 
-      // TODO: Step 5 — Competitor Metrics (Ahrefs)
-      // TODO: Step 6 — Competitor Top Pages (Ahrefs)
-      // TODO: Step 7 — Content Gap (Ahrefs)
+      // Step 5: Competitor Metrics (Ahrefs) — non-blocking
+      await this.updateAudit(auditId, { currentStep: 'COMPETITOR_METRICS_RUNNING' });
+      await job.updateProgress(51);
+
+      let competitorMetrics: Record<string, unknown> | null = null;
+      try {
+        const allDirectDomains = competitors.directCompetitors.map(c => c.domain);
+        const clientMetrics = await this.ahrefsService.getDomainOverview(domain, countryCode);
+
+        // Fetch metrics + top pages for each competitor (max 3 concurrent)
+        const competitorResults: Array<Record<string, unknown>> = [];
+        const batchSize = 3;
+        for (let i = 0; i < allDirectDomains.length; i += batchSize) {
+          const batch = allDirectDomains.slice(i, i + batchSize);
+          const batchResults = await Promise.all(
+            batch.map(async (compDomain) => {
+              const [overview, topPages] = await Promise.all([
+                this.ahrefsService.getDomainOverview(compDomain, countryCode),
+                this.ahrefsService.getTopPages(compDomain, countryCode, 5),
+              ]);
+              const hasBlog = topPages.some(p =>
+                /\/(blog|resources|articles|news|insights)(\/|$)/i.test(p.url),
+              );
+              const blogPage = topPages.find(p =>
+                /\/(blog|resources|articles|news|insights)(\/|$)/i.test(p.url),
+              );
+              const reason = competitors.directCompetitors.find(c => c.domain === compDomain)?.reason || '';
+              return {
+                domain: compDomain,
+                type: 'direct',
+                reason,
+                metrics: overview ?? { domain: compDomain, domainRating: 0, ahrefsRank: null, backlinks: 0, referringDomains: 0, orgKeywords: 0, orgTraffic: 0, orgCost: null },
+                topPages,
+                hasBlog,
+                blogUrl: blogPage?.url ?? null,
+              };
+            }),
+          );
+          competitorResults.push(...batchResults);
+        }
+
+        competitorMetrics = {
+          clientMetrics: clientMetrics ?? { domain, domainRating: 0, ahrefsRank: null, backlinks: 0, referringDomains: 0, orgKeywords: 0, orgTraffic: 0, orgCost: null },
+          competitors: competitorResults,
+        };
+      } catch (metricsError) {
+        this.logger.error(`Audit ${auditId}: Competitor metrics failed: ${metricsError}`);
+      }
+
+      if (competitorMetrics) {
+        await this.updateAudit(auditId, {
+          currentStep: 'COMPETITOR_METRICS_COMPLETE',
+          rawData: { competitorMetrics },
+        });
+        const compArr = competitorMetrics.competitors as Array<Record<string, unknown>>;
+        const avgDR = compArr.length > 0
+          ? Math.round(compArr.reduce((sum, c) => sum + ((c.metrics as Record<string, number>)?.domainRating ?? 0), 0) / compArr.length)
+          : 0;
+        this.logger.log(
+          `Audit ${auditId}: competitor metrics complete — ${compArr.length} competitors, avg DR=${avgDR}`,
+        );
+      } else {
+        await this.updateAudit(auditId, { currentStep: 'COMPETITOR_METRICS_COMPLETE' });
+        this.logger.warn(`Audit ${auditId}: competitor metrics skipped (no API key or error)`);
+      }
+      await job.updateProgress(60);
+
+      // Step 6: Organic Competitor Analysis (Ahrefs) — non-blocking
+      await this.updateAudit(auditId, { currentStep: 'ORGANIC_COMPETITORS_RUNNING' });
+      await job.updateProgress(61);
+
+      let organicCompetitorMetrics: Record<string, unknown> | null = null;
+      try {
+        // Excluded platforms that are never real organic competitors
+        const EXCLUDED_PLATFORMS = new Set([
+          'youtube.com', 'instagram.com', 'facebook.com', 'linkedin.com',
+          'twitter.com', 'x.com', 'pinterest.com', 'tiktok.com', 'reddit.com',
+          'amazon.com', 'amazon.ae', 'amazon.co.uk', 'amazon.de', 'amazon.fr',
+          'ebay.com', 'walmart.com', 'noon.com', 'alibaba.com',
+          'yelp.com', 'tripadvisor.com', 'capterra.com', 'g2.com',
+          'canva.com', 'zapier.com', 'wikipedia.org',
+        ]);
+
+        const directDomains = new Set(competitors.directCompetitors.map(c => c.domain));
+        const gptOrganicCompetitors = competitors.organicCompetitors || [];
+
+        // Primary: Ahrefs organic competitors by keyword overlap
+        const ahrefsOrganic = await this.ahrefsService.getOrganicCompetitors(domain, countryCode, 20);
+
+        let selectedCompetitors: Array<{
+          domain: string;
+          source: 'ahrefs' | 'gpt';
+          reason: string;
+          overlapMetrics: { keywordsCommon: number; keywordsCompetitorOnly: number; sharePercent: number } | null;
+        }> = [];
+
+        if (ahrefsOrganic && ahrefsOrganic.length > 0) {
+          // Filter exclusions and direct competitors
+          const filtered = ahrefsOrganic.filter(c =>
+            c.domain !== domain &&
+            !directDomains.has(c.domain) &&
+            !EXCLUDED_PLATFORMS.has(c.domain),
+          );
+
+          selectedCompetitors = filtered.slice(0, 10).map(c => ({
+            domain: c.domain,
+            source: 'ahrefs' as const,
+            reason: `Ranks for ${c.keywordsCommon} common keywords (${c.sharePercent}% overlap)`,
+            overlapMetrics: {
+              keywordsCommon: c.keywordsCommon,
+              keywordsCompetitorOnly: c.keywordsCompetitorOnly,
+              sharePercent: c.sharePercent,
+            },
+          }));
+        }
+
+        // Merge GPT-classified organic competitors (lower priority)
+        if (selectedCompetitors.length < 10 && gptOrganicCompetitors.length > 0) {
+          const alreadyIncluded = new Set(selectedCompetitors.map(c => c.domain));
+          for (const gptComp of gptOrganicCompetitors) {
+            if (selectedCompetitors.length >= 10) break;
+            if (!alreadyIncluded.has(gptComp.domain) && !EXCLUDED_PLATFORMS.has(gptComp.domain)) {
+              selectedCompetitors.push({
+                domain: gptComp.domain,
+                source: 'gpt',
+                reason: gptComp.reason,
+                overlapMetrics: null,
+              });
+            }
+          }
+        }
+
+        // Enrich each organic competitor with metrics + top pages (batch 3 concurrent)
+        const enrichedCompetitors: Array<Record<string, unknown>> = [];
+        const batchSize = 3;
+        for (let i = 0; i < selectedCompetitors.length; i += batchSize) {
+          const batch = selectedCompetitors.slice(i, i + batchSize);
+          const batchResults = await Promise.all(
+            batch.map(async (comp) => {
+              const [overview, topPages] = await Promise.all([
+                this.ahrefsService.getDomainOverview(comp.domain, countryCode),
+                this.ahrefsService.getTopPages(comp.domain, countryCode, 5),
+              ]);
+              const contentPattern = /\/(blog|resources|articles|news|insights|guide|how-to|learn|magazine)(\/|$)/i;
+              const contentPages = topPages.filter(p => contentPattern.test(p.url));
+              const hasBlog = contentPages.length > 0;
+              const blogUrl = contentPages[0]?.url ?? null;
+              return {
+                domain: comp.domain,
+                source: comp.source,
+                reason: comp.reason,
+                overlapMetrics: comp.overlapMetrics,
+                metrics: overview ?? { domain: comp.domain, domainRating: 0, ahrefsRank: null, backlinks: 0, referringDomains: 0, orgKeywords: 0, orgTraffic: 0, orgCost: null },
+                topPages,
+                contentPages,
+                hasBlog,
+                blogUrl,
+              };
+            }),
+          );
+          enrichedCompetitors.push(...batchResults);
+        }
+
+        organicCompetitorMetrics = {
+          source: ahrefsOrganic && ahrefsOrganic.length > 0 ? 'ahrefs' : 'gpt-only',
+          competitors: enrichedCompetitors,
+        };
+      } catch (orgError) {
+        this.logger.error(`Audit ${auditId}: Organic competitor analysis failed: ${orgError}`);
+      }
+
+      if (organicCompetitorMetrics) {
+        await this.updateAudit(auditId, {
+          currentStep: 'ORGANIC_COMPETITORS_COMPLETE',
+          rawData: { organicCompetitorMetrics },
+        });
+        const orgArr = organicCompetitorMetrics.competitors as Array<Record<string, unknown>>;
+        const avgOverlap = orgArr.length > 0
+          ? Math.round(orgArr.reduce((sum, c) => sum + ((c.overlapMetrics as Record<string, number>)?.sharePercent ?? 0), 0) / orgArr.length)
+          : 0;
+        this.logger.log(
+          `Audit ${auditId}: organic competitor analysis complete — ${orgArr.length} competitors, avg overlap=${avgOverlap}%`,
+        );
+      } else {
+        await this.updateAudit(auditId, { currentStep: 'ORGANIC_COMPETITORS_COMPLETE' });
+        this.logger.warn(`Audit ${auditId}: organic competitor analysis skipped`);
+      }
+      await job.updateProgress(70);
+
+      // Step 7: Content Gap Analysis — non-blocking
+      await this.updateAudit(auditId, { currentStep: 'CONTENT_GAP_RUNNING' });
+      await job.updateProgress(71);
+
+      let contentGapResult: Record<string, unknown> | null = null;
+      try {
+        // Select top competitors for gap analysis: top 3 direct (by DR) + top 2 organic (by sharePercent)
+        const directCompArray = competitorMetrics
+          ? (competitorMetrics.competitors as Array<Record<string, unknown>>)
+            .filter(c => (c.metrics as Record<string, number>)?.domainRating > 0)
+            .sort((a, b) => ((b.metrics as Record<string, number>)?.domainRating ?? 0) - ((a.metrics as Record<string, number>)?.domainRating ?? 0))
+            .slice(0, 3)
+            .map(c => (c.domain as string))
+          : competitors.directCompetitors.slice(0, 3).map(c => c.domain);
+
+        const organicCompArray = organicCompetitorMetrics
+          ? (organicCompetitorMetrics.competitors as Array<Record<string, unknown>>)
+            .filter(c => (c.overlapMetrics as Record<string, number>)?.sharePercent > 0)
+            .sort((a, b) => ((b.overlapMetrics as Record<string, number>)?.sharePercent ?? 0) - ((a.overlapMetrics as Record<string, number>)?.sharePercent ?? 0))
+            .slice(0, 2)
+            .map(c => (c.domain as string))
+          : competitors.organicCompetitors.slice(0, 2).map(c => c.domain);
+
+        const gapCompetitors = [...new Set([...directCompArray, ...organicCompArray])];
+
+        if (gapCompetitors.length === 0) {
+          throw new Error('No competitors available for content gap analysis');
+        }
+
+        // Get target's keyword pool from persisted data (or re-fetch)
+        const [auditRow] = await this.database.db
+          .select({ rawData: audits.rawData })
+          .from(audits)
+          .where(eq(audits.id, auditId));
+        const existingRawData = (auditRow?.rawData || {}) as Record<string, unknown>;
+        let targetKeywords = existingRawData.keywordPool as Array<Record<string, unknown>> | undefined;
+
+        if (!targetKeywords || targetKeywords.length === 0) {
+          // Fallback: re-fetch (will cache-hit same day)
+          const fetched = await this.ahrefsService.getOrganicKeywords(domain, countryCode, 500);
+          targetKeywords = fetched?.map(kw => ({ keyword: kw.keyword, volume: kw.volume, difficulty: kw.difficulty, traffic: kw.traffic, position: kw.position ?? null, intent: kw.intent })) ?? [];
+        }
+
+        const targetKeywordSet = new Set(
+          targetKeywords
+            .filter(kw => ((kw.position as number) ?? 999) <= 50)
+            .map(kw => (kw.keyword as string).toLowerCase()),
+        );
+
+        // Fetch competitor keywords (200 each, batch 3 concurrent)
+        const competitorKeywordMap = new Map<string, Array<{ keyword: string; position: number; volume: number; difficulty: number }>>();
+        const compBatchSize = 3;
+        for (let i = 0; i < gapCompetitors.length; i += compBatchSize) {
+          const batch = gapCompetitors.slice(i, i + compBatchSize);
+          const batchResults = await Promise.all(
+            batch.map(async (compDomain) => {
+              const kws = await this.ahrefsService.getOrganicKeywords(compDomain, countryCode, 200);
+              return { domain: compDomain, keywords: kws };
+            }),
+          );
+          for (const { domain: compD, keywords: kws } of batchResults) {
+            if (kws) {
+              competitorKeywordMap.set(
+                compD,
+                kws.filter(k => (k.position ?? 999) <= 20).map(k => ({
+                  keyword: k.keyword,
+                  position: k.position ?? 0,
+                  volume: k.volume ?? 0,
+                  difficulty: k.difficulty ?? 0,
+                })),
+              );
+            }
+          }
+        }
+        await job.updateProgress(76);
+
+        // Compute gap: keywords where ≥2 competitors rank but target doesn't
+        const keywordCompetitorMap = new Map<string, Array<{ domain: string; position: number }>>();
+        const keywordMetaMap = new Map<string, { volume: number; difficulty: number }>();
+        for (const [compD, compKws] of competitorKeywordMap) {
+          for (const kw of compKws) {
+            const kwLower = kw.keyword.toLowerCase();
+            if (targetKeywordSet.has(kwLower)) continue; // target already ranks
+            if (!keywordCompetitorMap.has(kwLower)) keywordCompetitorMap.set(kwLower, []);
+            keywordCompetitorMap.get(kwLower)!.push({ domain: compD, position: kw.position });
+            // Keep best volume/difficulty
+            const existing = keywordMetaMap.get(kwLower);
+            if (!existing || kw.volume > existing.volume) {
+              keywordMetaMap.set(kwLower, { volume: kw.volume, difficulty: kw.difficulty });
+            }
+          }
+        }
+
+        // Filter: ≥2 competitors, volume ≥10, exclude branded (competitor domain name in keyword)
+        const competitorDomainWords = new Set(gapCompetitors.flatMap(d => d.replace(/\.(com|io|org|net|co).*$/, '').split(/[.-]/)));
+        const gapKeywords: Array<{
+          keyword: string;
+          volume: number;
+          difficulty: number;
+          competitorCount: number;
+          competitorPositions: Array<{ domain: string; position: number }>;
+          opportunity: number;
+        }> = [];
+        const emergingOpportunities: Array<{
+          keyword: string;
+          volume: number;
+          difficulty: number;
+          competitorCount: number;
+          competitorPositions: Array<{ domain: string; position: number }>;
+          opportunity: number;
+        }> = [];
+
+        for (const [kwLower, compPositions] of keywordCompetitorMap) {
+          const meta = keywordMetaMap.get(kwLower);
+          if (!meta || meta.volume < 10) continue;
+          // Exclude branded
+          const words = kwLower.split(/\s+/);
+          if (words.some(w => competitorDomainWords.has(w))) continue;
+
+          const opportunity = Math.round(meta.volume / (meta.difficulty + 1));
+          const entry = {
+            keyword: kwLower,
+            volume: meta.volume,
+            difficulty: meta.difficulty,
+            competitorPositions: compPositions,
+            opportunity,
+          };
+
+          if (compPositions.length >= 2) {
+            gapKeywords.push({ ...entry, competitorCount: compPositions.length });
+          } else {
+            // Single high-DR competitor — emerging opportunity
+            emergingOpportunities.push({ ...entry, competitorCount: compPositions.length });
+          }
+        }
+
+        // Sort by opportunity descending, limit to top 100 gap + top 50 emerging
+        gapKeywords.sort((a, b) => b.opportunity - a.opportunity);
+        const topGap = gapKeywords.slice(0, 100);
+        emergingOpportunities.sort((a, b) => b.opportunity - a.opportunity);
+        const topEmerging = emergingOpportunities.slice(0, 50);
+
+        await job.updateProgress(80);
+
+        // Classify gap keywords via OpenAI
+        const classificationInput = topGap.map(k => ({
+          keyword: k.keyword,
+          volume: k.volume,
+          difficulty: k.difficulty,
+          competitorCount: k.competitorCount,
+        }));
+
+        const classifications = await this.openaiService.classifyContentGap(
+          classificationInput,
+          businessProfile,
+        );
+
+        // Merge classifications into gap keywords
+        const classMap = new Map(classifications.map(c => [c.keyword.toLowerCase(), c]));
+        const classifiedGap = topGap.map(kw => {
+          const cls = classMap.get(kw.keyword.toLowerCase());
+          return {
+            keyword: kw.keyword,
+            volume: kw.volume,
+            difficulty: kw.difficulty,
+            intent: cls?.intent ?? 'informational',
+            funnel: cls?.funnel ?? 'TOFU',
+            contentType: cls?.contentType ?? 'Blog Post',
+            opportunity: kw.opportunity,
+            competitorCount: kw.competitorCount,
+            competitorPositions: kw.competitorPositions,
+            parentTopic: cls?.parentTopic ?? 'Uncategorized',
+          };
+        });
+
+        // Build topic groups
+        const topicMap = new Map<string, typeof classifiedGap>();
+        for (const kw of classifiedGap) {
+          if (!topicMap.has(kw.parentTopic)) topicMap.set(kw.parentTopic, []);
+          topicMap.get(kw.parentTopic)!.push(kw);
+        }
+        const topicGroups = Array.from(topicMap.entries()).map(([topic, kws]) => {
+          const totalVolume = kws.reduce((sum, k) => sum + k.volume, 0);
+          const avgDifficulty = Math.round(kws.reduce((sum, k) => sum + k.difficulty, 0) / kws.length);
+          const funnelCounts = { TOFU: 0, MOFU: 0, BOFU: 0 };
+          for (const k of kws) funnelCounts[k.funnel as keyof typeof funnelCounts] = (funnelCounts[k.funnel as keyof typeof funnelCounts] || 0) + 1;
+          const dominantFunnel = Object.entries(funnelCounts).sort((a, b) => b[1] - a[1])[0][0];
+          return {
+            topic,
+            keywords: kws.map(k => k.keyword),
+            totalVolume,
+            avgDifficulty,
+            dominantFunnel,
+          };
+        }).sort((a, b) => b.totalVolume - a.totalVolume);
+
+        const estimatedMissedTraffic = classifiedGap.reduce((sum, k) => sum + Math.round(k.volume * 0.3), 0);
+
+        contentGapResult = {
+          summary: {
+            totalGapKeywords: classifiedGap.length,
+            estimatedMissedTraffic,
+            avgDifficulty: classifiedGap.length > 0 ? Math.round(classifiedGap.reduce((s, k) => s + k.difficulty, 0) / classifiedGap.length) : 0,
+            competitorsAnalyzed: gapCompetitors,
+          },
+          keywords: classifiedGap,
+          emergingOpportunities: topEmerging,
+          topicGroups,
+        };
+      } catch (gapError) {
+        this.logger.error(`Audit ${auditId}: Content gap analysis failed: ${gapError}`);
+      }
+
+      if (contentGapResult) {
+        const gapCount = (contentGapResult.keywords as Array<unknown>).length;
+        await this.updateAudit(auditId, {
+          currentStep: 'CONTENT_GAP_COMPLETE',
+          rawData: { contentGap: contentGapResult },
+          contentGapCount: gapCount,
+        });
+        this.logger.log(
+          `Audit ${auditId}: content gap complete — ${gapCount} gap keywords, ${(contentGapResult.topicGroups as Array<unknown>).length} topic groups`,
+        );
+      } else {
+        await this.updateAudit(auditId, { currentStep: 'CONTENT_GAP_COMPLETE' });
+        this.logger.warn(`Audit ${auditId}: content gap analysis skipped`);
+      }
+      await job.updateProgress(85);
+
       // TODO: Step 8 — Scoring
       // TODO: Step 9 — Report Generation
       // TODO: Step 10 — Email Delivery
@@ -282,6 +711,7 @@ export class AuditProcessor extends WorkerHost {
       rawData?: Record<string, unknown>;
       businessProfile?: BusinessProfile;
       seedKeywords?: string[];
+      contentGapCount?: number;
     },
   ) {
     const updateFields: Record<string, unknown> = { updatedAt: new Date() };
@@ -289,6 +719,7 @@ export class AuditProcessor extends WorkerHost {
     if (data.status) updateFields.status = data.status;
     if (data.businessProfile) updateFields.businessProfile = data.businessProfile;
     if (data.seedKeywords) updateFields.seedKeywords = data.seedKeywords;
+    if (data.contentGapCount !== undefined) updateFields.contentGapCount = data.contentGapCount;
 
     if (data.rawData) {
       // Merge new data into existing rawData
@@ -318,6 +749,14 @@ export class AuditProcessor extends WorkerHost {
     }
 
     try {
+      // PostgreSQL JSONB does not support \u0000 (null bytes) — strip them from JSON fields only
+      for (const key of ['rawData', 'businessProfile'] as const) {
+        if (updateFields[key]) {
+          updateFields[key] = JSON.parse(
+            JSON.stringify(updateFields[key]).replace(/\\u0000/g, ''),
+          );
+        }
+      }
       await this.database.db
         .update(audits)
         .set(updateFields)

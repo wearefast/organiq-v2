@@ -119,6 +119,8 @@ export function PipelineStep({
   const rotatingMsg = useRotatingMessage(runningMessages, status === 'running');
   const code = STEP_CODES[stepKey] || stepKey;
 
+  const isRunning = status === 'running';
+
   return (
     <div
       className="animate-pipeline-fade-in-up relative pl-7"
@@ -126,8 +128,9 @@ export function PipelineStep({
     >
       <div
         className={[
-          'absolute left-[9px] top-6 z-10 h-3 w-3 -translate-x-1/2 rounded-full border-2',
-          status === 'running'
+          'absolute left-[9px] z-10 -translate-x-1/2 rounded-full border-2 transition-all duration-500',
+          isRunning ? 'top-7 h-3.5 w-3.5' : 'top-6 h-3 w-3',
+          isRunning
             ? 'border-[#F6A6B4] bg-[#DA304F] shadow-[0_0_14px_rgba(218,48,79,0.8)]'
             : status === 'complete'
               ? 'border-[#A7F3D0] bg-[#74E2C0] shadow-[0_0_12px_rgba(116,226,192,0.65)]'
@@ -136,9 +139,9 @@ export function PipelineStep({
       />
       <div
         className={[
-          'relative overflow-hidden rounded-[22px] border transition-all duration-300',
-          compact ? 'px-3.5 py-2.5' : 'px-4 py-3',
-          status === 'running'
+          'relative overflow-hidden rounded-[22px] border transition-all duration-500',
+          isRunning ? 'px-5 py-4' : compact ? 'px-3.5 py-2.5' : 'px-4 py-3',
+          isRunning
             ? 'animate-pipeline-glow border-[#2D507E] bg-[linear-gradient(180deg,rgba(10,25,45,0.98),rgba(6,15,28,0.98))]'
             : status === 'complete'
               ? 'border-[#244566] bg-[linear-gradient(180deg,rgba(8,20,38,0.98),rgba(6,15,28,0.96))]'
@@ -147,8 +150,9 @@ export function PipelineStep({
       >
         <div
           className={[
-            'absolute inset-y-0 left-0 w-1',
-            status === 'running'
+            'absolute inset-y-0 left-0 transition-all duration-500',
+            isRunning ? 'w-1.5' : 'w-1',
+            isRunning
               ? 'bg-[linear-gradient(180deg,#F6A6B4_0%,#DA304F_60%,#7BC3FF_100%)]'
               : status === 'complete'
                 ? 'bg-[linear-gradient(180deg,#74E2C0_0%,#7BC3FF_100%)]'
@@ -158,9 +162,9 @@ export function PipelineStep({
         <div className="flex items-center gap-3">
           <div
             className={[
-              'flex shrink-0 items-center justify-center rounded-[16px] border',
-              compact ? 'h-7.5 w-7.5' : 'h-9 w-9',
-              status === 'running'
+              'flex shrink-0 items-center justify-center rounded-[16px] border transition-all duration-500',
+              isRunning ? 'h-11 w-11' : compact ? 'h-7.5 w-7.5' : 'h-9 w-9',
+              isRunning
                 ? 'border-[#345A88] bg-[radial-gradient(circle_at_top,rgba(246,166,180,0.2),rgba(11,26,46,0.95))] text-[#F6A6B4]'
                 : status === 'complete'
                   ? 'border-[#2A4A6A] bg-[radial-gradient(circle_at_top,rgba(116,226,192,0.16),rgba(8,20,36,0.95))] text-[#74E2C0]'
@@ -169,8 +173,8 @@ export function PipelineStep({
           >
             {status === 'complete' ? (
               <CheckIcon />
-            ) : status === 'running' ? (
-              <div className="animate-pipeline-spin-slow">{icon}</div>
+            ) : isRunning ? (
+              <div className="animate-pipeline-spin-slow [&>svg]:h-4.5 [&>svg]:w-4.5">{icon}</div>
             ) : (
               <div className="opacity-40">{icon}</div>
             )}
@@ -183,17 +187,17 @@ export function PipelineStep({
               </span>
               <span
                 className={[
-                  'font-semibold',
-                  compact ? 'text-[11px]' : 'text-[12px]',
+                  'font-semibold transition-all duration-500',
+                  isRunning ? 'text-[14px]' : compact ? 'text-[11px]' : 'text-[12px]',
                   status === 'pending' ? 'text-[#8096B7]' : 'text-white',
                 ].join(' ')}
               >
                 {label}
               </span>
-              {status === 'running' && <TypingDots />}
+              {isRunning && <TypingDots />}
             </div>
-            {status === 'running' && rotatingMsg && (
-              <p className="mt-0.5 text-[11px] text-[#AFC3DE] transition-all duration-300">
+            {isRunning && rotatingMsg && (
+              <p className="mt-1 text-[12px] text-[#AFC3DE] transition-all duration-300">
                 {rotatingMsg}
               </p>
             )}
@@ -210,8 +214,8 @@ export function PipelineStep({
               Done
             </span>
           )}
-          {status === 'running' && (
-            <span className="shrink-0 rounded-pill border border-[#4E3153] bg-[rgba(39,11,25,0.76)] px-2.5 py-1 text-[9px] font-semibold uppercase tracking-[0.18em] text-[#F6A6B4]">
+          {isRunning && (
+            <span className="shrink-0 rounded-pill border border-[#4E3153] bg-[rgba(39,11,25,0.76)] px-3 py-1.5 text-[10px] font-semibold uppercase tracking-[0.18em] text-[#F6A6B4]">
               Running
             </span>
           )}

@@ -9,6 +9,20 @@
 | OpenAI (GPT-5.4) | Business profiling, keyword classification, competitor classification, report copy | [docs](https://platform.openai.com/docs) |
 | PageSpeed Insights | Core Web Vitals, performance, SEO score | [docs](https://developers.google.com/speed/docs/insights/v5/get-started) |
 
+## PageSpeed Insights Execution Strategy
+
+The `PageSpeedService` uses a tiered retry strategy:
+
+| Attempt | Method | Timeout per strategy |
+|---------|--------|---------------------|
+| 1 | PSI API (remote) | 45 seconds |
+| 2 | PSI API (remote, retry) | 45 seconds |
+| 3 | Local Lighthouse (fallback) | 60 seconds |
+
+Overall safety timeout: **180 seconds** (wraps all attempts).
+
+Each attempt runs mobile then desktop analysis. If all three attempts fail, the service returns `null` and the audit marks `pageSpeedStatus: 'unavailable'`.
+
 ## Ahrefs Endpoints Used
 
 | Endpoint | Purpose |

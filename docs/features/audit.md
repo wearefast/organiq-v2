@@ -11,10 +11,30 @@ The audit pipeline is the core lead magnet. A visitor submits their website URL 
 | 01a | `ScraperService` | Scrape homepage (title, meta, H1s, body, links, images, schema) |
 | 01b | `OpenAIService` | Generate AI business profile + service areas from scraped content |
 | 02 | `OpenAIService` | Deep-read distillation (what/who/how/differentiator) |
-| 03 | `PageSpeedService` | Run PageSpeed Insights (mobile + desktop) |
+| 03 | `PageSpeedService` | Run PageSpeed Insights (mobile + desktop) — background with 10s foreground gate |
 | 04 | `AhrefsService` + `OpenAIService` | 5-step Keyword Intelligence Chain (see below) |
 | 05 | `SerpService` + `OpenAIService` | Google SERP Competitor Discovery + Classification (see below) |
 | 06+ | — | Competitor Metrics, Gap Analysis, Scoring, Report (TODO) |
+
+### Step 03: Background PageSpeed Execution
+
+PageSpeed runs as a background task with a 10-second foreground gate:
+
+1. Processor fires `PageSpeedService.analyze()` in the background
+2. Waits up to 10 seconds for an early result via `Promise.race`
+3. If result arrives within 10s → persists to `rawData.pageSpeed`, sets `pageSpeedStatus: 'complete'`
+4. If not → sets `pageSpeedStatus: 'background'`, continues to Step 04 (Keywords)
+5. Before marking audit `COMPLETE`, awaits the background promise
+6. Late result → persists and sets `'complete'`; no result → sets `'unavailable'`
+
+`rawData.pageSpeedStatus` values:
+
+| Value | Meaning |
+|-------|---------|
+| `running` | PageSpeed started, waiting for result |
+| `background` | 10s gate expired, running concurrently with keywords/competitors |
+| `complete` | Data persisted in `rawData.pageSpeed` |
+| `unavailable` | All attempts (2× PSI + local Lighthouse) exhausted |
 
 ### Step 04: Keyword Intelligence Chain (5 sub-steps)
 
@@ -83,7 +103,7 @@ During polling, analysis mode now replaces the landing-page shell instead of ove
 | 1 | SCRAPE | Crawling your website | Title, H1 count, link count, schema detected |
 | 2 | PROFILE | Building AI business profile | Brand, target market, service count, seed keyword count |
 | 3 | DEEPREAD | Deep-reading your content | What/who/how/differentiator |
-| 4 | PAGESPEED | Analyzing page performance | Mobile perf, desktop perf, SEO score, LCP |
+| 4 | PAGESPEED | Analyzing page performance | Mobile perf, desktop perf, SEO score, LCP (or "Running in background" / "No data available") |
 | 5 | KW_AHREFS | Fetching keyword data from Ahrefs | Organic count, matching count, pool size |
 | 6 | KW_STEP_31 | Extracting website context | Offering count, conversion phrases, page count |
 | 7 | KW_STEP_32 | Classifying core & money keywords | Core count, money count |
@@ -136,7 +156,7 @@ The results page at `/audit/[id]` displays audit data in a tabbed, visually stru
 | **Overview** | Business Profile + Deep Read (side-by-side on desktop), Seed Keywords, Website Crawl (mini-stat grid) |
 | **Keywords & Topics** | Core Keywords table (KD badge colored by difficulty), Money Keywords table, Topic Clusters, Niche Entities, Core Topics (2-col grid), Seed Expansions |
 | **Competitors** | Direct/Organic summary cards with counts, Direct competitor cards (domain + reason), Organic competitor cards, SERP Discovery table (domain, appearances, avg position) |
-| **Performance** | Score ring charts (Perf/SEO/Accessibility) for Mobile + Desktop, Core Web Vitals (LCP/CLS/TBT with traffic-light coloring), On-Page SEO Signals (check/warn indicators) |
+| **Performance** | Score ring charts (Perf/SEO/Accessibility) for Mobile + Desktop, Core Web Vitals (LCP/CLS/TBT with traffic-light coloring), On-Page SEO Signals (check/warn indicators). When PageSpeed is running in background: shows spinner + refresh prompt. When unavailable: shows "no data" message. |
 
 ### Data flow
 
