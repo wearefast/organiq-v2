@@ -18,13 +18,13 @@ export default function LoginPage() {
     <div className="flex min-h-screen">
       {/* Left panel — brand */}
       <div className="hidden w-[420px] shrink-0 flex-col justify-between bg-gradient-sidebar p-10 lg:flex">
-        <Link href="/" className="flex items-center gap-2.5">
-          <div className="flex h-7 w-7 items-center justify-center rounded-md bg-[#DA304F]">
-            <svg className="h-4 w-4 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13 10V3L4 14h7v7l9-11h-7z" />
-            </svg>
-          </div>
-          <span className="text-[15px] font-semibold text-white">Calibrate Commerce</span>
+        <Link href="/">
+          <img
+            src="/calibrate-commerce-logo.svg"
+            alt="Calibrate Commerce"
+            className="h-6 w-auto"
+            style={{ filter: 'brightness(0) invert(1)' }}
+          />
         </Link>
         <div>
           <p className="text-[24px] font-bold leading-snug text-white">

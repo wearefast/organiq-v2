@@ -56,16 +56,13 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
       <aside className="fixed inset-y-0 left-0 z-40 flex w-60 flex-col bg-gradient-sidebar">
         {/* Logo */}
         <div className="flex h-16 shrink-0 items-center border-b border-white/10 px-5">
-          <Link href="/dashboard" className="flex items-center gap-2.5">
-            <div className="flex h-7 w-7 shrink-0 items-center justify-center rounded-md bg-[#DA304F]">
-              <svg className="h-4 w-4 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13 10V3L4 14h7v7l9-11h-7z" />
-              </svg>
-            </div>
-            <div className="min-w-0">
-              <p className="text-[13px] font-bold leading-tight text-white">Calibrate</p>
-              <p className="text-[10px] font-medium leading-tight text-white/40 tracking-wide">Commerce</p>
-            </div>
+          <Link href="/dashboard" className="flex items-center">
+            <img
+              src="/calibrate-commerce-logo.svg"
+              alt="Calibrate Commerce"
+              className="h-6 w-auto"
+              style={{ filter: 'brightness(0) invert(1)' }}
+            />
           </Link>
         </div>
 

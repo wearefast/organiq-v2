@@ -1,6 +1,7 @@
 'use client';
 
 import { useState } from 'react';
+import { downloadAuditPdf } from './pdf-report';
 import type {
   AuditDetailResponse,
   KeywordResearchData,
@@ -89,6 +90,7 @@ export function AuditResults({ audit }: Props) {
 function HeroHeader({ audit }: Props) {
   const [emailSent, setEmailSent] = useState(false);
   const [emailSending, setEmailSending] = useState(false);
+  const [pdfGenerating, setPdfGenerating] = useState(false);
   const domain = (() => { try { return new URL(audit.websiteUrl).hostname; } catch { return audit.websiteUrl; } })();
   const statusMap: Record<string, { label: string; className: string }> = {
     COMPLETE: { label: 'Complete', className: 'bg-teal-500/20 text-teal-200 border-teal-400/30' },
@@ -142,25 +144,42 @@ function HeroHeader({ audit }: Props) {
             {audit.seedKeywords.length > 0 && <span>{audit.seedKeywords.length} seed keywords</span>}
           </div>
           {audit.status === 'COMPLETE' && (
-            <button
-              onClick={handleEmailReport}
-              disabled={emailSending || emailSent}
-              className={`flex items-center gap-2 rounded-lg border px-4 py-2 text-xs font-semibold transition-all ${
-                emailSent
-                  ? 'border-teal-400/30 bg-teal-500/20 text-teal-200'
-                  : emailSending
+            <div className="flex items-center gap-2">
+              <button
+                onClick={async () => {
+                  setPdfGenerating(true);
+                  try { await downloadAuditPdf(audit); } finally { setPdfGenerating(false); }
+                }}
+                disabled={pdfGenerating}
+                className={`flex items-center gap-2 rounded-lg border px-4 py-2 text-xs font-semibold transition-all ${
+                  pdfGenerating
                     ? 'border-white/10 bg-white/5 text-white/50'
                     : 'border-white/20 bg-white/10 text-white hover:bg-white/20'
-              }`}
-            >
-              {emailSent ? (
-                <><IconCheck className="h-3.5 w-3.5" /> Report Sent</>
-              ) : emailSending ? (
-                <><IconMail className="h-3.5 w-3.5 animate-pulse" /> Sending…</>
-              ) : (
-                <><IconMail className="h-3.5 w-3.5" /> Email Report</>
-              )}
-            </button>
+                }`}
+              >
+                <IconDownload className="h-3.5 w-3.5" />
+                {pdfGenerating ? 'Generating…' : 'Download Report'}
+              </button>
+              <button
+                onClick={handleEmailReport}
+                disabled={emailSending || emailSent}
+                className={`flex items-center gap-2 rounded-lg border px-4 py-2 text-xs font-semibold transition-all ${
+                  emailSent
+                    ? 'border-teal-400/30 bg-teal-500/20 text-teal-200'
+                    : emailSending
+                      ? 'border-white/10 bg-white/5 text-white/50'
+                      : 'border-white/20 bg-white/10 text-white hover:bg-white/20'
+                }`}
+              >
+                {emailSent ? (
+                  <><IconCheck className="h-3.5 w-3.5" /> Report Sent</>
+                ) : emailSending ? (
+                  <><IconMail className="h-3.5 w-3.5 animate-pulse" /> Sending…</>
+                ) : (
+                  <><IconMail className="h-3.5 w-3.5" /> Email Report</>
+                )}
+              </button>
+            </div>
           )}
         </div>
       </div>
@@ -983,6 +1002,9 @@ function IconMail({ className }: { className?: string }) {
 }
 function IconCheck({ className }: { className?: string }) {
   return <svg className={className} fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}><path strokeLinecap="round" strokeLinejoin="round" d="M4.5 12.75l6 6 9-13.5" /></svg>;
+}
+function IconDownload({ className }: { className?: string }) {
+  return <svg className={className} fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.5}><path strokeLinecap="round" strokeLinejoin="round" d="M3 16.5v2.25A2.25 2.25 0 005.25 21h13.5A2.25 2.25 0 0021 18.75V16.5M16.5 12L12 16.5m0 0L7.5 12m4.5 4.5V3" /></svg>;
 }
 
 /* ── Utility ── */
