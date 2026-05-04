@@ -1,0 +1,29 @@
+{
+	"version": "2.0.0",
+	"tasks": [
+		{
+			"label": "Run Pulse Backend",
+			"type": "shell",
+			"command": "powershell",
+			"args": [
+				"-NoProfile",
+				"-Command",
+				"Set-Location c:\\Code\\Pulse\\server; npx nest build; $env:PORT=3002; node .\\dist\\main.js"
+			],
+			"isBackground": true,
+			"group": "build"
+		},
+		{
+			"label": "Run Pulse Frontend",
+			"type": "shell",
+			"command": "powershell",
+			"args": [
+				"-NoProfile",
+				"-Command",
+				"Set-Location c:\\Code\\Pulse\\frontend; npx next dev --port 3001"
+			],
+			"isBackground": true,
+			"group": "build"
+		}
+	]
+}
