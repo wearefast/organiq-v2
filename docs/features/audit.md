@@ -14,7 +14,10 @@ The audit pipeline is the core lead magnet. A visitor submits their website URL 
 | 03 | `PageSpeedService` | Run PageSpeed Insights (mobile + desktop) — background with 10s foreground gate |
 | 04 | `AhrefsService` + `OpenAIService` | 5-step Keyword Intelligence Chain (see below) |
 | 05 | `SerpService` + `OpenAIService` | Google SERP Competitor Discovery + Classification (see below) |
-| 06+ | — | Competitor Metrics, Gap Analysis, Scoring, Report (TODO) |
+| 06 | `AhrefsService` | Direct competitor metrics + top pages |
+| 07 | `AhrefsService` | Organic competitor analysis (Ahrefs overlap + GPT fallback) |
+| 08 | `AuditProcessor` + `AhrefsService` + `OpenAIService` | Content gap analysis from persisted keyword pool + usable competitor keywords |
+| 09+ | — | Scoring, Report, Email (TODO) |
 
 ### Step 03: Background PageSpeed Execution
 
@@ -76,6 +79,51 @@ Classification rules:
 - **Organic competitors**: Authority sites, blogs, related niches ranking for same keywords (max 10)
 - Falls back gracefully if `SERPER_API_KEY` is not configured (empty results)
 
+### Step 06: Direct Competitor Metrics (Ahrefs)
+
+For each direct competitor classified in Step 05, the processor pulls:
+
+- Ahrefs domain overview (`domainRating`, backlinks, referring domains, organic keywords, organic traffic)
+- Top 5 pages in the selected country
+- Blog/content presence inferred from top-page URLs
+
+Results are persisted to `rawData.competitorMetrics` and used later by Step 08 to rank gap-analysis candidates by usable footprint, not just DR.
+
+### Step 07: Organic Competitor Analysis
+
+The processor asks Ahrefs for organic competitors of the client domain, filters out marketplaces/social platforms/direct duplicates, then enriches the remaining domains with:
+
+- overlap metrics (`keywordsCommon`, `keywordsCompetitorOnly`, `sharePercent`)
+- Ahrefs domain overview
+- Top 5 pages / content pages
+
+If Ahrefs overlap data is sparse, GPT-classified organic competitors from Step 05 are used as lower-priority fallback candidates. Results are persisted to `rawData.organicCompetitorMetrics`.
+
+### Step 08: Content Gap Analysis
+
+Step 08 does not call a dedicated Ahrefs Content Gap endpoint. It computes the gap inside `AuditProcessor` using persisted audit data plus competitor organic keyword pulls.
+
+Flow:
+
+1. Read the persisted `rawData.keywordPool` from Step 04 and treat the client's top-50 ranked keywords as the target coverage set.
+2. Build ranked direct and organic candidate pools from Steps 06-07.
+3. Rank direct candidates by usable footprint first: top pages, organic keyword count, organic traffic, then DR.
+4. Rank organic candidates by overlap first: `sharePercent`, `keywordsCommon`, top pages, organic keyword count, organic traffic, then DR.
+5. Probe candidates iteratively with `AhrefsService.getOrganicKeywords(domain, country, 200)`.
+6. Skip competitors with no usable top-20 keywords with volume >= 10, log the skip reason, and backfill from the next ranked candidate.
+7. Compute primary gap keywords where at least 2 competitors rank in the top 20, the client does not rank in the top 50, volume >= 10, and branded competitor terms are excluded.
+8. Store single-competitor misses as `emergingOpportunities`.
+
+Results are persisted to `rawData.contentGap` with:
+
+- `summary.totalGapKeywords`
+- `summary.estimatedMissedTraffic`
+- `summary.avgDifficulty`
+- `summary.competitorsAnalyzed`
+- `keywords[]`
+- `emergingOpportunities[]`
+- `topicGroups[]`
+
 ## Analyzing Page — Control Room Visualization
 
 When a user submits an audit, the analyzing page switches into a dark live-analysis control room instead of a simple progress bar.
@@ -112,6 +160,9 @@ During polling, analysis mode now replaces the landing-page shell instead of ove
 | 10 | KW_STEP_35 | Deduplicating & finalizing | Core topic count |
 | 11 | SERP_COMPLETE | Searching Google for competitors | Candidate domain count |
 | 12 | COMPETITORS_COMPLETE | Classifying competitors | Direct count, organic count |
+| 13 | COMPETITOR_METRICS_COMPLETE | Pulling direct competitor metrics | Competitor count, avg DR |
+| 14 | ORGANIC_COMPETITORS_COMPLETE | Measuring organic overlap | Competitor count, avg overlap |
+| 15 | CONTENT_GAP_COMPLETE | Uncovering missed content opportunities | Gap keyword count, estimated missed traffic |
 
 ### Visual zones
 
@@ -147,7 +198,7 @@ The results page at `/audit/[id]` displays audit data in a tabbed, visually stru
 |-----------|-------------|
 | Hero Header | Dark gradient banner with domain, URL, status badge, date, seed keyword count |
 | Quick Stats | Horizontal metric cards (core/money keywords, topics, competitors, perf scores) with gradient numbers |
-| Tab Bar | Pill navigation: Overview, Keywords & Topics, Competitors, Performance |
+| Tab Bar | Pill navigation: Overview, Keywords & Topics, Competitors, Content Gap, Performance |
 
 ### Tabs
 
@@ -156,11 +207,12 @@ The results page at `/audit/[id]` displays audit data in a tabbed, visually stru
 | **Overview** | Business Profile + Deep Read (side-by-side on desktop), Seed Keywords, Website Crawl (mini-stat grid) |
 | **Keywords & Topics** | Core Keywords table (KD badge colored by difficulty), Money Keywords table, Topic Clusters, Niche Entities, Core Topics (2-col grid), Seed Expansions |
 | **Competitors** | Direct/Organic summary cards with counts, Direct competitor cards (domain + reason), Organic competitor cards, SERP Discovery table (domain, appearances, avg position) |
+| **Content Gap** | Summary strip, gap keywords table, topic groups, competitor coverage matrix, and emerging opportunities. If no multi-competitor overlap exists, the tab can still show emerging opportunities from a single usable competitor. |
 | **Performance** | Score ring charts (Perf/SEO/Accessibility) for Mobile + Desktop, Core Web Vitals (LCP/CLS/TBT with traffic-light coloring), On-Page SEO Signals (check/warn indicators). When PageSpeed is running in background: shows spinner + refresh prompt. When unavailable: shows "no data" message. |
 
 ### Data flow
 
-`GET /audits/:id` → `audit.service.findOne()` returns `pipeline.competitors` and `pipeline.serpCandidates` alongside existing fields.
+`GET /audits/:id` → `audit.service.findOne()` returns `pipeline.competitors`, `pipeline.competitorMetrics`, `pipeline.organicCompetitorMetrics`, `pipeline.contentGap`, and `pipeline.serpCandidates` alongside existing fields.
 
 ## Scores
 

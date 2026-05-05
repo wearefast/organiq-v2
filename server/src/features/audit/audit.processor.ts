@@ -464,28 +464,106 @@ export class AuditProcessor extends WorkerHost {
 
       let contentGapResult: Record<string, unknown> | null = null;
       try {
-        // Select top competitors for gap analysis: top 3 direct (by DR) + top 2 organic (by sharePercent)
-        const directCompArray = competitorMetrics
-          ? (competitorMetrics.competitors as Array<Record<string, unknown>>)
-            .filter(c => (c.metrics as Record<string, number>)?.domainRating > 0)
-            .sort((a, b) => ((b.metrics as Record<string, number>)?.domainRating ?? 0) - ((a.metrics as Record<string, number>)?.domainRating ?? 0))
-            .slice(0, 3)
-            .map(c => (c.domain as string))
-          : competitors.directCompetitors.slice(0, 3).map(c => c.domain);
+        type GapCandidate = {
+          domain: string;
+          source: 'direct' | 'organic';
+          domainRating: number;
+          orgKeywords: number;
+          orgTraffic: number;
+          topPagesCount: number;
+          overlapShare: number;
+          commonKeywords: number;
+        };
 
-        const organicCompArray = organicCompetitorMetrics
-          ? (organicCompetitorMetrics.competitors as Array<Record<string, unknown>>)
-            .filter(c => (c.overlapMetrics as Record<string, number>)?.sharePercent > 0)
-            .sort((a, b) => ((b.overlapMetrics as Record<string, number>)?.sharePercent ?? 0) - ((a.overlapMetrics as Record<string, number>)?.sharePercent ?? 0))
-            .slice(0, 2)
-            .map(c => (c.domain as string))
-          : competitors.organicCompetitors.slice(0, 2).map(c => c.domain);
+        const getNumber = (value: unknown) => (typeof value === 'number' ? value : 0);
+        const getTopPagesCount = (candidate: Record<string, unknown>) => {
+          const topPages = candidate.topPages;
+          return Array.isArray(topPages) ? topPages.length : 0;
+        };
+        const hasStoredFootprint = (candidate: GapCandidate) =>
+          candidate.topPagesCount > 0 ||
+          candidate.orgKeywords > 0 ||
+          candidate.orgTraffic > 0 ||
+          candidate.overlapShare > 0 ||
+          candidate.commonKeywords > 0;
 
-        const gapCompetitors = [...new Set([...directCompArray, ...organicCompArray])];
+        const directMetricCandidates = competitorMetrics
+          ? (competitorMetrics.competitors as Array<Record<string, unknown>>).map((candidate) => {
+            const metrics = (candidate.metrics as Record<string, unknown>) ?? {};
+            return {
+              domain: candidate.domain as string,
+              source: 'direct' as const,
+              domainRating: getNumber(metrics.domainRating),
+              orgKeywords: getNumber(metrics.orgKeywords),
+              orgTraffic: getNumber(metrics.orgTraffic),
+              topPagesCount: getTopPagesCount(candidate),
+              overlapShare: 0,
+              commonKeywords: 0,
+            };
+          })
+          : competitors.directCompetitors.map((candidate) => ({
+            domain: candidate.domain,
+            source: 'direct' as const,
+            domainRating: 0,
+            orgKeywords: 0,
+            orgTraffic: 0,
+            topPagesCount: 0,
+            overlapShare: 0,
+            commonKeywords: 0,
+          }));
 
-        if (gapCompetitors.length === 0) {
-          throw new Error('No competitors available for content gap analysis');
-        }
+        const filteredDirectCandidates = directMetricCandidates.filter(hasStoredFootprint);
+        const directCandidatePool = (filteredDirectCandidates.length > 0 ? filteredDirectCandidates : directMetricCandidates)
+          .sort((a, b) =>
+            Number(b.topPagesCount > 0) - Number(a.topPagesCount > 0) ||
+            b.orgKeywords - a.orgKeywords ||
+            b.orgTraffic - a.orgTraffic ||
+            b.domainRating - a.domainRating,
+          );
+
+        const organicMetricCandidates = organicCompetitorMetrics
+          ? (organicCompetitorMetrics.competitors as Array<Record<string, unknown>>).map((candidate) => {
+            const metrics = (candidate.metrics as Record<string, unknown>) ?? {};
+            const overlapMetrics = (candidate.overlapMetrics as Record<string, unknown>) ?? {};
+            return {
+              domain: candidate.domain as string,
+              source: 'organic' as const,
+              domainRating: getNumber(metrics.domainRating),
+              orgKeywords: getNumber(metrics.orgKeywords),
+              orgTraffic: getNumber(metrics.orgTraffic),
+              topPagesCount: getTopPagesCount(candidate),
+              overlapShare: getNumber(overlapMetrics.sharePercent),
+              commonKeywords: getNumber(overlapMetrics.keywordsCommon),
+            };
+          })
+          : competitors.organicCompetitors.map((candidate) => ({
+            domain: candidate.domain,
+            source: 'organic' as const,
+            domainRating: 0,
+            orgKeywords: 0,
+            orgTraffic: 0,
+            topPagesCount: 0,
+            overlapShare: 0,
+            commonKeywords: 0,
+          }));
+
+        const filteredOrganicCandidates = organicMetricCandidates.filter(hasStoredFootprint);
+        const organicCandidatePool = (filteredOrganicCandidates.length > 0 ? filteredOrganicCandidates : organicMetricCandidates)
+          .sort((a, b) =>
+            b.overlapShare - a.overlapShare ||
+            b.commonKeywords - a.commonKeywords ||
+            Number(b.topPagesCount > 0) - Number(a.topPagesCount > 0) ||
+            b.orgKeywords - a.orgKeywords ||
+            b.orgTraffic - a.orgTraffic ||
+            b.domainRating - a.domainRating,
+          );
+
+        this.logger.log(
+          `Audit ${auditId}: content gap ranked direct candidates — ${directCandidatePool.map(candidate => candidate.domain).join(', ') || 'none'}`,
+        );
+        this.logger.log(
+          `Audit ${auditId}: content gap ranked organic candidates — ${organicCandidatePool.map(candidate => candidate.domain).join(', ') || 'none'}`,
+        );
 
         // Get target's keyword pool from persisted data (or re-fetch)
         const [auditRow] = await this.database.db
@@ -507,30 +585,85 @@ export class AuditProcessor extends WorkerHost {
             .map(kw => (kw.keyword as string).toLowerCase()),
         );
 
-        // Fetch competitor keywords (200 each, batch 3 concurrent)
-        const competitorKeywordMap = new Map<string, Array<{ keyword: string; position: number; volume: number; difficulty: number }>>();
-        const compBatchSize = 3;
-        for (let i = 0; i < gapCompetitors.length; i += compBatchSize) {
-          const batch = gapCompetitors.slice(i, i + compBatchSize);
-          const batchResults = await Promise.all(
-            batch.map(async (compDomain) => {
-              const kws = await this.ahrefsService.getOrganicKeywords(compDomain, countryCode, 200);
-              return { domain: compDomain, keywords: kws };
-            }),
-          );
-          for (const { domain: compD, keywords: kws } of batchResults) {
-            if (kws) {
-              competitorKeywordMap.set(
-                compD,
-                kws.filter(k => (k.position ?? 999) <= 20).map(k => ({
-                  keyword: k.keyword,
-                  position: k.position ?? 0,
-                  volume: k.volume ?? 0,
-                  difficulty: k.difficulty ?? 0,
-                })),
+        const selectUsableCandidates = async (
+          candidatePool: GapCandidate[],
+          targetCount: number,
+          selectedDomains: Set<string>,
+        ) => {
+          const selected: Array<{
+            candidate: GapCandidate;
+            keywords: Array<{ keyword: string; position: number; volume: number; difficulty: number }>;
+          }> = [];
+          const batchSize = 3;
+
+          for (let i = 0; i < candidatePool.length && selected.length < targetCount; i += batchSize) {
+            const batch = candidatePool
+              .slice(i, i + batchSize)
+              .filter(candidate => !selectedDomains.has(candidate.domain));
+
+            if (batch.length === 0) continue;
+
+            const batchResults = await Promise.all(
+              batch.map(async (candidate) => {
+                const keywords = await this.ahrefsService.getOrganicKeywords(candidate.domain, countryCode, 200);
+                return { candidate, keywords };
+              }),
+            );
+
+            for (const { candidate, keywords } of batchResults) {
+              if (selectedDomains.has(candidate.domain)) continue;
+
+              const usableKeywords = (keywords ?? [])
+                .filter(keyword => (keyword.position ?? 999) <= 20 && (keyword.volume ?? 0) >= 10)
+                .map(keyword => ({
+                  keyword: keyword.keyword,
+                  position: keyword.position ?? 0,
+                  volume: keyword.volume ?? 0,
+                  difficulty: keyword.difficulty ?? 0,
+                }));
+
+              if (usableKeywords.length === 0) {
+                const reasons: string[] = [];
+                if (candidate.topPagesCount === 0) reasons.push('no top pages');
+                if (!hasStoredFootprint(candidate)) reasons.push('no stored organic footprint');
+                reasons.push('no top-20 keywords with volume >= 10');
+                this.logger.log(
+                  `Audit ${auditId}: content gap skipped ${candidate.domain} (${candidate.source}) — ${reasons.join(', ')}`,
+                );
+                continue;
+              }
+
+              selected.push({ candidate, keywords: usableKeywords });
+              selectedDomains.add(candidate.domain);
+              this.logger.log(
+                `Audit ${auditId}: content gap selected ${candidate.domain} (${candidate.source}) with ${usableKeywords.length} usable keywords`,
               );
+
+              if (selected.length >= targetCount) break;
             }
           }
+
+          return selected;
+        };
+
+        const selectedDomains = new Set<string>();
+        const selectedDirectCompetitors = await selectUsableCandidates(directCandidatePool, 3, selectedDomains);
+        const selectedOrganicCompetitors = await selectUsableCandidates(organicCandidatePool, 2, selectedDomains);
+        const selectedGapCompetitors = [...selectedDirectCompetitors, ...selectedOrganicCompetitors];
+        const gapCompetitors = selectedGapCompetitors.map(({ candidate }) => candidate.domain);
+
+        if (gapCompetitors.length === 0) {
+          throw new Error('No usable competitors available for content gap analysis');
+        }
+
+        this.logger.log(
+          `Audit ${auditId}: content gap analyzing competitors — ${gapCompetitors.join(', ')}`,
+        );
+
+        // Use the already-probed competitor keywords from candidate selection.
+        const competitorKeywordMap = new Map<string, Array<{ keyword: string; position: number; volume: number; difficulty: number }>>();
+        for (const { candidate, keywords } of selectedGapCompetitors) {
+          competitorKeywordMap.set(candidate.domain, keywords);
         }
         await job.updateProgress(76);
 
