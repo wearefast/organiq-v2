@@ -106,6 +106,8 @@ Layout:
 - Max width: 1440px  
 - Padding: 32px  
 - Section spacing: 40–64px  
+- Dashboard sidebar: 240px expanded, 88px collapsed for workspace-heavy screens  
+- Dashboard content container: 1280px max width with responsive horizontal padding (16px / 24px / 32px)  
 
 ---
 

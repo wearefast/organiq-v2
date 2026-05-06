@@ -85,6 +85,99 @@ export interface AuditJobPayload {
   websiteUrl: string;
 }
 
+export enum KeywordWorkflowStatus {
+  DRAFT = 'DRAFT',
+  RUNNING = 'RUNNING',
+  AWAITING_APPROVAL = 'AWAITING_APPROVAL',
+  REVISION_REQUESTED = 'REVISION_REQUESTED',
+  APPROVED = 'APPROVED',
+  COMPLETED = 'COMPLETED',
+  FAILED = 'FAILED',
+  ARCHIVED = 'ARCHIVED',
+}
+
+export enum KeywordWorkflowArtifactStatus {
+  DRAFT = 'DRAFT',
+  AWAITING_APPROVAL = 'AWAITING_APPROVAL',
+  APPROVED = 'APPROVED',
+  REVISION_REQUESTED = 'REVISION_REQUESTED',
+  REJECTED = 'REJECTED',
+  SUPERSEDED = 'SUPERSEDED',
+}
+
+export enum KeywordWorkflowDecision {
+  APPROVED = 'APPROVED',
+  REVISION_REQUESTED = 'REVISION_REQUESTED',
+  REJECTED = 'REJECTED',
+}
+
+export enum KeywordDedupeStatus {
+  KEPT = 'KEPT',
+  DUPLICATE_EXISTING = 'DUPLICATE_EXISTING',
+  DUPLICATE_CROSS_METHOD = 'DUPLICATE_CROSS_METHOD',
+  IRRELEVANT = 'IRRELEVANT',
+  REJECTED = 'REJECTED',
+}
+
+export enum KeywordApprovalStatus {
+  CANDIDATE = 'CANDIDATE',
+  APPROVED = 'APPROVED',
+  REJECTED = 'REJECTED',
+}
+
+export type WorkflowLanguageCode = 'en';
+
+export type KeywordWorkflowStepKey =
+  | 'business-profile'
+  | 'seed-keywords'
+  | 'serp-niche-map'
+  | 'competitor-buckets'
+  | 'competitor-metrics'
+  | 'phase1-baseline'
+  | 'method01-competitor-pages'
+  | 'method02-seed-expansion'
+  | 'method03-content-gap-import'
+  | 'consolidated-keywords'
+  | 'topical-map'
+  | 'content-brief'
+  | 'content-article';
+
+export type KeywordSourceMethod =
+  | 'phase1'
+  | 'method01-competitor-pages'
+  | 'method02-matching-terms'
+  | 'method02-related-terms'
+  | 'method03-content-gap-import'
+  | 'manual-review';
+
+export interface KeywordWorkflowRunRecord {
+  id: string;
+  projectId: string;
+  language: WorkflowLanguageCode;
+  country: string;
+  status: KeywordWorkflowStatus;
+  currentStep: KeywordWorkflowStepKey | null;
+  currentCheckpoint: KeywordWorkflowStepKey | null;
+}
+
+export interface KeywordWorkflowArtifactRecord {
+  id: string;
+  workflowRunId: string;
+  stepKey: KeywordWorkflowStepKey;
+  version: number;
+  status: KeywordWorkflowArtifactStatus;
+  summary: Record<string, unknown> | null;
+  payload: Record<string, unknown>;
+}
+
+export interface KeywordWorkflowApprovalRecord {
+  id: string;
+  artifactId: string;
+  decision: KeywordWorkflowDecision;
+  notes: string | null;
+  reviewedBy: string | null;
+}
+
 export interface KeywordJobPayload {
   projectId: string;
   action: 'discover' | 'expand' | 'gap-analysis';
