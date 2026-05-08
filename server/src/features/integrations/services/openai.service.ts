@@ -460,8 +460,57 @@ Respond with JSON: { "classifications": [{ "keyword": "...", "intent": "...", "f
   }
 
   async generateArticle(brief: Record<string, unknown>) {
-    this.logger.log('Generating full article via OpenAI GPT-5.4');
-    // TODO: Implement E-E-A-T structured article generation
-    return '';
+    const targetKeyword = typeof brief.targetKeyword === 'string' ? brief.targetKeyword : '';
+    const title = typeof brief.title === 'string' && brief.title.trim().length > 0 ? brief.title.trim() : targetKeyword;
+    const pillar = typeof brief.pillar === 'string' ? brief.pillar : '';
+    const suggestedUrlPath = typeof brief.suggestedUrlPath === 'string' ? brief.suggestedUrlPath : '';
+    const briefOutline = Array.isArray(brief.briefOutline)
+      ? brief.briefOutline.filter((l): l is string => typeof l === 'string').join('\n')
+      : typeof brief.briefOutline === 'string'
+        ? brief.briefOutline
+        : '';
+    const editorialNotes = Array.isArray(brief.editorialNotes)
+      ? brief.editorialNotes.filter((l): l is string => typeof l === 'string').join('\n')
+      : typeof brief.editorialNotes === 'string'
+        ? brief.editorialNotes
+        : '';
+    const articleNotes = typeof brief.articleNotes === 'string' ? brief.articleNotes : '';
+
+    this.logger.log(`Generating article for "${targetKeyword}" via OpenAI`);
+
+    const systemPrompt = `You are an expert SEO content writer specialising in e-commerce and retail markets. Write detailed, authoritative, E-E-A-T optimised long-form articles in Markdown. Optimise naturally for the target keyword without keyword stuffing. Use clear H1, H2, H3 structure, include a short FAQ section, and close with a CTA paragraph.`;
+
+    const userPrompt = `Write a comprehensive SEO article for the following brief:
+
+**Target keyword:** ${targetKeyword}
+**Article title (H1):** ${title}
+**Pillar topic:** ${pillar}
+**Suggested URL:** ${suggestedUrlPath}
+
+**Content outline:**
+${briefOutline}
+${editorialNotes ? `\n**Editorial notes:**\n${editorialNotes}` : ''}${articleNotes ? `\n**Draft direction:**\n${articleNotes}` : ''}
+
+Requirements:
+- 900–1 200 words
+- Markdown format: one H1 (the article title), logical H2/H3 sub-sections
+- Include the target keyword and semantic variations naturally throughout
+- Add a FAQ section (3–5 questions) near the end
+- Close with a brief CTA paragraph
+- No HTML tags, no meta description block`;
+
+    const response = await this.client.chat.completions.create({
+      model: 'gpt-4o-mini',
+      messages: [
+        { role: 'system', content: systemPrompt },
+        { role: 'user', content: userPrompt },
+      ],
+      temperature: 0.7,
+      max_tokens: 2500,
+    });
+
+    const body = response.choices[0]?.message?.content ?? '';
+    this.logger.log(`Article generated for "${targetKeyword}": ${body.length} chars`);
+    return body;
   }
 }

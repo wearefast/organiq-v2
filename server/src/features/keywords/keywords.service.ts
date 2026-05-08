@@ -1,7 +1,7 @@
-import { BadRequestException, Injectable, NotFoundException } from '@nestjs/common';
+import { BadRequestException, Injectable, Logger, NotFoundException } from '@nestjs/common';
 import { InjectQueue } from '@nestjs/bullmq';
 import { Queue } from 'bullmq';
-import { and, desc, eq, inArray } from 'drizzle-orm';
+import { and, desc, eq, inArray, isNull, or } from 'drizzle-orm';
 import { DatabaseService } from '../../shared/database/database.service';
 import {
   competitorBucketEnum,
@@ -39,6 +39,8 @@ const WORKFLOW_STEP_SEQUENCE = [
 
 @Injectable()
 export class KeywordsService {
+  private readonly logger = new Logger(KeywordsService.name);
+
   constructor(
     private readonly database: DatabaseService,
     @InjectQueue('keyword-queue') private readonly keywordQueue: Queue,
@@ -213,7 +215,7 @@ export class KeywordsService {
     return workflowRun;
   }
 
-  private async getLatestArtifactOrThrow(workflowId: string, stepKey: string) {
+  private async getLatestArtifact(workflowId: string, stepKey: string) {
     const [artifact] = await this.database.db
       .select()
       .from(keywordWorkflowArtifacts)
@@ -223,8 +225,28 @@ export class KeywordsService {
           eq(keywordWorkflowArtifacts.stepKey, stepKey),
         ),
       )
-      .orderBy(desc(keywordWorkflowArtifacts.version), desc(keywordWorkflowArtifacts.createdAt))
+      .orderBy(desc(keywordWorkflowArtifacts.createdAt), desc(keywordWorkflowArtifacts.id))
       .limit(1);
+
+    return artifact ?? null;
+  }
+
+  private ensureStepIsEditable(
+    workflowRun: Awaited<ReturnType<KeywordsService['getWorkflowRunOrThrow']>>,
+    stepKey: string,
+    latestArtifact: Awaited<ReturnType<KeywordsService['getLatestArtifact']>>,
+  ) {
+    if (workflowRun.currentCheckpoint !== stepKey) {
+      throw new BadRequestException('Only the current workflow step can be edited or regenerated.');
+    }
+
+    if (latestArtifact?.status === 'APPROVED') {
+      throw new BadRequestException('Approved workflow steps are read-only and cannot be changed.');
+    }
+  }
+
+  private async getLatestArtifactOrThrow(workflowId: string, stepKey: string) {
+    const artifact = await this.getLatestArtifact(workflowId, stepKey);
 
     if (!artifact) throw new NotFoundException('Workflow checkpoint artifact not found');
     return artifact;
@@ -246,7 +268,7 @@ export class KeywordsService {
       })
       .from(keywordWorkflowArtifacts)
       .where(eq(keywordWorkflowArtifacts.workflowRunId, workflowId))
-      .orderBy(desc(keywordWorkflowArtifacts.createdAt), desc(keywordWorkflowArtifacts.version));
+      .orderBy(desc(keywordWorkflowArtifacts.createdAt), desc(keywordWorkflowArtifacts.id));
 
     if (artifacts.length === 0) {
       return 'DRAFT' as const;
@@ -318,9 +340,86 @@ export class KeywordsService {
     };
   }
 
+  private async persistApprovedCompetitorBuckets(
+    workflowRun: Awaited<ReturnType<KeywordsService['getWorkflowRunOrThrow']>>,
+    artifact: { id: string; payload: Record<string, unknown> },
+  ) {
+    const serpCandidates = Array.isArray(artifact.payload.serpCandidates) ? artifact.payload.serpCandidates : [];
+    const ahrefsOrganic = Array.isArray(artifact.payload.ahrefsOrganic) ? artifact.payload.ahrefsOrganic : [];
+
+    // Collect unique domains with their best bucket assignment
+    const domainMap = new Map<string, { bucket: 'DIRECT' | 'ORGANIC' | 'UNCLASSIFIED'; rationale: string }>();
+
+    for (const candidate of serpCandidates) {
+      if (!candidate || typeof candidate !== 'object') continue;
+      const domain = typeof candidate.domain === 'string' ? candidate.domain.trim().toLowerCase() : '';
+      if (!domain) continue;
+      domainMap.set(domain, {
+        bucket: 'DIRECT',
+        rationale: `Discovered via SERP overlap (${candidate.occurrences ?? 0} occurrences, avg position ${candidate.avgPosition ?? '?'}).`,
+      });
+    }
+
+    for (const competitor of ahrefsOrganic) {
+      if (!competitor || typeof competitor !== 'object') continue;
+      const domain = typeof competitor.domain === 'string' ? competitor.domain.trim().toLowerCase() : '';
+      if (!domain) continue;
+      // SERP candidates take priority as DIRECT; Ahrefs-only competitors are ORGANIC
+      if (!domainMap.has(domain)) {
+        domainMap.set(domain, {
+          bucket: 'ORGANIC',
+          rationale: `Ahrefs organic competitor (DR ${competitor.domainRating ?? '?'}, ${competitor.keywordsCommon ?? 0} common keywords).`,
+        });
+      }
+    }
+
+    // Delete existing auto-promoted competitors for this workflow run (preserve manually-added ones by keeping those with createdBy set)
+    await this.database.db
+      .delete(projectCompetitors)
+      .where(
+        and(
+          eq(projectCompetitors.workflowRunId, workflowRun.id),
+          eq(projectCompetitors.createdBy, 'system'),
+        ),
+      );
+
+    if (domainMap.size === 0) {
+      return;
+    }
+
+    // Exclude domains that already exist as manually-added competitors to avoid duplicates
+    const manualCompetitors = await this.database.db
+      .select({ domain: projectCompetitors.domain })
+      .from(projectCompetitors)
+      .where(
+        and(
+          eq(projectCompetitors.workflowRunId, workflowRun.id),
+          isNull(projectCompetitors.createdBy),
+        ),
+      );
+    const manualDomains = new Set(manualCompetitors.map(c => c.domain.toLowerCase()));
+
+    const values = Array.from(domainMap.entries())
+      .filter(([domain]) => !manualDomains.has(domain))
+      .map(([domain, { bucket, rationale }]) => ({
+        projectId: workflowRun.projectId,
+        workflowRunId: workflowRun.id,
+        domain,
+        bucket,
+        status: 'APPROVED' as const,
+        rationale,
+        notes: null,
+        createdBy: 'system',
+      }));
+
+    if (values.length > 0) {
+      await this.database.db.insert(projectCompetitors).values(values);
+    }
+  }
+
   private async persistApprovedConsolidatedKeywords(
     workflowRun: Awaited<ReturnType<KeywordsService['getWorkflowRunOrThrow']>>,
-    artifact: { id: string; version: number; payload: Record<string, unknown> },
+    artifact: { id: string; payload: Record<string, unknown> },
   ) {
     const consolidatedKeywords = Array.isArray(artifact.payload.consolidatedKeywords)
       ? artifact.payload.consolidatedKeywords
@@ -362,7 +461,7 @@ export class KeywordsService {
         const inferredNotes =
           explicitIntent && explicitFunnel
             ? null
-            : `Intent and funnel were inferred during promotion from approved consolidated artifact v${artifact.version} because the current artifact payload does not store explicit classification fields.`;
+            : 'Intent and funnel were inferred during promotion from the approved consolidated checkpoint because the current payload does not store explicit classification fields.';
 
         return {
           projectId: workflowRun.projectId,
@@ -411,7 +510,7 @@ export class KeywordsService {
 
   private async persistApprovedTopicalMap(
     workflowRun: Awaited<ReturnType<KeywordsService['getWorkflowRunOrThrow']>>,
-    artifact: { id: string; version: number; payload: Record<string, unknown> },
+    artifact: { id: string; payload: Record<string, unknown> },
   ) {
     await this.database.db.delete(topicalMaps).where(eq(topicalMaps.workflowRunId, workflowRun.id));
 
@@ -426,7 +525,6 @@ export class KeywordsService {
         structure: {
           ...artifact.payload,
           sourceArtifactId: artifact.id,
-          sourceArtifactVersion: artifact.version,
           persistedAt: new Date().toISOString(),
         },
       })
@@ -465,7 +563,7 @@ export class KeywordsService {
 
   private async persistApprovedContentBrief(
     workflowRun: Awaited<ReturnType<KeywordsService['getWorkflowRunOrThrow']>>,
-    artifact: { id: string; version: number; payload: Record<string, unknown> },
+    artifact: { id: string; payload: Record<string, unknown> },
   ) {
     const targetKeyword =
       typeof artifact.payload.targetKeyword === 'string' ? artifact.payload.targetKeyword.trim() : '';
@@ -482,7 +580,6 @@ export class KeywordsService {
     const persistedBrief = {
       ...artifact.payload,
       sourceArtifactId: artifact.id,
-      sourceArtifactVersion: artifact.version,
       persistedAt: new Date().toISOString(),
     };
 
@@ -522,7 +619,7 @@ export class KeywordsService {
 
   private async persistApprovedContentArticle(
     workflowRun: Awaited<ReturnType<KeywordsService['getWorkflowRunOrThrow']>>,
-    artifact: { id: string; version: number; payload: Record<string, unknown> },
+    artifact: { id: string; payload: Record<string, unknown> },
   ) {
     const targetKeyword =
       typeof artifact.payload.targetKeyword === 'string' ? artifact.payload.targetKeyword.trim() : '';
@@ -553,7 +650,6 @@ export class KeywordsService {
     const persistedArticleInput = {
       ...artifact.payload,
       sourceArtifactId: artifact.id,
-      sourceArtifactVersion: artifact.version,
       persistedAt: new Date().toISOString(),
     };
 
@@ -670,12 +766,34 @@ export class KeywordsService {
       .where(eq(contentPieces.workflowRunId, workflowId))
       .orderBy(desc(contentPieces.createdAt));
 
+    const activeJobRows = await this.database.db
+      .select()
+      .from(keywordWorkflowJobs)
+      .where(
+        and(
+          eq(keywordWorkflowJobs.workflowRunId, workflowId),
+          or(
+            eq(keywordWorkflowJobs.status, 'PENDING'),
+            eq(keywordWorkflowJobs.status, 'PROCESSING'),
+          ),
+        ),
+      )
+      .orderBy(desc(keywordWorkflowJobs.createdAt));
+
+    const activeJobsByStep: Record<string, { id: string; stepKey: string; status: string; progress: number }> = {};
+    for (const job of activeJobRows) {
+      if (!activeJobsByStep[job.stepKey]) {
+        activeJobsByStep[job.stepKey] = { id: job.id, stepKey: job.stepKey, status: job.status, progress: job.progress };
+      }
+    }
+
     return {
       ...workflowRun,
       contentGapImports: workflowContentGapImports,
       persistedContentPieces,
       persistedKeywords,
       persistedTopicalMaps,
+      activeJobs: activeJobsByStep,
       competitors: workflowCompetitors.map((competitor) => ({
         ...competitor,
         metrics: competitorMetricsById[competitor.id] ?? null,
@@ -762,11 +880,11 @@ export class KeywordsService {
     }
 
     const metricsValues = {
-      domainRating: body.domainRating ?? null,
-      organicTraffic: body.organicTraffic ?? null,
-      organicKeywords: body.organicKeywords ?? null,
-      referringDomains: body.referringDomains ?? null,
-      backlinks: body.backlinks ?? null,
+      domainRating: body.domainRating != null ? Math.round(body.domainRating) : null,
+      organicTraffic: body.organicTraffic != null ? Math.round(body.organicTraffic) : null,
+      organicKeywords: body.organicKeywords != null ? Math.round(body.organicKeywords) : null,
+      referringDomains: body.referringDomains != null ? Math.round(body.referringDomains) : null,
+      backlinks: body.backlinks != null ? Math.round(body.backlinks) : null,
       topPages: body.topPages ?? [],
       capturedAt: body.capturedAt ? new Date(body.capturedAt) : new Date(),
       updatedAt: new Date(),
@@ -840,30 +958,29 @@ export class KeywordsService {
     },
   ) {
     const workflowRun = await this.getWorkflowRunOrThrow(projectId, workflowId);
+    const latestArtifact = await this.getLatestArtifact(workflowRun.id, body.stepKey);
+    this.ensureStepIsEditable(workflowRun, body.stepKey, latestArtifact);
 
-    const [latestArtifact] = await this.database.db
-      .select()
-      .from(keywordWorkflowArtifacts)
-      .where(
-        and(
-          eq(keywordWorkflowArtifacts.workflowRunId, workflowRun.id),
-          eq(keywordWorkflowArtifacts.stepKey, body.stepKey),
-        ),
-      )
-      .orderBy(desc(keywordWorkflowArtifacts.version), desc(keywordWorkflowArtifacts.createdAt))
-      .limit(1);
-
-    const [artifact] = await this.database.db
-      .insert(keywordWorkflowArtifacts)
-      .values({
-        workflowRunId: workflowRun.id,
-        stepKey: body.stepKey,
-        version: latestArtifact ? latestArtifact.version + 1 : 1,
-        status: 'AWAITING_APPROVAL',
-        summary: body.summary ?? null,
-        payload: body.payload,
-      })
-      .returning();
+    const [artifact] = latestArtifact
+      ? await this.database.db
+          .update(keywordWorkflowArtifacts)
+          .set({
+            status: 'AWAITING_APPROVAL',
+            summary: body.summary ?? null,
+            payload: body.payload,
+          })
+          .where(eq(keywordWorkflowArtifacts.id, latestArtifact.id))
+          .returning()
+      : await this.database.db
+          .insert(keywordWorkflowArtifacts)
+          .values({
+            workflowRunId: workflowRun.id,
+            stepKey: body.stepKey,
+            status: 'AWAITING_APPROVAL',
+            summary: body.summary ?? null,
+            payload: body.payload,
+          })
+          .returning();
 
     await this.database.db
       .update(keywordWorkflowRuns)
@@ -875,7 +992,7 @@ export class KeywordsService {
       })
       .where(eq(keywordWorkflowRuns.id, workflowRun.id));
 
-    return { ...artifact, approvals: [] };
+    return { ...artifact, approvals: latestArtifact ? await this.getArtifactApprovals(artifact.id) : [] };
   }
 
   async getCheckpoint(projectId: string, workflowId: string, stepKey: string) {
@@ -926,24 +1043,26 @@ export class KeywordsService {
     if (decision === 'APPROVED') {
       const promotionArtifact = {
         id: artifact.id,
-        version: artifact.version,
         payload: artifact.payload && typeof artifact.payload === 'object' ? (artifact.payload as Record<string, unknown>) : {},
       };
 
-      if (stepKey === 'consolidated-keywords') {
-        await this.persistApprovedConsolidatedKeywords(workflowRun, promotionArtifact);
-      }
-
-      if (stepKey === 'topical-map') {
-        await this.persistApprovedTopicalMap(workflowRun, promotionArtifact);
-      }
-
-      if (stepKey === 'content-brief') {
-        await this.persistApprovedContentBrief(workflowRun, promotionArtifact);
+      if (KeywordsService.STEP_PROMOTION_KEYS.has(stepKey)) {
+        await this.runStepPromotion(stepKey, workflowRun, promotionArtifact);
       }
 
       if (stepKey === 'content-article') {
-        await this.persistApprovedContentArticle(workflowRun, promotionArtifact);
+        const targetKeyword =
+          typeof promotionArtifact.payload.targetKeyword === 'string'
+            ? promotionArtifact.payload.targetKeyword.trim()
+            : '';
+        if (targetKeyword) {
+          void this.keywordQueue
+            .add('generate-article', { workflowRunId: workflowRun.id, targetKeyword, projectId })
+            .catch((error: unknown) => {
+              const message = error instanceof Error ? error.message : String(error);
+              this.logger.error(`Failed to enqueue article generation for "${targetKeyword}": ${message}`);
+            });
+        }
       }
     }
 
@@ -958,6 +1077,15 @@ export class KeywordsService {
         updatedAt: new Date(),
       })
       .where(eq(keywordWorkflowRuns.id, workflowRun.id));
+
+    if (decision === 'APPROVED' && nextStepKey && KeywordsService.STEP_TO_JOB_MAP[nextStepKey]) {
+      void this.enqueueStepGeneration(projectId, workflowRun.id, nextStepKey).catch((error: unknown) => {
+        const message = error instanceof Error ? error.message : String(error);
+        this.logger.error(
+          `Failed to auto-generate next workflow step "${nextStepKey}" for workflow ${workflowRun.id}: ${message}`,
+        );
+      });
+    }
 
     const approvals = await this.getArtifactApprovals(artifact.id);
 
@@ -997,10 +1125,47 @@ export class KeywordsService {
     'phase1-baseline': { jobName: 'generate-phase1-baseline', requiredPriorStep: null },
     'method01-competitor-pages': { jobName: 'generate-method01', requiredPriorStep: 'competitor-metrics' },
     'method02-seed-expansion': { jobName: 'generate-method02', requiredPriorStep: 'seed-keywords' },
+    'method03-content-gap-import': { jobName: 'generate-method03', requiredPriorStep: null },
   };
+
+  // ─── Step Promotion (approval → persist to downstream tables) ─
+
+  private static readonly STEP_PROMOTION_KEYS: ReadonlySet<string> = new Set([
+    'competitor-buckets',
+    'consolidated-keywords',
+    'topical-map',
+    'content-brief',
+    'content-article',
+  ]);
+
+  private async runStepPromotion(
+    stepKey: string,
+    workflowRun: Awaited<ReturnType<KeywordsService['getWorkflowRunOrThrow']>>,
+    artifact: { id: string; payload: Record<string, unknown> },
+  ): Promise<void> {
+    switch (stepKey) {
+      case 'competitor-buckets':
+        await this.persistApprovedCompetitorBuckets(workflowRun, artifact);
+        break;
+      case 'consolidated-keywords':
+        await this.persistApprovedConsolidatedKeywords(workflowRun, artifact);
+        break;
+      case 'topical-map':
+        await this.persistApprovedTopicalMap(workflowRun, artifact);
+        break;
+      case 'content-brief':
+        await this.persistApprovedContentBrief(workflowRun, artifact);
+        break;
+      case 'content-article':
+        await this.persistApprovedContentArticle(workflowRun, artifact);
+        break;
+    }
+  }
 
   async enqueueStepGeneration(projectId: string, workflowId: string, stepKey: string) {
     const workflowRun = await this.getWorkflowRunOrThrow(projectId, workflowId);
+    const latestArtifact = await this.getLatestArtifact(workflowRun.id, stepKey);
+    this.ensureStepIsEditable(workflowRun, stepKey, latestArtifact);
     const mapping = KeywordsService.STEP_TO_JOB_MAP[stepKey];
 
     if (!mapping) {
@@ -1080,7 +1245,7 @@ export class KeywordsService {
             eq(keywordWorkflowArtifacts.status, 'APPROVED'),
           ),
         )
-        .orderBy(desc(keywordWorkflowArtifacts.version))
+        .orderBy(desc(keywordWorkflowArtifacts.createdAt), desc(keywordWorkflowArtifacts.id))
         .limit(1);
 
       if (seedArtifact) {

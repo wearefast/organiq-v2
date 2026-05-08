@@ -1,7 +1,65 @@
 'use client';
 
 import { type ReactNode, useState } from 'react';
+import Link from 'next/link';
 import { Button } from '@/shared/components/button';
+
+type CollapsedRailStep = {
+  index: number;
+  stepKey: string;
+  title: string;
+  visualStatus: string;
+  markerTone: string;
+};
+
+type TooltipState = { label: string; x: number; y: number } | null;
+
+export function CollapsedWorkflowRail({
+  steps,
+  projectId,
+  workflowId,
+}: {
+  steps: CollapsedRailStep[];
+  projectId: string;
+  workflowId: string;
+}) {
+  const [tooltip, setTooltip] = useState<TooltipState>(null);
+
+  return (
+    <section className="relative overflow-visible rounded-xl border border-[#E8EAF0] bg-white px-3 pb-4 pt-12 shadow-sm">
+      <div className="flex flex-col items-center">
+        {steps.map((step) => (
+          <div key={step.stepKey} className="flex flex-col items-center">
+            <Link
+              href={`/dashboard/keywords/${projectId}/workflows/${workflowId}?step=${step.stepKey}`}
+              aria-label={step.title}
+              className={`flex h-8 w-8 items-center justify-center rounded-full border text-xs font-semibold outline-none transition hover:scale-105 focus-visible:scale-105 focus-visible:ring-2 focus-visible:ring-[#DA304F]/25 ${step.markerTone}`}
+              onMouseEnter={(e) => {
+                const rect = e.currentTarget.getBoundingClientRect();
+                setTooltip({ label: step.title, x: rect.right + 8, y: rect.top + rect.height / 2 });
+              }}
+              onMouseLeave={() => setTooltip(null)}
+            >
+              {step.index + 1}
+            </Link>
+            {step.index < steps.length - 1 ? (
+              <div className={`min-h-[22px] w-px ${step.visualStatus === 'complete' ? 'bg-[#12B76A]' : 'bg-[#E4E7EC]'}`} />
+            ) : null}
+          </div>
+        ))}
+      </div>
+
+      {tooltip ? (
+        <div
+          className="pointer-events-none fixed z-50 w-40 -translate-y-1/2 rounded-lg border border-[#E8EAF0] bg-white px-3 py-2 text-left text-[11px] font-medium leading-4 text-[#111827] shadow-lg"
+          style={{ left: tooltip.x, top: tooltip.y }}
+        >
+          {tooltip.label}
+        </div>
+      ) : null}
+    </section>
+  );
+}
 
 function ChevronLeftIcon() {
   return (

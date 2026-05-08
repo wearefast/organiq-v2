@@ -6,10 +6,14 @@ import { DatabaseService } from '../../shared/database/database.service';
 import { AhrefsService } from '../integrations/services/ahrefs.service';
 import { SerpService } from '../integrations/services/serp.service';
 import { OpenAIService } from '../integrations/services/openai.service';
+import { BusinessProfile } from '../integrations/services/openai.service';
 import {
+  contentPieces,
+  keywordProjects,
   keywordWorkflowArtifacts,
   keywordWorkflowJobs,
   keywordWorkflowRuns,
+  keywords,
   projectCompetitorMetrics,
   projectCompetitors,
 } from '../../db/schema';
@@ -20,6 +24,12 @@ interface StepGenerationJobData {
   projectId: string;
   stepKey: string;
   inputPayload: Record<string, unknown>;
+}
+
+interface ArticleGenerationJobData {
+  workflowRunId: string;
+  targetKeyword: string;
+  projectId: string;
 }
 
 @Processor('keyword-queue')
@@ -35,8 +45,15 @@ export class KeywordWorkflowProcessor extends WorkerHost {
     super();
   }
 
-  async process(job: Job<StepGenerationJobData>): Promise<void> {
-    const { jobId, stepKey } = job.data;
+  async process(job: Job<StepGenerationJobData | ArticleGenerationJobData>): Promise<void> {
+    // Handle article generation jobs (no jobId — fired after content-article approval)
+    if (job.name === 'generate-article') {
+      await this.generateArticleContent(job.data as ArticleGenerationJobData);
+      return;
+    }
+
+    const { jobId, stepKey } = job.data as StepGenerationJobData;
+    const stepData = job.data as StepGenerationJobData;
 
     // Skip legacy job types (triggerDiscovery / triggerGapAnalysis)
     if (!jobId) {
@@ -51,22 +68,25 @@ export class KeywordWorkflowProcessor extends WorkerHost {
 
       switch (job.name) {
         case 'generate-serp-niche-map':
-          await this.generateSerpNicheMap(job.data);
+          await this.generateSerpNicheMap(stepData);
           break;
         case 'generate-competitor-discovery':
-          await this.generateCompetitorDiscovery(job.data);
+          await this.generateCompetitorDiscovery(stepData);
           break;
         case 'generate-competitor-metrics':
-          await this.generateCompetitorMetrics(job.data);
+          await this.generateCompetitorMetrics(stepData);
           break;
         case 'generate-phase1-baseline':
-          await this.generatePhase1Baseline(job.data);
+          await this.generatePhase1Baseline(stepData);
           break;
         case 'generate-method01':
-          await this.generateMethod01(job.data);
+          await this.generateMethod01(stepData);
           break;
         case 'generate-method02':
-          await this.generateMethod02(job.data);
+          await this.generateMethod02(stepData);
+          break;
+        case 'generate-method03':
+          await this.generateMethod03(stepData);
           break;
         default:
           throw new Error(`Unknown job type: ${job.name}`);
@@ -238,11 +258,11 @@ export class KeywordWorkflowProcessor extends WorkerHost {
 
           // Upsert metrics in DB
           const metricsValues = {
-            domainRating: overview?.domainRating ?? null,
-            organicTraffic: overview?.orgTraffic ?? null,
-            organicKeywords: overview?.orgKeywords ?? null,
-            referringDomains: overview?.referringDomains ?? null,
-            backlinks: overview?.backlinks ?? null,
+            domainRating: overview?.domainRating != null ? Math.round(overview.domainRating) : null,
+            organicTraffic: overview?.orgTraffic != null ? Math.round(overview.orgTraffic) : null,
+            organicKeywords: overview?.orgKeywords != null ? Math.round(overview.orgKeywords) : null,
+            referringDomains: overview?.referringDomains != null ? Math.round(overview.referringDomains) : null,
+            backlinks: overview?.backlinks != null ? Math.round(overview.backlinks) : null,
             topPages: topPages.map(p => ({ url: p.url, traffic: p.traffic, topKeyword: p.topKeyword })),
             capturedAt: new Date(),
             updatedAt: new Date(),
@@ -514,6 +534,56 @@ export class KeywordWorkflowProcessor extends WorkerHost {
     await this.createArtifactAndComplete(jobId, workflowRunId, projectId, 'method02-seed-expansion', payload, summary);
   }
 
+  // ─── Article Generation ───────────────────────────────────────
+
+  private async generateArticleContent(data: ArticleGenerationJobData): Promise<void> {
+    const { workflowRunId, targetKeyword } = data;
+    this.logger.log(`Generating article content for "${targetKeyword}" (workflow ${workflowRunId})`);
+
+    const [workflowKeyword] = await this.database.db
+      .select()
+      .from(keywords)
+      .where(and(eq(keywords.workflowRunId, workflowRunId), eq(keywords.keyword, targetKeyword)));
+
+    if (!workflowKeyword) {
+      this.logger.warn(`Keyword "${targetKeyword}" not found in workflow ${workflowRunId} — skipping article generation`);
+      return;
+    }
+
+    const [contentPiece] = await this.database.db
+      .select()
+      .from(contentPieces)
+      .where(eq(contentPieces.keywordId, workflowKeyword.id));
+
+    if (!contentPiece) {
+      this.logger.warn(`No content piece found for keyword "${targetKeyword}" — skipping article generation`);
+      return;
+    }
+
+    const brief = contentPiece.brief && typeof contentPiece.brief === 'object'
+      ? (contentPiece.brief as Record<string, unknown>)
+      : {};
+    const articleInput = contentPiece.reviewNotes && typeof contentPiece.reviewNotes === 'object'
+      ? ((contentPiece.reviewNotes as Record<string, unknown>).articleInput as Record<string, unknown> | undefined) ?? {}
+      : {};
+
+    const combinedBrief: Record<string, unknown> = {
+      ...brief,
+      ...articleInput,
+      title: contentPiece.title,
+      targetKeyword,
+    };
+
+    const articleBody = await this.openaiService.generateArticle(combinedBrief);
+
+    await this.database.db
+      .update(contentPieces)
+      .set({ body: articleBody, status: 'PUBLISHED' as const })
+      .where(eq(contentPieces.id, contentPiece.id));
+
+    this.logger.log(`Article generation complete for "${targetKeyword}" (${articleBody.length} chars)`);
+  }
+
   // ─── Helpers ─────────────────────────────────────────────────
 
   private async updateJobStatus(
@@ -547,7 +617,6 @@ export class KeywordWorkflowProcessor extends WorkerHost {
     payload: Record<string, unknown>,
     summary: Record<string, unknown>,
   ): Promise<void> {
-    // Get next version
     const [latestArtifact] = await this.database.db
       .select()
       .from(keywordWorkflowArtifacts)
@@ -557,20 +626,33 @@ export class KeywordWorkflowProcessor extends WorkerHost {
           eq(keywordWorkflowArtifacts.stepKey, stepKey),
         ),
       )
-      .orderBy(desc(keywordWorkflowArtifacts.version), desc(keywordWorkflowArtifacts.createdAt))
+      .orderBy(desc(keywordWorkflowArtifacts.createdAt), desc(keywordWorkflowArtifacts.id))
       .limit(1);
 
-    const [artifact] = await this.database.db
-      .insert(keywordWorkflowArtifacts)
-      .values({
-        workflowRunId,
-        stepKey,
-        version: latestArtifact ? latestArtifact.version + 1 : 1,
-        status: 'AWAITING_APPROVAL',
-        summary,
-        payload,
-      })
-      .returning();
+    if (latestArtifact?.status === 'APPROVED') {
+      throw new Error(`Approved step "${stepKey}" cannot be regenerated.`);
+    }
+
+    const [artifact] = latestArtifact
+      ? await this.database.db
+          .update(keywordWorkflowArtifacts)
+          .set({
+            status: 'AWAITING_APPROVAL',
+            summary,
+            payload,
+          })
+          .where(eq(keywordWorkflowArtifacts.id, latestArtifact.id))
+          .returning()
+      : await this.database.db
+          .insert(keywordWorkflowArtifacts)
+          .values({
+            workflowRunId,
+            stepKey,
+            status: 'AWAITING_APPROVAL',
+            summary,
+            payload,
+          })
+          .returning();
 
     // Update workflow run status
     await this.database.db
@@ -594,6 +676,194 @@ export class KeywordWorkflowProcessor extends WorkerHost {
       })
       .where(eq(keywordWorkflowJobs.id, jobId));
 
-    this.logger.log(`Job ${jobId} completed → artifact ${artifact.id} (${stepKey} v${artifact.version})`);
+    this.logger.log(`Job ${jobId} completed → checkpoint ${artifact.id} (${stepKey})`);
+  }
+
+  private async generateMethod03(data: StepGenerationJobData): Promise<void> {
+    const { jobId, workflowRunId, projectId, inputPayload } = data;
+    const clientDomain = inputPayload.clientDomain as string;
+    const country = inputPayload.country as string;
+
+    await this.updateJobStatus(jobId, 'PROCESSING', 5);
+
+    // Load approved DIRECT competitors
+    const directCompetitors = await this.database.db
+      .select()
+      .from(projectCompetitors)
+      .where(
+        and(
+          eq(projectCompetitors.workflowRunId, workflowRunId),
+          eq(projectCompetitors.status, 'APPROVED'),
+          eq(projectCompetitors.bucket, 'DIRECT'),
+        ),
+      );
+
+    if (directCompetitors.length === 0) {
+      throw new Error('No approved direct competitors found. Approve the competitor-buckets step first.');
+    }
+
+    // Load project seed keywords for OpenAI context
+    const [project] = await this.database.db
+      .select()
+      .from(keywordProjects)
+      .where(eq(keywordProjects.id, projectId));
+
+    await this.updateJobStatus(jobId, 'PROCESSING', 10);
+
+    // Fetch client's existing organic keywords (exclusion set — keywords they already rank for)
+    const clientOrganic = await this.ahrefsService.getOrganicKeywords(clientDomain, country, 500);
+    const clientKeywordSet = new Set(
+      (clientOrganic ?? []).map((kw) => kw.keyword.toLowerCase().trim()),
+    );
+
+    await this.updateJobStatus(jobId, 'PROCESSING', 25);
+
+    // For each direct competitor, fetch organic keywords and build gap map
+    type GapEntry = {
+      keyword: string;
+      volume: number | null;
+      difficulty: number | null;
+      competitors: string[];
+      intent: { informational: boolean; commercial: boolean; transactional: boolean; navigational: boolean };
+    };
+    const gapKeywordMap = new Map<string, GapEntry>();
+    const batchSize = 3;
+
+    for (let i = 0; i < directCompetitors.length; i += batchSize) {
+      const batch = directCompetitors.slice(i, i + batchSize);
+      const batchResults = await Promise.all(
+        batch.map(async (comp) => ({
+          domain: comp.domain,
+          keywords: await this.ahrefsService.getOrganicKeywords(comp.domain, country, 200),
+        })),
+      );
+
+      for (const { domain, keywords: compKeywords } of batchResults) {
+        if (!compKeywords) continue;
+        for (const kw of compKeywords) {
+          const normalized = kw.keyword.toLowerCase().trim();
+          if (clientKeywordSet.has(normalized)) continue;
+          const existing = gapKeywordMap.get(normalized);
+          if (existing) {
+            if (!existing.competitors.includes(domain)) existing.competitors.push(domain);
+          } else {
+            gapKeywordMap.set(normalized, {
+              keyword: kw.keyword,
+              volume: kw.volume,
+              difficulty: kw.difficulty,
+              competitors: [domain],
+              intent: kw.intent,
+            });
+          }
+        }
+      }
+
+      await this.updateJobStatus(
+        jobId,
+        'PROCESSING',
+        25 + Math.round(((i + batchSize) / directCompetitors.length) * 45),
+      );
+    }
+
+    // Sort: multi-competitor overlap first, then by volume
+    const sortedGap = Array.from(gapKeywordMap.values())
+      .sort((a, b) => {
+        if (b.competitors.length !== a.competitors.length) return b.competitors.length - a.competitors.length;
+        return (b.volume ?? 0) - (a.volume ?? 0);
+      })
+      .slice(0, 150);
+
+    await this.updateJobStatus(jobId, 'PROCESSING', 75);
+
+    // OpenAI enrichment — classify by intent, funnel, content type, parent topic
+    type ClassifiedGapKeyword = {
+      keyword: string;
+      volume: number | null;
+      difficulty: number | null;
+      competitorCount: number;
+      competitors: string[];
+      intent: string;
+      funnel: string;
+      contentType: string;
+      parentTopic: string;
+    };
+    let classifiedKeywords: ClassifiedGapKeyword[] = [];
+
+    if (sortedGap.length > 0) {
+      const minimalProfile: BusinessProfile = {
+        brandIdentity: clientDomain,
+        targetMarket: country.toUpperCase(),
+        operationalModel: 'ecommerce',
+        services: Array.isArray(project?.seedKeywords) && project.seedKeywords.length > 0
+          ? (project.seedKeywords as string[])
+          : [clientDomain],
+        geography: country.toUpperCase(),
+        toneOfVoice: 'professional',
+        seedKeywords: Array.isArray(project?.seedKeywords) ? (project.seedKeywords as string[]) : [],
+      };
+
+      try {
+        const classifications = await this.openaiService.classifyContentGap(
+          sortedGap.map((kw) => ({
+            keyword: kw.keyword,
+            volume: kw.volume ?? 0,
+            difficulty: kw.difficulty ?? 0,
+            competitorCount: kw.competitors.length,
+          })),
+          minimalProfile,
+        );
+
+        const classMap = new Map(classifications.map((c) => [c.keyword.toLowerCase().trim(), c]));
+        classifiedKeywords = sortedGap.map((kw) => {
+          const cls = classMap.get(kw.keyword.toLowerCase().trim());
+          return {
+            keyword: kw.keyword,
+            volume: kw.volume,
+            difficulty: kw.difficulty,
+            competitorCount: kw.competitors.length,
+            competitors: kw.competitors,
+            intent: cls?.intent ?? (kw.intent.transactional ? 'transactional' : kw.intent.commercial ? 'commercial' : 'informational'),
+            funnel: cls?.funnel ?? 'TOFU',
+            contentType: cls?.contentType ?? 'Blog Post',
+            parentTopic: cls?.parentTopic ?? 'Uncategorized',
+          };
+        });
+      } catch (err) {
+        this.logger.warn(`Method 03 OpenAI classification failed: ${err} — using Ahrefs intent fallback`);
+        classifiedKeywords = sortedGap.map((kw) => ({
+          keyword: kw.keyword,
+          volume: kw.volume,
+          difficulty: kw.difficulty,
+          competitorCount: kw.competitors.length,
+          competitors: kw.competitors,
+          intent: kw.intent.transactional ? 'transactional' : kw.intent.commercial ? 'commercial' : 'informational',
+          funnel: 'TOFU',
+          contentType: 'Blog Post',
+          parentTopic: 'Uncategorized',
+        }));
+      }
+    }
+
+    await this.updateJobStatus(jobId, 'PROCESSING', 95);
+
+    const payload = {
+      gapKeywords: classifiedKeywords,
+      competitorsAnalyzed: directCompetitors.map((c) => c.domain),
+      clientDomain,
+      country,
+      clientExclusionKeywordsCount: clientKeywordSet.size,
+      dataSource: 'api-approximation' as const,
+      generatedAt: new Date().toISOString(),
+      degraded: classifiedKeywords.length === 0 ? true : undefined,
+    };
+
+    const summary = {
+      gapKeywordsFound: classifiedKeywords.length,
+      competitorsAnalyzed: directCompetitors.length,
+      clientExclusionKeywordsCount: clientKeywordSet.size,
+      multiCompetitorGapKeywords: classifiedKeywords.filter((kw) => kw.competitorCount > 1).length,
+    };
+
+    await this.createArtifactAndComplete(jobId, workflowRunId, projectId, 'method03-content-gap-import', payload, summary);
   }
 }

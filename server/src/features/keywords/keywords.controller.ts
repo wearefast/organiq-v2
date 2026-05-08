@@ -100,7 +100,7 @@ export class KeywordsController {
   }
 
   @Post('projects/:id/workflows/:workflowId/artifacts')
-  @ApiOperation({ summary: 'Create a workflow artifact version for a workflow step' })
+  @ApiOperation({ summary: 'Create a workflow checkpoint for a workflow step' })
   async createWorkflowArtifact(
     @Param('id') id: string,
     @Param('workflowId') workflowId: string,

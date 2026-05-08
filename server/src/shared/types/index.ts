@@ -164,7 +164,6 @@ export interface KeywordWorkflowArtifactRecord {
   id: string;
   workflowRunId: string;
   stepKey: KeywordWorkflowStepKey;
-  version: number;
   status: KeywordWorkflowArtifactStatus;
   summary: Record<string, unknown> | null;
   payload: Record<string, unknown>;

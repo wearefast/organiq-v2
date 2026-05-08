@@ -1,9 +1,20 @@
 import { type ReactNode } from 'react';
 
 const ITEM_TITLE_KEYS = ['headline', 'title', 'keyword', 'pillar', 'domain', 'url', 'stepKey', 'parentTopic', 'targetKeyword', 'id'] as const;
+const HIDDEN_PAYLOAD_KEYS = new Set(['version', 'sourceVersion', 'sourceArtifactVersion']);
 
 function isRecord(value: unknown): value is Record<string, unknown> {
   return Boolean(value) && typeof value === 'object' && !Array.isArray(value);
+}
+
+function normalizeCheckpointCopy(value: string) {
+  return value
+    .replace(/artifact versions?/gi, 'checkpoint history')
+    .replace(/source artifacts?/gi, 'source checkpoints')
+    .replace(/artifacts?/gi, 'checkpoint')
+    .replace(/next artifact version/gi, 'next checkpoint')
+    .replace(/latest approved artifact/gi, 'latest approved checkpoint')
+    .replace(/latest artifact/gi, 'latest checkpoint');
 }
 
 export function hasArtifactPayloadContent(value: unknown): boolean {
@@ -16,10 +27,12 @@ export function hasArtifactPayloadContent(value: unknown): boolean {
 }
 
 function formatArtifactLabel(value: string) {
-  return value
-    .replace(/([a-z0-9])([A-Z])/g, '$1 $2')
-    .replace(/[_-]+/g, ' ')
-    .replace(/\b\w/g, (character) => character.toUpperCase());
+  return normalizeCheckpointCopy(
+    value
+      .replace(/([a-z0-9])([A-Z])/g, '$1 $2')
+      .replace(/[_-]+/g, ' ')
+      .replace(/\b\w/g, (character) => character.toUpperCase()),
+  );
 }
 
 function formatPrimitiveValue(value: string | number | boolean) {
@@ -28,7 +41,7 @@ function formatPrimitiveValue(value: string | number | boolean) {
   }
 
   if (typeof value === 'string') {
-    return value.trim().replaceAll('_', ' ');
+    return normalizeCheckpointCopy(value.trim().replaceAll('_', ' '));
   }
 
   return String(value);
@@ -52,6 +65,10 @@ function getArrayItemTitle(value: unknown, index: number) {
   return `Item ${index + 1}`;
 }
 
+function shouldSpanRootSection(value: unknown) {
+  return Array.isArray(value) || isRecord(value);
+}
+
 function renderArtifactValue(value: unknown, depth = 0): ReactNode {
   if (!hasArtifactPayloadContent(value)) {
     return null;
@@ -68,7 +85,10 @@ function renderArtifactValue(value: unknown, depth = 0): ReactNode {
       return (
         <ul className="grid gap-2">
           {items.map((entry, index) => (
-            <li key={`${depth}-${index}`} className="rounded-md border border-[#E4E7EC] bg-[#FCFCFD] px-3 py-2 text-sm text-[#111827]">
+            <li
+              key={`${depth}-${index}`}
+              className="min-w-0 whitespace-pre-wrap break-all rounded-md border border-[#E4E7EC] bg-[#FCFCFD] px-3 py-2 text-sm text-[#111827]"
+            >
               {formatPrimitiveValue(entry as string | number | boolean)}
             </li>
           ))}
@@ -79,7 +99,7 @@ function renderArtifactValue(value: unknown, depth = 0): ReactNode {
     return (
       <div className="grid gap-3">
         {items.map((entry, index) => (
-          <section key={`${depth}-${index}`} className="rounded-lg border border-[#E4E7EC] bg-[#FCFCFD] p-3">
+          <section key={`${depth}-${index}`} className="min-w-0 rounded-lg border border-[#E4E7EC] bg-[#FCFCFD] p-3">
             <p className="text-xs font-medium uppercase tracking-[0.08em] text-[#667085]">{getArrayItemTitle(entry, index)}</p>
             <div className="mt-2">{renderArtifactValue(entry, depth + 1)}</div>
           </section>
@@ -89,13 +109,18 @@ function renderArtifactValue(value: unknown, depth = 0): ReactNode {
   }
 
   if (isRecord(value)) {
-    const entries = Object.entries(value).filter(([, entry]) => hasArtifactPayloadContent(entry));
+    const entries = Object.entries(value).filter(
+      ([key, entry]) => hasArtifactPayloadContent(entry) && !HIDDEN_PAYLOAD_KEYS.has(key),
+    );
 
     if (depth === 0) {
       return (
         <div className="grid gap-3 sm:grid-cols-2">
           {entries.map(([key, entry]) => (
-            <section key={key} className="rounded-lg border border-[#E4E7EC] bg-[#FCFCFD] p-3">
+            <section
+              key={key}
+              className={`min-w-0 rounded-lg border border-[#E4E7EC] bg-[#FCFCFD] p-3 ${shouldSpanRootSection(entry) ? 'sm:col-span-2' : ''}`}
+            >
               <p className="text-xs font-medium uppercase tracking-[0.08em] text-[#667085]">{formatArtifactLabel(key)}</p>
               <div className="mt-2">{renderArtifactValue(entry, depth + 1)}</div>
             </section>
@@ -107,7 +132,7 @@ function renderArtifactValue(value: unknown, depth = 0): ReactNode {
     return (
       <dl className="grid gap-3 sm:grid-cols-2">
         {entries.map(([key, entry]) => (
-          <div key={`${depth}-${key}`}>
+          <div key={`${depth}-${key}`} className="min-w-0">
             <dt className="text-xs font-medium uppercase tracking-[0.08em] text-[#667085]">{formatArtifactLabel(key)}</dt>
             <dd className="mt-1.5">{renderArtifactValue(entry, depth + 1)}</dd>
           </div>

@@ -36,8 +36,8 @@ These are the target entities for the English-first strategist workflow. They do
 | Table | Description |
 |-------|-------------|
 | `keyword_workflow_runs` | One guided workflow run per project/language/market |
-| `keyword_workflow_artifacts` | Immutable, versioned outputs for each checkpoint |
-| `keyword_workflow_approvals` | Approval, revision, and rejection decisions per artifact |
+| `keyword_workflow_artifacts` | Checkpoint records for each workflow step; the active step is rewritten in place and identified by checkpoint id plus step/timestamp ordering |
+| `keyword_workflow_approvals` | Approval, revision, and rejection decisions per checkpoint record |
 | `project_competitors` | Reviewed competitor candidates and approved buckets |
 | `project_competitor_metrics` | Comparable metrics captured per approved competitor |
 | `content_gap_imports` | Manual Ahrefs Content Gap uploads and parsed rows |
@@ -103,7 +103,7 @@ The final keyword ledger should retain strategist-review context and provenance:
 | `language` | English in the first rollout |
 | `country` | Market-specific research context |
 | `sourceMethods` | Preserve Method 01 / Method 02 / Method 03 / Phase 1 lineage |
-| `sourceArtifactIds` | Reference the reviewed artifacts that support the keyword |
+| `sourceArtifactIds` | Reference the reviewed checkpoints that support the keyword |
 | `approvalStatus` | Candidate vs approved state |
 | `dedupeStatus` | Track whether the keyword was retained or removed |
 | `existingCoverageUrl` | Link to any existing page that already covers the topic |
@@ -112,7 +112,7 @@ The final keyword ledger should retain strategist-review context and provenance:
 
 ## Workflow Artifact Model
 
-Each major strategist checkpoint should create an immutable artifact version rather than mutating a single project record in place.
+Each major strategist step is tracked as a checkpoint record. The active step is rewritten in place, checkpoint history is ordered by saved time, and downstream provenance depends on checkpoint ids rather than version numbers.
 
 | Artifact | Payload Summary |
 |----------|-----------------|

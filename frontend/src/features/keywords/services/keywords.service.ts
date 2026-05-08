@@ -126,13 +126,19 @@ export interface KeywordWorkflowArtifact {
   id: string;
   workflowRunId: string;
   stepKey: string;
-  version: number;
   status: 'DRAFT' | 'AWAITING_APPROVAL' | 'APPROVED' | 'REVISION_REQUESTED' | 'REJECTED' | 'SUPERSEDED';
   summary: Record<string, unknown> | null;
   payload: Record<string, unknown>;
   createdBy: string | null;
   createdAt: string;
   approvals?: KeywordWorkflowArtifactApproval[];
+}
+
+export interface KeywordWorkflowActiveJob {
+  id: string;
+  stepKey: string;
+  status: 'PENDING' | 'PROCESSING';
+  progress: number;
 }
 
 export interface KeywordWorkflow {
@@ -153,6 +159,7 @@ export interface KeywordWorkflow {
   artifacts?: KeywordWorkflowArtifact[];
   persistedKeywords?: PersistedKeywordWorkflowKeyword[];
   persistedTopicalMaps?: PersistedKeywordWorkflowTopicalMap[];
+  activeJobs?: Record<string, KeywordWorkflowActiveJob>;
 }
 
 export async function getKeywordProjects(): Promise<KeywordProject[]> {

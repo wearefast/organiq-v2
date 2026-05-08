@@ -1,6 +1,8 @@
 import { readFile } from 'fs/promises';
+import { type ReactNode } from 'react';
 import Link from 'next/link';
 import { revalidatePath } from 'next/cache';
+import { redirect } from 'next/navigation';
 import { join } from 'path';
 import {
   approveKeywordWorkflowCheckpoint,
@@ -16,9 +18,11 @@ import {
   upsertKeywordWorkflowCompetitorMetrics,
 } from '@/features/keywords/services/keywords.service';
 import { ArtifactPayloadView, hasArtifactPayloadContent } from '@/features/keywords/components/artifact-payload-view';
+import { CollapsiblePanel } from '@/features/keywords/components/collapsible-panel';
 import { WorkflowArtifactForm } from '@/features/keywords/components/workflow-artifact-form';
-import { WorkflowShellLayout } from '@/features/keywords/components/workflow-shell-layout';
+import { WorkflowShellLayout, CollapsedWorkflowRail } from '@/features/keywords/components/workflow-shell-layout';
 import { GenerateStepButton } from '@/features/keywords/components/generate-step-button';
+import { ContentPieceStatusCard } from '@/features/keywords/components/content-piece-status-card';
 
 const WORKFLOW_STEPS = [
   'business-profile',
@@ -119,13 +123,11 @@ type GeneratedBusinessProfileDraft = {
 
 type SeedKeywordStepSource = {
   sourceArtifactId: string | null;
-  sourceVersion: number | null;
   keywords: string[];
 };
 
 type SerpNicheMapStepSource = {
   sourceArtifactId: string | null;
-  sourceVersion: number | null;
   keywords: string[];
 };
 
@@ -145,24 +147,44 @@ function readObjectRecord(value: unknown) {
     : null;
 }
 
+function normalizeCheckpointCopy(value: string) {
+  return value
+    .replace(/artifact versions?/gi, 'checkpoint history')
+    .replace(/source artifacts?/gi, 'source checkpoints')
+    .replace(/artifacts?/gi, 'checkpoints')
+    .replace(/next artifact version/gi, 'next checkpoint')
+    .replace(/latest approved artifact/gi, 'latest approved checkpoint')
+    .replace(/latest artifact/gi, 'latest checkpoint')
+    .replace(/structured brief input artifact/gi, 'structured brief input checkpoint')
+    .replace(/content brief artifact/gi, 'content brief checkpoint')
+    .replace(/content article artifact/gi, 'content article checkpoint')
+    .replace(/topical-map artifact/gi, 'topical-map checkpoint')
+    .replace(/consolidated keywords artifact/gi, 'consolidated keywords checkpoint')
+    .replace(/consolidated artifact/gi, 'consolidated checkpoint');
+}
+
+function shouldHideCheckpointMetadataKey(key: string) {
+  return key === 'version' || key === 'sourceArtifactVersion' || key === 'sourceVersion';
+}
+
 function readArtifactText(section: Record<string, unknown> | null | undefined) {
   if (!section) return null;
 
   const note = section.note;
   if (typeof note === 'string' && note.trim().length > 0) {
-    return note;
+    return normalizeCheckpointCopy(note);
   }
 
   const details = Object.entries(section)
-    .filter(([key, value]) => key !== 'note' && value != null)
+    .filter(([key, value]) => key !== 'note' && value != null && !shouldHideCheckpointMetadataKey(key))
     .map(([key, value]) => {
       const normalizedValue = Array.isArray(value)
         ? `${value.length} item${value.length === 1 ? '' : 's'}`
         : typeof value === 'object'
           ? `${Object.keys(value as Record<string, unknown>).length} field${Object.keys(value as Record<string, unknown>).length === 1 ? '' : 's'}`
-          : String(value).replaceAll('_', ' ');
+          : normalizeCheckpointCopy(String(value).replaceAll('_', ' '));
 
-      return `${key.replace(/([a-z0-9])([A-Z])/g, '$1 $2').replace(/[_-]+/g, ' ')}: ${normalizedValue}`;
+      return `${normalizeCheckpointCopy(key.replace(/([a-z0-9])([A-Z])/g, '$1 $2').replace(/[_-]+/g, ' '))}: ${normalizedValue}`;
     });
 
   return details.length > 0 ? details.join(' · ') : null;
@@ -183,13 +205,28 @@ function getArtifactFormDraftValues(artifact: KeywordWorkflowArtifact | undefine
   const summary = readObjectRecord(artifact.summary);
 
   return {
-    summary: typeof summary?.note === 'string' ? summary.note : '',
-    headline: typeof payload?.headline === 'string' ? payload.headline : '',
-    keyFindings: readStringArray(payload?.keyFindings).join('\n'),
-    recommendedAction: typeof payload?.recommendedAction === 'string' ? payload.recommendedAction : '',
-    evidence: readStringArray(payload?.evidence).join('\n'),
-    openQuestions: readStringArray(payload?.openQuestions).join('\n'),
+    summary: typeof summary?.note === 'string' ? normalizeCheckpointCopy(summary.note) : '',
+    headline: typeof payload?.headline === 'string' ? normalizeCheckpointCopy(payload.headline) : '',
+    keyFindings: readStringArray(payload?.keyFindings).map(normalizeCheckpointCopy).join('\n'),
+    recommendedAction:
+      typeof payload?.recommendedAction === 'string' ? normalizeCheckpointCopy(payload.recommendedAction) : '',
+    evidence: readStringArray(payload?.evidence).map(normalizeCheckpointCopy).join('\n'),
+    openQuestions: readStringArray(payload?.openQuestions).map(normalizeCheckpointCopy).join('\n'),
   } satisfies ArtifactFormDraftValues;
+}
+
+function extractBusinessProfileSeedKeywordsFromFindings(findings: string[]) {
+  const seedKeywordLine = findings.find((finding) => finding.toLowerCase().startsWith('suggested seed keywords:'));
+
+  if (!seedKeywordLine) {
+    return [];
+  }
+
+  return seedKeywordLine
+    .slice(seedKeywordLine.indexOf(':') + 1)
+    .split(',')
+    .map((keyword) => normalizeWhitespace(keyword))
+    .filter(Boolean);
 }
 
 function readBusinessProfileSeedKeywords(artifact: KeywordWorkflowArtifact | undefined) {
@@ -205,7 +242,36 @@ function readBusinessProfileSeedKeywords(artifact: KeywordWorkflowArtifact | und
   }
 
   const generatedProfile = readObjectRecord(payload?.generatedProfile);
-  return readStringArray(generatedProfile?.seedKeywords);
+  const generatedSeedKeywords = readStringArray(generatedProfile?.seedKeywords);
+
+  if (generatedSeedKeywords.length > 0) {
+    return generatedSeedKeywords;
+  }
+
+  return extractBusinessProfileSeedKeywordsFromFindings(readStringArray(payload?.keyFindings));
+}
+
+function getRenderableArtifactPayload(artifact: KeywordWorkflowArtifact | null | undefined) {
+  const payload = readObjectRecord(artifact?.payload);
+
+  if (!payload || artifact?.stepKey !== 'business-profile') {
+    return payload;
+  }
+
+  if (readStringArray(payload.seedKeywords).length > 0) {
+    return payload;
+  }
+
+  const seedKeywords = readBusinessProfileSeedKeywords(artifact);
+
+  if (seedKeywords.length === 0) {
+    return payload;
+  }
+
+  return {
+    ...payload,
+    seedKeywords,
+  } satisfies Record<string, unknown>;
 }
 
 function getSeedKeywordStepSource(artifacts: KeywordWorkflowArtifact[] | undefined) {
@@ -227,7 +293,6 @@ function getSeedKeywordStepSource(artifacts: KeywordWorkflowArtifact[] | undefin
 
   return {
     sourceArtifactId: sourceArtifact.id,
-    sourceVersion: sourceArtifact.version,
     keywords,
   } satisfies SeedKeywordStepSource;
 }
@@ -238,12 +303,12 @@ function getSeedKeywordDraftValues(source: SeedKeywordStepSource | undefined) {
   }
 
   return {
-    summary: `Loaded ${source.keywords.length} seed keyword${source.keywords.length === 1 ? '' : 's'} from the latest business-profile artifact for confirmation.`,
+    summary: `Loaded ${source.keywords.length} seed keyword${source.keywords.length === 1 ? '' : 's'} from the latest business-profile checkpoint for confirmation.`,
     headline: 'Step 1 generated seed keyword candidates',
     keyFindings: source.keywords.join('\n'),
     recommendedAction:
       'Review the generated seed keywords, remove weak terms, add missing commercial variants, and approve the confirmed list before SERP mapping.',
-    evidence: [`Source artifact: business-profile v${source.sourceVersion ?? 'n/a'}`].join('\n'),
+    evidence: ['Source checkpoint: business-profile'].join('\n'),
     openQuestions: '',
   } satisfies ArtifactFormDraftValues;
 }
@@ -282,7 +347,6 @@ function getSerpNicheMapStepSource(artifacts: KeywordWorkflowArtifact[] | undefi
 
   return {
     sourceArtifactId: sourceArtifact.id,
-    sourceVersion: sourceArtifact.version,
     keywords,
   } satisfies SerpNicheMapStepSource;
 }
@@ -293,12 +357,12 @@ function getSerpNicheMapDraftValues(source: SerpNicheMapStepSource | undefined) 
   }
 
   return {
-    summary: `Loaded ${source.keywords.length} approved seed keyword${source.keywords.length === 1 ? '' : 's'} from the latest seed-keywords artifact for SERP mapping.`,
+    summary: `Loaded ${source.keywords.length} approved seed keyword${source.keywords.length === 1 ? '' : 's'} from the latest seed-keywords checkpoint for SERP mapping.`,
     headline: 'Step 2 approved seed keyword source set',
     keyFindings: source.keywords.join('\n'),
     recommendedAction:
       'Group the approved seed keywords into SERP topic families, capture dominant ranking page types, and document the niche structure before competitor bucketing.',
-    evidence: [`Source artifact: seed-keywords v${source.sourceVersion ?? 'n/a'}`].join('\n'),
+    evidence: ['Source checkpoint: seed-keywords'].join('\n'),
     openQuestions: '',
   } satisfies ArtifactFormDraftValues;
 }
@@ -453,7 +517,7 @@ function getWizardBadgeTone(status: WorkflowStepVisualStatus) {
     case 'current':
       return 'bg-[#EEF4FF] text-[#3538CD]';
     case 'next':
-      return 'bg-[#FFF7ED] text-[#C4320A]';
+      return 'bg-[#F9FAFB] text-[#667085]';
     case 'draft':
       return 'bg-[#F4F6FA] text-[#344054]';
     case 'in-review':
@@ -476,7 +540,7 @@ function getWizardMarkerTone(status: WorkflowStepVisualStatus) {
     case 'current':
       return 'border-[#3538CD] bg-[#EEF4FF] text-[#3538CD]';
     case 'next':
-      return 'border-[#F79009] bg-[#FFF7ED] text-[#C4320A]';
+      return 'border-[#D0D5DD] bg-white text-[#98A2B3]';
     case 'draft':
       return 'border-[#98A2B3] bg-[#F4F6FA] text-[#344054]';
     case 'in-review':
@@ -538,13 +602,6 @@ function WorkflowStatusIcon({ status }: { status: WorkflowStepVisualStatus }) {
         <svg className={iconClassName} fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
           <circle cx="12" cy="12" r="8" />
           <circle cx="12" cy="12" r="2.5" fill="currentColor" stroke="none" />
-        </svg>
-      );
-    case 'next':
-      return (
-        <svg className={iconClassName} fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
-          <path strokeLinecap="round" strokeLinejoin="round" d="M5 12h12" />
-          <path strokeLinecap="round" strokeLinejoin="round" d="M13 7l5 5-5 5" />
         </svg>
       );
     case 'draft':
@@ -996,6 +1053,19 @@ function buildConsolidatedKeywordsPayload(sourceArtifacts: Array<Record<string, 
   >();
   const duplicateExistingKeywords = new Set<string>();
 
+  const readKeywordValue = (value: unknown) => {
+    if (typeof value === 'string') {
+      return value;
+    }
+
+    if (value && typeof value === 'object') {
+      const keyword = (value as Record<string, unknown>).keyword;
+      return typeof keyword === 'string' ? keyword : null;
+    }
+
+    return null;
+  };
+
   for (const sourceArtifact of sourceArtifacts) {
     const stepKey = typeof sourceArtifact.stepKey === 'string' ? sourceArtifact.stepKey : null;
     const payload = sourceArtifact.payload;
@@ -1006,22 +1076,26 @@ function buildConsolidatedKeywordsPayload(sourceArtifacts: Array<Record<string, 
 
     const phase1Baseline = (payload as Record<string, unknown>).phase1Baseline;
 
-    if (!phase1Baseline || typeof phase1Baseline !== 'object') {
-      continue;
-    }
-
-    const existingKeywordRows = (phase1Baseline as Record<string, unknown>).existingKeywords;
+    const existingKeywordRows = Array.isArray((payload as Record<string, unknown>).existingKeywords)
+      ? (payload as Record<string, unknown>).existingKeywords
+      : Array.isArray((payload as Record<string, unknown>).dedupeList)
+        ? (payload as Record<string, unknown>).dedupeList
+        : phase1Baseline && typeof phase1Baseline === 'object' && Array.isArray((phase1Baseline as Record<string, unknown>).existingKeywords)
+          ? (phase1Baseline as Record<string, unknown>).existingKeywords
+          : [];
 
     if (!Array.isArray(existingKeywordRows)) {
       continue;
     }
 
     for (const existingKeyword of existingKeywordRows) {
-      if (typeof existingKeyword !== 'string') {
+      const keywordValue = readKeywordValue(existingKeyword);
+
+      if (!keywordValue) {
         continue;
       }
 
-      const normalizedKeyword = existingKeyword.trim().toLowerCase();
+      const normalizedKeyword = keywordValue.trim().toLowerCase();
 
       if (normalizedKeyword) {
         existingKeywords.add(normalizedKeyword);
@@ -1087,7 +1161,23 @@ function buildConsolidatedKeywordsPayload(sourceArtifacts: Array<Record<string, 
     const payloadRecord = payload as Record<string, unknown>;
 
     if (stepKey === 'method01-competitor-pages') {
-      const topPageCandidates = payloadRecord.topPageCandidates;
+      const candidateKeywords = Array.isArray(payloadRecord.candidateKeywords) ? payloadRecord.candidateKeywords : [];
+
+      for (const candidateKeyword of candidateKeywords) {
+        if (!candidateKeyword || typeof candidateKeyword !== 'object') {
+          continue;
+        }
+
+        const keywordRecord = candidateKeyword as Record<string, unknown>;
+        const keyword = typeof keywordRecord.keyword === 'string' ? keywordRecord.keyword : null;
+        addConsolidatedKeyword(keyword, stepKey, artifactId, null);
+      }
+
+      const topPageCandidates = Array.isArray(payloadRecord.topPageCandidates)
+        ? payloadRecord.topPageCandidates
+        : Array.isArray(payloadRecord.competitorPages)
+          ? payloadRecord.competitorPages
+          : [];
 
       if (!Array.isArray(topPageCandidates)) {
         continue;
@@ -1107,7 +1197,7 @@ function buildConsolidatedKeywordsPayload(sourceArtifacts: Array<Record<string, 
     }
 
     if (stepKey === 'method02-seed-expansion') {
-      const parentTopicCandidates = payloadRecord.parentTopicCandidates;
+      const parentTopicCandidates = Array.isArray(payloadRecord.parentTopicCandidates) ? payloadRecord.parentTopicCandidates : [];
 
       if (!Array.isArray(parentTopicCandidates)) {
         continue;
@@ -1122,6 +1212,65 @@ function buildConsolidatedKeywordsPayload(sourceArtifacts: Array<Record<string, 
         const clusterKeyword = typeof candidate.clusterKeyword === 'string' ? candidate.clusterKeyword : null;
         const parentTopic = typeof candidate.parentTopic === 'string' ? candidate.parentTopic : null;
         addConsolidatedKeyword(clusterKeyword, stepKey, artifactId, parentTopic);
+      }
+
+      const groupedParentTopics = Array.isArray(payloadRecord.parentTopicGroups) ? payloadRecord.parentTopicGroups : [];
+
+      for (const parentTopicGroup of groupedParentTopics) {
+        if (!parentTopicGroup || typeof parentTopicGroup !== 'object') {
+          continue;
+        }
+
+        const groupRecord = parentTopicGroup as Record<string, unknown>;
+        const parentTopic = typeof groupRecord.parentTopic === 'string' ? groupRecord.parentTopic : null;
+        const groupKeywords = Array.isArray(groupRecord.keywords) ? groupRecord.keywords : [];
+
+        for (const groupKeyword of groupKeywords) {
+          const keyword = readKeywordValue(groupKeyword);
+          addConsolidatedKeyword(keyword, stepKey, artifactId, parentTopic);
+        }
+      }
+
+      const expandedKeywordSources = [payloadRecord.matchingTerms, payloadRecord.relatedTerms];
+
+      for (const keywordSource of expandedKeywordSources) {
+        if (!Array.isArray(keywordSource)) {
+          continue;
+        }
+
+        for (const keywordEntry of keywordSource) {
+          if (!keywordEntry || typeof keywordEntry !== 'object') {
+            continue;
+          }
+
+          const keywordRecord = keywordEntry as Record<string, unknown>;
+          const keyword = typeof keywordRecord.keyword === 'string' ? keywordRecord.keyword : null;
+          const parentTopic = typeof keywordRecord.parentTopic === 'string' ? keywordRecord.parentTopic : null;
+          addConsolidatedKeyword(keyword, stepKey, artifactId, parentTopic);
+        }
+      }
+    }
+
+    if (stepKey === 'method03-content-gap-import') {
+      const gapKeywords = Array.isArray(payloadRecord.gapKeywords)
+        ? payloadRecord.gapKeywords
+        : Array.isArray(payloadRecord.importRows)
+          ? payloadRecord.importRows
+          : [];
+
+      if (!Array.isArray(gapKeywords)) {
+        continue;
+      }
+
+      for (const gapKw of gapKeywords) {
+        if (!gapKw || typeof gapKw !== 'object') {
+          continue;
+        }
+
+        const kw = gapKw as Record<string, unknown>;
+        const keyword = typeof kw.keyword === 'string' ? kw.keyword : null;
+        const parentTopic = typeof kw.parentTopic === 'string' ? kw.parentTopic : null;
+        addConsolidatedKeyword(keyword, stepKey, artifactId, parentTopic);
       }
     }
   }
@@ -1575,9 +1724,11 @@ function buildKeywordLedgerCsv(keywords: PersistedKeywordWorkflowKeyword[]) {
   return [headers.map((header) => toCsvValue(header)).join(','), ...rows].join('\n');
 }
 
-async function createArtifactAction(formData: FormData) {
-  'use server';
+function getWorkflowPath(projectId: string, workflowId: string) {
+  return `/dashboard/keywords/${projectId}/workflows/${workflowId}`;
+}
 
+async function persistArtifactFromFormData(formData: FormData) {
   const projectId = String(formData.get('projectId') ?? '').trim();
   const workflowId = String(formData.get('workflowId') ?? '').trim();
   const stepKey = String(formData.get('stepKey') ?? '').trim();
@@ -1664,13 +1815,39 @@ async function createArtifactAction(formData: FormData) {
     payload.phase1Baseline = phase1Baseline;
   }
 
+  if (stepKey === 'business-profile') {
+    const workflow = await getKeywordWorkflow(projectId, workflowId);
+    const latestBusinessProfileArtifact = (workflow.artifacts ?? []).find((artifact) => artifact.stepKey === 'business-profile');
+    const seedKeywords = extractBusinessProfileSeedKeywordsFromFindings(toLines(keyFindings));
+    const persistedSeedKeywords = seedKeywords.length > 0 ? seedKeywords : readBusinessProfileSeedKeywords(latestBusinessProfileArtifact);
+
+    if (persistedSeedKeywords.length > 0) {
+      payload.seedKeywords = persistedSeedKeywords;
+    }
+  }
+
   await createKeywordWorkflowArtifact(projectId, workflowId, {
     stepKey,
     summary: summaryPayload,
     payload,
   });
 
-  revalidatePath(`/dashboard/keywords/${projectId}/workflows/${workflowId}`);
+  return {
+    projectId,
+    workflowId,
+    stepKey,
+  };
+}
+
+async function approveArtifactAction(formData: FormData) {
+  'use server';
+
+  const { projectId, workflowId, stepKey } = await persistArtifactFromFormData(formData);
+  await approveKeywordWorkflowCheckpoint(projectId, workflowId, stepKey);
+
+  const workflowPath = getWorkflowPath(projectId, workflowId);
+  revalidatePath(workflowPath);
+  redirect(workflowPath);
 }
 
 async function generateBusinessProfileDraftAction(formData: FormData) {
@@ -1794,6 +1971,7 @@ async function generateBusinessProfileDraftAction(formData: FormData) {
     },
     payload: {
       headline: generatedDraft.headline || generatedDraft.brandIdentity || null,
+      seedKeywords: generatedDraft.seedKeywords,
       keyFindings: generatedFindings,
       recommendedAction:
         generatedDraft.recommendedAction ||
@@ -1812,6 +1990,49 @@ async function generateBusinessProfileDraftAction(formData: FormData) {
         geography: generatedDraft.geography,
         seedKeywords: generatedDraft.seedKeywords,
       },
+    },
+  });
+
+  revalidatePath(`/dashboard/keywords/${projectId}/workflows/${workflowId}`);
+}
+
+async function generateSeedKeywordsDraftAction(formData: FormData) {
+  'use server';
+
+  const projectId = String(formData.get('projectId') ?? '').trim();
+  const workflowId = String(formData.get('workflowId') ?? '').trim();
+  const stepKey = String(formData.get('stepKey') ?? '').trim();
+
+  if (!projectId || !workflowId) {
+    throw new Error('Project and workflow are required to generate Step 2 seed keywords.');
+  }
+
+  if (stepKey !== 'seed-keywords') {
+    throw new Error('Seed keyword generation is only available for the seed-keywords step.');
+  }
+
+  const workflow = await getKeywordWorkflow(projectId, workflowId);
+  const businessProfileArtifacts = (workflow.artifacts ?? []).filter((artifact) => artifact.stepKey === 'business-profile');
+  const source = getSeedKeywordStepSource(businessProfileArtifacts);
+  const draftValues = getSeedKeywordDraftValues(source);
+
+  if (!source || !draftValues) {
+    throw new Error('Generate or approve the business-profile step first so Step 2 can load the seed keywords for confirmation.');
+  }
+
+  await createKeywordWorkflowArtifact(projectId, workflowId, {
+    stepKey: 'seed-keywords',
+    summary: {
+      note: draftValues.summary,
+      sourceArtifactId: source.sourceArtifactId,
+      sourceStep: 'business-profile',
+    },
+    payload: {
+      headline: draftValues.headline,
+      keyFindings: toLines(draftValues.keyFindings),
+      recommendedAction: draftValues.recommendedAction,
+      evidence: toLines(draftValues.evidence),
+      openQuestions: toLines(draftValues.openQuestions),
     },
   });
 
@@ -1960,7 +2181,7 @@ async function createConsolidatedKeywordsArtifactAction(formData: FormData) {
   await createKeywordWorkflowArtifact(projectId, workflowId, {
     stepKey: 'consolidated-keywords',
     summary: {
-      note: `Auto-generated consolidated ledger with ${consolidatedKeywords.length} kept keywords from ${sourceArtifacts.length} approved workflow sources.`,
+      note: `Auto-generated consolidated ledger with ${consolidatedKeywords.length} kept keywords from ${sourceArtifacts.length} approved workflow checkpoints.`,
       sourceArtifactCount: sourceArtifacts.length,
       keptKeywordCount: consolidatedKeywords.length,
       duplicateExistingKeywordCount: duplicateExistingKeywords.length,
@@ -1972,13 +2193,11 @@ async function createConsolidatedKeywordsArtifactAction(formData: FormData) {
       sourceArtifacts: sourceArtifacts.map((artifact) => ({
         id: artifact.id,
         stepKey: artifact.stepKey,
-        version: artifact.version,
       })),
       recommendedAction: 'Review the kept keyword ledger and approve it before topical map generation.',
       evidence: sourceArtifacts.map((artifact) => {
         const stepKey = typeof artifact.stepKey === 'string' ? artifact.stepKey : 'unknown-step';
-        const version = typeof artifact.version === 'number' ? artifact.version : 'n/a';
-        return `${stepKey} | Version ${version}`;
+        return `${stepKey} | Approved checkpoint`;
       }),
       openQuestions: [],
     },
@@ -2021,13 +2240,12 @@ async function createTopicalMapArtifactAction(formData: FormData) {
         {
           id: sourceArtifact.id,
           stepKey: sourceArtifact.stepKey,
-          version: sourceArtifact.version,
         },
       ],
       recommendedAction:
         'Review the pillar and cluster structure, then approve the topical map before generating content briefs.',
       evidence: [
-        `${typeof sourceArtifact.stepKey === 'string' ? sourceArtifact.stepKey : 'unknown-step'} | Version ${typeof sourceArtifact.version === 'number' ? sourceArtifact.version : 'n/a'}`,
+        `${typeof sourceArtifact.stepKey === 'string' ? sourceArtifact.stepKey : 'unknown-step'} | Approved checkpoint`,
       ],
       openQuestions: [],
     },
@@ -2051,7 +2269,7 @@ async function createContentBriefArtifactAction(formData: FormData) {
   );
 
   if (!queueEntry) {
-    throw new Error('Select an approved topical-map queue entry before generating a content brief artifact.');
+    throw new Error('Select an approved topical-map queue entry before generating a content brief checkpoint.');
   }
 
   const keyword = typeof queueEntry.keyword === 'string' ? queueEntry.keyword.trim() : '';
@@ -2111,12 +2329,11 @@ async function createContentBriefArtifactAction(formData: FormData) {
         {
           id: sourceArtifact.id,
           stepKey: sourceArtifact.stepKey,
-          version: sourceArtifact.version,
         },
       ],
       recommendedAction: 'Review the brief inputs and approve them before article generation.',
       evidence: [
-        `${typeof sourceArtifact.stepKey === 'string' ? sourceArtifact.stepKey : 'unknown-step'} | Version ${typeof sourceArtifact.version === 'number' ? sourceArtifact.version : 'n/a'}`,
+        `${typeof sourceArtifact.stepKey === 'string' ? sourceArtifact.stepKey : 'unknown-step'} | Approved checkpoint`,
         `${keyword} | ${contentType} | ${suggestedUrlPath ?? 'no suggested URL'}`,
       ],
       openQuestions: [],
@@ -2190,13 +2407,12 @@ async function createContentArticleArtifactAction(formData: FormData) {
         {
           id: sourceArtifact.id,
           stepKey: sourceArtifact.stepKey,
-          version: sourceArtifact.version,
         },
       ],
       recommendedAction:
         'Review the article input and approve it before handing the draft into queue-backed generation or persistence.',
       evidence: [
-        `${typeof sourceArtifact.stepKey === 'string' ? sourceArtifact.stepKey : 'unknown-step'} | Version ${typeof sourceArtifact.version === 'number' ? sourceArtifact.version : 'n/a'}`,
+        `${typeof sourceArtifact.stepKey === 'string' ? sourceArtifact.stepKey : 'unknown-step'} | Approved checkpoint`,
         `${briefSource.targetKeyword} | ${resolvedTitle}`,
       ],
       openQuestions: [],
@@ -2281,15 +2497,23 @@ async function reviewCheckpointAction(formData: FormData) {
     throw new Error('Unsupported checkpoint decision.');
   }
 
-  revalidatePath(`/dashboard/keywords/${projectId}/workflows/${workflowId}`);
+  const workflowPath = getWorkflowPath(projectId, workflowId);
+  revalidatePath(workflowPath);
+
+  if (decision === 'APPROVED') {
+    redirect(workflowPath);
+  }
 }
 
 export default async function KeywordWorkflowPage({
   params,
+  searchParams,
 }: {
   params: Promise<{ projectId: string; workflowId: string }>;
+  searchParams: Promise<{ step?: string }>;
 }) {
   const { projectId, workflowId } = await params;
+  const { step: stepParam } = await searchParams;
   const project = await getKeywordProject(projectId);
   const workflow = await getKeywordWorkflow(projectId, workflowId);
   const latestArtifacts = getLatestArtifacts(workflow.artifacts);
@@ -2301,11 +2525,16 @@ export default async function KeywordWorkflowPage({
   const seedKeywordDraftValues = getSeedKeywordDraftValues(seedKeywordStepSource);
   const serpNicheMapStepSource = getSerpNicheMapStepSource(seedKeywordArtifacts);
   const serpNicheMapDraftValues = getSerpNicheMapDraftValues(serpNicheMapStepSource);
-  const currentStepCandidate = String(workflow.currentCheckpoint ?? workflow.currentStep ?? '').trim();
-  const currentStepKey = isWorkflowStepKey(currentStepCandidate) ? currentStepCandidate : null;
+  const workflowStepCandidate = String(workflow.currentCheckpoint ?? workflow.currentStep ?? '').trim();
+  const workflowStepKey = isWorkflowStepKey(workflowStepCandidate) ? workflowStepCandidate : null;
+  const stepParamTrimmed = stepParam?.trim() ?? '';
+  const stepParamKey = isWorkflowStepKey(stepParamTrimmed) ? stepParamTrimmed : null;
+  const editableStepKey: (typeof WORKFLOW_STEPS)[number] = workflowStepKey ?? WORKFLOW_STEPS[0];
+  const currentStepKey: (typeof WORKFLOW_STEPS)[number] = stepParamKey ?? editableStepKey;
+  const isReadOnlyStepView = currentStepKey !== editableStepKey;
   const latestArtifactsByStep = new Map(latestArtifacts.map((artifact) => [artifact.stepKey, artifact]));
-  const nextStepKey = currentStepKey
-    ? (WORKFLOW_STEPS[WORKFLOW_STEPS.indexOf(currentStepKey) + 1] ?? null)
+  const nextStepKey = editableStepKey
+    ? (WORKFLOW_STEPS[WORKFLOW_STEPS.indexOf(editableStepKey) + 1] ?? null)
     : (WORKFLOW_STEPS.find((stepKey) => latestArtifactsByStep.get(stepKey)?.status !== 'APPROVED') ?? null);
   const completedStepCount = WORKFLOW_STEPS.filter(
     (stepKey) => latestArtifactsByStep.get(stepKey)?.status === 'APPROVED',
@@ -2319,12 +2548,11 @@ export default async function KeywordWorkflowPage({
     statusLabel: string;
     badgeTone: string;
     markerTone: string;
-    artifactVersion: number | null;
   }> = WORKFLOW_STEPS.map((stepKey, index) => {
     const artifact = latestArtifactsByStep.get(stepKey);
     const visualStatus = getWorkflowStepVisualStatus({
       stepKey,
-      currentStepKey,
+      currentStepKey: editableStepKey,
       nextStepKey,
       artifactStatus: artifact?.status ?? null,
     });
@@ -2338,14 +2566,13 @@ export default async function KeywordWorkflowPage({
       statusLabel: getWorkflowStepStatusLabel(visualStatus),
       badgeTone: getWizardBadgeTone(visualStatus),
       markerTone: getWizardMarkerTone(visualStatus),
-      artifactVersion: artifact?.version ?? null,
     };
   });
   const latestSaveStateByStep = Object.fromEntries(
     latestArtifacts.map((artifact) => [
       artifact.stepKey,
       {
-        version: artifact.version,
+        saved: true,
         status: artifact.status,
       },
     ]),
@@ -2446,9 +2673,9 @@ export default async function KeywordWorkflowPage({
 
       <div className="mt-5 space-y-0">
         {wizardSteps.map((step, index) => (
-          <div
+          <Link
             key={step.stepKey}
-            tabIndex={0}
+            href={`/dashboard/keywords/${projectId}/workflows/${workflowId}?step=${step.stepKey}`}
             className="group relative -mx-2 flex gap-3 rounded-lg px-2 py-1 outline-none transition-colors hover:bg-[#FCFCFD] focus-visible:bg-[#FCFCFD] focus-visible:ring-2 focus-visible:ring-[#DA304F]/25"
           >
             <div className="flex flex-col items-center">
@@ -2475,81 +2702,152 @@ export default async function KeywordWorkflowPage({
                 >
                   <WorkflowStatusIcon status={step.visualStatus} />
                 </span>
-                {step.artifactVersion ? (
-                  <span className="shrink-0 rounded-full bg-[#F4F6FA] px-2 py-1 text-[10px] font-medium text-[#344054]">
-                    v{step.artifactVersion}
-                  </span>
-                ) : null}
               </div>
             </div>
-          </div>
+          </Link>
         ))}
       </div>
     </section>
   );
-  const collapsedWorkflowWizard = (
-    <section className="relative overflow-visible rounded-xl border border-[#E8EAF0] bg-white px-3 pb-4 pt-12 shadow-sm">
-      <div className="flex flex-col items-center">
-        {wizardSteps.map((step) => (
-          <div key={step.stepKey} className="flex flex-col items-center">
-            <div className="group relative">
-              <button
-                type="button"
-                aria-label={step.title}
-                className={`flex h-8 w-8 items-center justify-center rounded-full border text-xs font-semibold outline-none transition hover:scale-105 focus-visible:scale-105 focus-visible:ring-2 focus-visible:ring-[#DA304F]/25 ${step.markerTone}`}
-              >
-                {step.index + 1}
-              </button>
-              <div className="pointer-events-none absolute left-full top-1/2 z-20 ml-2 w-40 -translate-y-1/2 rounded-lg border border-[#E8EAF0] bg-white px-3 py-2 text-left text-[11px] font-medium leading-4 text-[#111827] opacity-0 shadow-lg transition-opacity duration-150 group-hover:opacity-100 group-focus-within:opacity-100">
-                {step.title}
-              </div>
-            </div>
-            {step.index < wizardSteps.length - 1 ? (
-              <div className={`min-h-[22px] w-px ${step.visualStatus === 'complete' ? 'bg-[#12B76A]' : 'bg-[#E4E7EC]'}`} />
-            ) : null}
-          </div>
-        ))}
-      </div>
-    </section>
-  );
+  const collapsedWorkflowWizard = <CollapsedWorkflowRail steps={wizardSteps} projectId={projectId} workflowId={workflowId} />;
 
   const currentStepWorkspaceTitle = currentStepKey
     ? `${formatWorkflowStepLabel(currentStepKey)} workspace`
     : 'Current step workspace';
-  const canAutoGenerateCurrentStep = [
+  const currentEditableStepLabel = formatWorkflowStepLabel(editableStepKey);
+  const businessProfileGenerateFormId = 'business-profile-generate-form';
+  const seedKeywordsGenerateFormId = 'seed-keywords-generate-form';
+  const showBusinessProfileWorkspace = currentStepKey === 'business-profile';
+  const showSeedKeywordsWorkspace = currentStepKey === 'seed-keywords';
+  const canAutoGenerateCurrentStep = !isReadOnlyStepView && [
     'serp-niche-map',
     'competitor-buckets',
     'competitor-metrics',
     'phase1-baseline',
     'method01-competitor-pages',
     'method02-seed-expansion',
+    'method03-content-gap-import',
   ].includes(currentStepKey ?? '');
-  const showCompetitorWorkspace = currentStepKey === 'competitor-buckets' || currentStepKey === 'competitor-metrics';
+  const lockedStepHeaderIndicator = isReadOnlyStepView ? (
+    <div className="flex shrink-0 flex-col items-end gap-2">
+      <span
+        className="inline-flex h-10 w-10 items-center justify-center rounded-full border border-[#E4E7EC] bg-[#FCFCFD] text-[#667085]"
+        aria-label={`Locked step. Only ${currentEditableStepLabel} can be edited or regenerated right now.`}
+        title={`Locked step. Only ${currentEditableStepLabel} can be edited or regenerated right now.`}
+      >
+        <svg className="h-4 w-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" aria-hidden="true">
+          <path strokeLinecap="round" strokeLinejoin="round" d="M16.5 10.5V8a4.5 4.5 0 1 0-9 0v2.5" />
+          <rect x="5.25" y="10.5" width="13.5" height="10.5" rx="2.25" strokeLinecap="round" strokeLinejoin="round" />
+          <path strokeLinecap="round" strokeLinejoin="round" d="M12 14.25v3" />
+        </svg>
+      </span>
+
+      {activeArtifact?.status ? (
+        <span className="rounded-full bg-[#EEF4FF] px-3 py-1 text-xs font-medium text-[#3538CD]">
+          {activeArtifact.status.replaceAll('_', ' ')}
+        </span>
+      ) : null}
+    </div>
+  ) : null;
+  const autoGenerateHeaderControl = canAutoGenerateCurrentStep ? (
+    <GenerateStepButton projectId={projectId} workflowId={workflowId} stepKey={currentStepKey ?? ''} variant="inline" />
+  ) : null;
+  const businessProfileHeaderControl = !isReadOnlyStepView && showBusinessProfileWorkspace ? (
+    <button
+      type="submit"
+      form={businessProfileGenerateFormId}
+      formNoValidate
+      className="shrink-0 rounded-lg bg-[#6366F1] px-4 py-2 text-sm font-medium text-white shadow-sm transition-colors hover:bg-[#4F46E5]"
+    >
+      Generate
+    </button>
+  ) : null;
+  const seedKeywordsHeaderControl = !isReadOnlyStepView && showSeedKeywordsWorkspace ? (
+    <button
+      type="submit"
+      form={seedKeywordsGenerateFormId}
+      formNoValidate
+      disabled={!seedKeywordStepSource}
+      title={
+        seedKeywordStepSource
+          ? 'Generate the Step 2 seed-keywords draft from the latest business-profile checkpoint.'
+          : 'Generate or approve the business-profile step first to enable Step 2 generation.'
+      }
+      className="shrink-0 rounded-lg bg-[#6366F1] px-4 py-2 text-sm font-medium text-white shadow-sm transition-colors hover:bg-[#4F46E5] disabled:cursor-not-allowed disabled:bg-[#98A2B3]"
+    >
+      Generate
+    </button>
+  ) : null;
+  const businessProfileHeaderDisclosure = !isReadOnlyStepView && showBusinessProfileWorkspace ? (
+    <form id={businessProfileGenerateFormId} action={generateBusinessProfileDraftAction} className="mt-4">
+      <input type="hidden" name="projectId" value={projectId} />
+      <input type="hidden" name="workflowId" value={workflowId} />
+      <input type="hidden" name="stepKey" value="business-profile" />
+      <input type="hidden" name="websiteUrl" value={project.websiteUrl} />
+
+      <CollapsiblePanel
+        title="Optional supporting content"
+        className="rounded-lg border border-[#E4E7EC] bg-[#FCFCFD] p-4"
+      >
+        <p className="mt-2 text-sm text-[#667085]">
+          Add extra homepage or service-page copy here when you want the draft generator to use more context than the automatic website fetch alone.
+        </p>
+        <p className="mt-2 text-xs text-[#667085]">Source website: {project.websiteUrl}</p>
+
+        <div className="mt-4">
+          <label className="block text-xs font-medium uppercase tracking-[0.08em] text-[#667085]" htmlFor="businessProfileContext">
+            Supporting content
+          </label>
+          <textarea
+            id="businessProfileContext"
+            name="businessProfileContext"
+            rows={6}
+            placeholder="Paste homepage or service-page content here if you want to supplement the automatic website fetch."
+            className="mt-2 w-full rounded-lg border border-[#D0D5DD] bg-white px-3 py-2 text-sm text-[#111827]"
+          />
+          <p className="mt-2 text-xs text-[#667085]">
+            Use this when the homepage alone is thin or when the main service page has the details you want the generated draft to reflect.
+          </p>
+        </div>
+      </CollapsiblePanel>
+    </form>
+  ) : null;
+  const seedKeywordsHeaderGenerationForm = !isReadOnlyStepView && showSeedKeywordsWorkspace ? (
+    <form id={seedKeywordsGenerateFormId} action={generateSeedKeywordsDraftAction}>
+      <input type="hidden" name="projectId" value={projectId} />
+      <input type="hidden" name="workflowId" value={workflowId} />
+      <input type="hidden" name="stepKey" value="seed-keywords" />
+    </form>
+  ) : null;
+  const showCompetitorBucketsWorkspace = currentStepKey === 'competitor-buckets';
+  const showCompetitorMetricsWorkspace = currentStepKey === 'competitor-metrics';
   const showMethod01Workspace = currentStepKey === 'method01-competitor-pages';
   const showMethod02Workspace = currentStepKey === 'method02-seed-expansion';
+  const showMethod03Workspace = currentStepKey === 'method03-content-gap-import';
   const showConsolidatedKeywordsWorkspace = currentStepKey === 'consolidated-keywords';
   const showTopicalMapWorkspace = currentStepKey === 'topical-map';
   const showContentBriefWorkspace = currentStepKey === 'content-brief';
   const showContentArticleWorkspace = currentStepKey === 'content-article';
   const showGenericArtifactWorkspace =
-    !showCompetitorWorkspace &&
+    !showCompetitorBucketsWorkspace &&
+    !showCompetitorMetricsWorkspace &&
     !showMethod01Workspace &&
     !showMethod02Workspace &&
+    !showMethod03Workspace &&
     !showConsolidatedKeywordsWorkspace &&
     !showTopicalMapWorkspace &&
     !showContentBriefWorkspace &&
     !showContentArticleWorkspace;
+  const isGenericEditableView = showGenericArtifactWorkspace && !isReadOnlyStepView;
 
   const currentStepArtifactForm = (
     <WorkflowArtifactForm
-      action={createArtifactAction}
-      generateBusinessProfileAction={generateBusinessProfileDraftAction}
+      action={approveArtifactAction}
       projectId={projectId}
-      projectWebsiteUrl={project.websiteUrl}
       workflowId={workflowId}
       defaultStep={currentStepKey ?? 'business-profile'}
       lockedStep
-      latestSaveStateByStep={latestSaveStateByStep}
+      readOnly={isReadOnlyStepView}
       seedKeywordStepSource={seedKeywordStepSource}
       initialValuesByStep={
         businessProfileDraftValues || seedKeywordDraftValues || serpNicheMapDraftValues
@@ -2562,46 +2860,83 @@ export default async function KeywordWorkflowPage({
       }
     />
   );
+  const usesArtifactFormApprovalFlow = !isReadOnlyStepView && showGenericArtifactWorkspace;
+  const activeArtifactPayload = getRenderableArtifactPayload(activeArtifact);
+  const showsInlineCheckpointOutput =
+    isReadOnlyStepView ||
+    isGenericEditableView ||
+    showCompetitorBucketsWorkspace ||
+    showCompetitorMetricsWorkspace ||
+    showMethod01Workspace ||
+    showMethod02Workspace ||
+    showMethod03Workspace ||
+    showContentBriefWorkspace ||
+    showContentArticleWorkspace;
+
+  const activeJobForCurrentStep = currentStepKey ? (workflow.activeJobs?.[currentStepKey] ?? null) : null;
 
   const activeCheckpointReview = (
-    <div className="mt-6 rounded-xl border border-[#E4E7EC] bg-[#FCFCFD] p-5">
-      <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
-        <div>
-          <h3 className="text-base font-semibold text-[#111827]">Approve current checkpoint</h3>
-          <p className="mt-1 text-sm text-[#667085]">
-            Approval is the next step after saving the active artifact version. Review the latest saved output here before continuing the workflow.
-          </p>
-        </div>
-
-        {activeArtifact ? (
-          <div className="flex flex-wrap gap-2">
-            <span className="rounded-full bg-white px-3 py-1 text-xs font-medium text-[#344054]">
-              {isWorkflowStepKey(activeArtifact.stepKey) ? formatWorkflowStepLabel(activeArtifact.stepKey) : activeArtifact.stepKey}
-            </span>
-            <span className="rounded-full bg-white px-3 py-1 text-xs font-medium text-[#344054]">
-              Version {activeArtifact.version}
-            </span>
-            <span className="rounded-full bg-[#EEF4FF] px-3 py-1 text-xs font-medium text-[#3538CD]">
-              {activeArtifact.status.replaceAll('_', ' ')}
-            </span>
+    <div className={isReadOnlyStepView ? 'mt-6 space-y-4' : 'mt-6 rounded-xl border border-[#E4E7EC] bg-[#FCFCFD] p-5'}>
+      {!isReadOnlyStepView ? (
+        <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
+          <div>
+            <h3 className="text-base font-semibold text-[#111827]">
+              {isGenericEditableView ? 'Output' : usesArtifactFormApprovalFlow ? 'Latest checkpoint preview' : 'Approve current checkpoint'}
+            </h3>
+            <p className="mt-1 text-sm text-[#667085]">
+              {isGenericEditableView
+                ? 'Review the latest saved checkpoint first. Expand Input only when you need to edit the step or add more generation context.'
+                : usesArtifactFormApprovalFlow
+                ? 'Approving from the step form saves the current edits and moves the workflow to the next step. Review the latest persisted output here if you need a reference.'
+                : 'Review the latest persisted output here before approving the workflow step and continuing.'}
+            </p>
           </div>
-        ) : null}
-      </div>
+
+          {activeArtifact ? (
+            <div className="flex flex-wrap gap-2">
+              <span className="rounded-full bg-white px-3 py-1 text-xs font-medium text-[#344054]">
+                {isWorkflowStepKey(activeArtifact.stepKey) ? formatWorkflowStepLabel(activeArtifact.stepKey) : activeArtifact.stepKey}
+              </span>
+              <span className="rounded-full bg-[#EEF4FF] px-3 py-1 text-xs font-medium text-[#3538CD]">
+                {activeArtifact.status.replaceAll('_', ' ')}
+              </span>
+            </div>
+          ) : null}
+        </div>
+      ) : null}
 
       {!activeArtifact ? (
-        <div className="mt-4 rounded-lg border border-[#E4E7EC] bg-white p-4">
-          <p className="text-sm text-[#667085]">Save an artifact version for the current step before requesting approval.</p>
+        <div className={isReadOnlyStepView ? 'rounded-lg border border-[#E4E7EC] bg-white p-4' : 'mt-4 rounded-lg border border-[#E4E7EC] bg-white p-4'}>
+          {!isReadOnlyStepView && activeJobForCurrentStep ? (
+            <div className="flex items-center gap-3">
+              <svg className="h-4 w-4 shrink-0 animate-spin text-[#667085]" fill="none" viewBox="0 0 24 24">
+                <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" />
+                <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z" />
+              </svg>
+              <p className="text-sm text-[#667085]">Please wait while the data from the previous steps loads.</p>
+            </div>
+          ) : (
+            <p className="text-sm text-[#667085]">
+              {isReadOnlyStepView
+                ? 'No checkpoint has been saved for this step yet.'
+                : isGenericEditableView
+                  ? 'No checkpoint has been saved for this step yet. Use Generate in the header or expand Input below to create the first checkpoint.'
+                : usesArtifactFormApprovalFlow
+                  ? 'Approve the step from the form above to persist the current edits and continue.'
+                  : 'Generate or update a checkpoint for the current step before approving it.'}
+            </p>
+          )}
         </div>
       ) : (
         <>
           {readArtifactText(activeArtifact.summary) ? (
-            <div className="mt-4 rounded-lg border border-[#E4E7EC] bg-white p-4">
+            <div className={isReadOnlyStepView ? 'rounded-lg border border-[#E4E7EC] bg-white p-4' : 'mt-4 rounded-lg border border-[#E4E7EC] bg-white p-4'}>
               <p className="text-xs font-medium uppercase tracking-[0.08em] text-[#667085]">Latest summary</p>
               <p className="mt-2 whitespace-pre-wrap text-sm text-[#111827]">{readArtifactText(activeArtifact.summary)}</p>
             </div>
           ) : null}
 
-          {activeArtifact.approvals?.[0] ? (
+          {activeArtifact.approvals?.[0] && !isReadOnlyStepView ? (
             <div className="mt-4 rounded-lg border border-[#E4E7EC] bg-white p-4">
               <p className="text-xs font-medium uppercase tracking-[0.08em] text-[#667085]">Latest decision</p>
               <p className="mt-2 text-sm font-medium text-[#111827]">{activeArtifact.approvals[0].decision.replaceAll('_', ' ')}</p>
@@ -2611,365 +2946,455 @@ export default async function KeywordWorkflowPage({
             </div>
           ) : null}
 
-          {hasArtifactPayloadContent(activeArtifact.payload) ? (
-            <details className="mt-4 rounded-lg border border-[#E4E7EC] bg-white p-4">
-              <summary className="cursor-pointer text-sm font-medium text-[#111827]">Review latest artifact details</summary>
-              <div className="mt-3">
-                <ArtifactPayloadView payload={activeArtifact.payload} />
+          {!isReadOnlyStepView && (!usesArtifactFormApprovalFlow || isGenericEditableView) ? (
+            <form action={reviewCheckpointAction} className="mt-4 grid gap-3 rounded-lg border border-[#E4E7EC] bg-white p-4">
+              <input type="hidden" name="projectId" value={projectId} />
+              <input type="hidden" name="workflowId" value={workflowId} />
+              <input type="hidden" name="stepKey" value={activeArtifact.stepKey} />
+
+              <div>
+                <label
+                  className="block text-xs font-medium uppercase tracking-[0.08em] text-[#667085]"
+                  htmlFor={`active-notes-${activeArtifact.id}`}
+                >
+                  Review note
+                </label>
+                <textarea
+                  id={`active-notes-${activeArtifact.id}`}
+                  name="notes"
+                  rows={3}
+                  placeholder="Optional checkpoint note"
+                  className="mt-2 w-full rounded-lg border border-[#D0D5DD] bg-white px-3 py-2 text-sm text-[#111827]"
+                />
               </div>
-            </details>
+
+              <div className="flex flex-wrap gap-2">
+                <button
+                  type="submit"
+                  name="decision"
+                  value="APPROVED"
+                  className="rounded-lg bg-[#101828] px-4 py-2 text-sm font-medium text-white transition hover:bg-[#1D2939]"
+                >
+                  Approve
+                </button>
+                <button
+                  type="submit"
+                  name="decision"
+                  value="REVISION_REQUESTED"
+                  className="rounded-lg border border-[#D0D5DD] bg-white px-4 py-2 text-sm font-medium text-[#344054] transition hover:bg-[#F9FAFB]"
+                >
+                  Request revision
+                </button>
+                <button
+                  type="submit"
+                  name="decision"
+                  value="REJECTED"
+                  className="rounded-lg border border-[#F04438] bg-white px-4 py-2 text-sm font-medium text-[#B42318] transition hover:bg-[#FFF5F5]"
+                >
+                  Reject
+                </button>
+              </div>
+            </form>
           ) : null}
 
-          <form action={reviewCheckpointAction} className="mt-4 grid gap-3 rounded-lg border border-[#E4E7EC] bg-white p-4">
-            <input type="hidden" name="projectId" value={projectId} />
-            <input type="hidden" name="workflowId" value={workflowId} />
-            <input type="hidden" name="stepKey" value={activeArtifact.stepKey} />
-
-            <div>
-              <label
-                className="block text-xs font-medium uppercase tracking-[0.08em] text-[#667085]"
-                htmlFor={`active-notes-${activeArtifact.id}`}
-              >
-                Review note
-              </label>
-              <textarea
-                id={`active-notes-${activeArtifact.id}`}
-                name="notes"
-                rows={3}
-                placeholder="Optional checkpoint note"
-                className="mt-2 w-full rounded-lg border border-[#D0D5DD] bg-white px-3 py-2 text-sm text-[#111827]"
-              />
-            </div>
-
-            <div className="flex flex-wrap gap-2">
-              <button
-                type="submit"
-                name="decision"
-                value="APPROVED"
-                className="rounded-lg bg-[#101828] px-4 py-2 text-sm font-medium text-white transition hover:bg-[#1D2939]"
-              >
-                Approve
-              </button>
-              <button
-                type="submit"
-                name="decision"
-                value="REVISION_REQUESTED"
-                className="rounded-lg border border-[#D0D5DD] bg-white px-4 py-2 text-sm font-medium text-[#344054] transition hover:bg-[#F9FAFB]"
-              >
-                Request revision
-              </button>
-              <button
-                type="submit"
-                name="decision"
-                value="REJECTED"
-                className="rounded-lg border border-[#F04438] bg-white px-4 py-2 text-sm font-medium text-[#B42318] transition hover:bg-[#FFF5F5]"
-              >
-                Reject
-              </button>
-            </div>
-          </form>
+          {hasArtifactPayloadContent(activeArtifactPayload) ? (
+            showsInlineCheckpointOutput ? (
+              <div className="rounded-lg border border-[#E4E7EC] bg-white p-4">
+                <p className="text-xs font-medium uppercase tracking-[0.08em] text-[#667085]">
+                  {isReadOnlyStepView ? 'Approved checkpoint details' : 'Latest checkpoint output'}
+                </p>
+                <div className="mt-3">
+                  <ArtifactPayloadView payload={activeArtifactPayload} />
+                </div>
+              </div>
+            ) : (
+              <details className="mt-4 rounded-lg border border-[#E4E7EC] bg-white p-4">
+                <summary className="cursor-pointer text-sm font-medium text-[#111827]">Review latest checkpoint details</summary>
+                <div className="mt-3">
+                  <ArtifactPayloadView payload={activeArtifactPayload} />
+                </div>
+              </details>
+            )
+          ) : null}
         </>
       )}
     </div>
   );
 
+  const renderCollapsedInputPanel = ({
+    description,
+    children,
+  }: {
+    description: string;
+    children: ReactNode;
+  }) =>
+    isReadOnlyStepView ? null : (
+      <CollapsiblePanel
+        title="Input"
+        className="mt-4 rounded-xl border border-[#E4E7EC] bg-[#FCFCFD] p-5"
+      >
+        <p className="mt-2 text-sm text-[#667085]">{description}</p>
+        <div className="mt-4 space-y-4">{children}</div>
+      </CollapsiblePanel>
+    );
+
   const activeWorkspace = (() => {
     if (showGenericArtifactWorkspace) {
       return (
         <section className="rounded-xl border border-[#E8EAF0] bg-white p-6 shadow-sm">
-          <div className="max-w-2xl">
-            <h2 className="text-lg font-semibold text-[#111827]">{currentStepWorkspaceTitle}</h2>
-            <p className="mt-1 text-sm text-[#667085]">
-              Draft or revise the current step here, then review and approve the latest saved artifact in the same workspace before moving deeper into the workflow.
-            </p>
+          <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
+            <div className="max-w-2xl">
+              <h2 className="text-lg font-semibold text-[#111827]">{currentStepWorkspaceTitle}</h2>
+              <p className="mt-1 text-sm text-[#667085]">
+                Review the saved checkpoint output first. Expand Input only when you need to edit the step or add more source context.
+              </p>
+            </div>
+
+            {lockedStepHeaderIndicator ?? businessProfileHeaderControl ?? seedKeywordsHeaderControl ?? autoGenerateHeaderControl}
           </div>
 
-          {canAutoGenerateCurrentStep ? (
-            <div className="mb-4 mt-4">
-              <GenerateStepButton projectId={projectId} workflowId={workflowId} stepKey={currentStepKey ?? ''} />
-            </div>
-          ) : null}
-
-          {currentStepArtifactForm}
+          {seedKeywordsHeaderGenerationForm}
           {activeCheckpointReview}
+
+          {!isReadOnlyStepView ? (
+            <CollapsiblePanel
+              title="Input"
+              defaultOpen={!activeArtifact}
+              className="mt-4 rounded-xl border border-[#E4E7EC] bg-[#FCFCFD] p-5"
+            >
+              <p className="mt-2 text-sm text-[#667085]">
+                Use this panel when you need to revise the current checkpoint fields, add optional source material, or approve changes after editing the input.
+              </p>
+              {businessProfileHeaderDisclosure}
+              {currentStepArtifactForm}
+            </CollapsiblePanel>
+          ) : null}
         </section>
       );
     }
 
-    if (showCompetitorWorkspace) {
+    if (showCompetitorBucketsWorkspace) {
       return (
         <section className="space-y-4 rounded-xl border border-[#E8EAF0] bg-white p-6 shadow-sm">
-          <div className="max-w-2xl">
-            <h2 className="text-lg font-semibold text-[#111827]">Competitor workspace</h2>
-            <p className="mt-1 text-sm text-[#667085]">
-              Capture approved direct and organic competitors, then attach the comparable metrics sheet used by the strategist workflow.
-            </p>
-          </div>
-
-          <form action={createCompetitorAction} className="grid gap-4 rounded-lg border border-[#E4E7EC] bg-[#FCFCFD] p-4">
-            <input type="hidden" name="projectId" value={projectId} />
-            <input type="hidden" name="workflowId" value={workflowId} />
-
-            <div className="grid gap-4 sm:grid-cols-3">
-              <div className="sm:col-span-3">
-                <label className="block text-xs font-medium uppercase tracking-[0.08em] text-[#667085]" htmlFor="competitor-domain">
-                  Competitor domain
-                </label>
-                <input
-                  id="competitor-domain"
-                  name="domain"
-                  type="text"
-                  placeholder="example.com"
-                  className="mt-2 w-full rounded-lg border border-[#D0D5DD] bg-white px-3 py-2 text-sm text-[#111827]"
-                  required
-                />
-              </div>
-
-              <div>
-                <label className="block text-xs font-medium uppercase tracking-[0.08em] text-[#667085]" htmlFor="competitor-bucket">
-                  Bucket
-                </label>
-                <select
-                  id="competitor-bucket"
-                  name="bucket"
-                  defaultValue="DIRECT"
-                  className="mt-2 w-full rounded-lg border border-[#D0D5DD] bg-white px-3 py-2 text-sm text-[#111827]"
-                >
-                  <option value="DIRECT">Direct</option>
-                  <option value="ORGANIC">Organic</option>
-                  <option value="UNCLASSIFIED">Unclassified</option>
-                </select>
-              </div>
-
-              <div>
-                <label className="block text-xs font-medium uppercase tracking-[0.08em] text-[#667085]" htmlFor="competitor-status">
-                  Status
-                </label>
-                <select
-                  id="competitor-status"
-                  name="status"
-                  defaultValue="APPROVED"
-                  className="mt-2 w-full rounded-lg border border-[#D0D5DD] bg-white px-3 py-2 text-sm text-[#111827]"
-                >
-                  <option value="APPROVED">Approved</option>
-                  <option value="CANDIDATE">Candidate</option>
-                  <option value="REJECTED">Rejected</option>
-                </select>
-              </div>
-            </div>
-
-            <div>
-              <label className="block text-xs font-medium uppercase tracking-[0.08em] text-[#667085]" htmlFor="competitor-rationale">
-                Why this competitor belongs in the workflow
-              </label>
-              <textarea
-                id="competitor-rationale"
-                name="rationale"
-                rows={3}
-                placeholder="Example: same commercial offer set in AE with repeated SERP overlap on high-intent categories"
-                className="mt-2 w-full rounded-lg border border-[#D0D5DD] bg-white px-3 py-2 text-sm text-[#111827]"
-              />
-            </div>
-
-            <div>
-              <label className="block text-xs font-medium uppercase tracking-[0.08em] text-[#667085]" htmlFor="competitor-notes">
-                Notes
-              </label>
-              <textarea
-                id="competitor-notes"
-                name="notes"
-                rows={2}
-                placeholder="Optional: exclusions, edge cases, or follow-up notes"
-                className="mt-2 w-full rounded-lg border border-[#D0D5DD] bg-white px-3 py-2 text-sm text-[#111827]"
-              />
-            </div>
-
-            <div>
-              <button
-                type="submit"
-                className="rounded-lg bg-[#111827] px-4 py-2 text-sm font-medium text-white transition hover:bg-[#1F2937]"
-              >
-                Save competitor
-              </button>
-            </div>
-          </form>
-
-          {workflow.competitors && workflow.competitors.length > 0 ? (
-            <div className="grid gap-4">
-              {workflow.competitors.map((competitor) => (
-                <article key={competitor.id} className="rounded-lg border border-[#E4E7EC] bg-[#FCFCFD] p-4">
-                  <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
-                    <div>
-                      <h3 className="text-base font-semibold text-[#111827]">{competitor.domain}</h3>
-                      {competitor.rationale ? <p className="mt-1 text-sm text-[#667085]">{competitor.rationale}</p> : null}
-                      {competitor.notes ? <p className="mt-2 text-sm text-[#667085]">{competitor.notes}</p> : null}
-                    </div>
-
-                    <div className="flex flex-wrap gap-2">
-                      <span className="rounded-full bg-[#EEF4FF] px-3 py-1 text-xs font-medium text-[#3538CD]">{competitor.bucket}</span>
-                      <span className="rounded-full bg-[#F4F6FA] px-3 py-1 text-xs font-medium text-[#344054]">{competitor.status}</span>
-                    </div>
-                  </div>
-
-                  <form action={saveCompetitorMetricsAction} className="mt-4 grid gap-4 rounded-lg border border-[#D0D5DD] bg-white p-4">
-                    <input type="hidden" name="projectId" value={projectId} />
-                    <input type="hidden" name="workflowId" value={workflowId} />
-                    <input type="hidden" name="competitorId" value={competitor.id} />
-
-                    <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
-                      <div>
-                        <p className="text-sm font-medium text-[#111827]">Comparable metrics</p>
-                        <p className="mt-1 text-xs text-[#667085]">
-                          Capture the latest DR, traffic, keyword footprint, backlinks, and top pages for this competitor.
-                        </p>
-                      </div>
-                      {competitor.metrics ? (
-                        <span className="rounded-full bg-[#F9FAFB] px-3 py-1 text-xs font-medium text-[#667085]">
-                          Captured {new Date(competitor.metrics.capturedAt).toLocaleDateString()}
-                        </span>
-                      ) : null}
-                    </div>
-
-                    <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
-                      <div>
-                        <label className="block text-xs font-medium uppercase tracking-[0.08em] text-[#667085]" htmlFor={`dr-${competitor.id}`}>
-                          Domain rating
-                        </label>
-                        <input
-                          id={`dr-${competitor.id}`}
-                          name="domainRating"
-                          type="number"
-                          min="0"
-                          defaultValue={competitor.metrics?.domainRating ?? ''}
-                          className="mt-2 w-full rounded-lg border border-[#D0D5DD] bg-white px-3 py-2 text-sm text-[#111827]"
-                        />
-                      </div>
-
-                      <div>
-                        <label className="block text-xs font-medium uppercase tracking-[0.08em] text-[#667085]" htmlFor={`traffic-${competitor.id}`}>
-                          Organic traffic
-                        </label>
-                        <input
-                          id={`traffic-${competitor.id}`}
-                          name="organicTraffic"
-                          type="number"
-                          min="0"
-                          defaultValue={competitor.metrics?.organicTraffic ?? ''}
-                          className="mt-2 w-full rounded-lg border border-[#D0D5DD] bg-white px-3 py-2 text-sm text-[#111827]"
-                        />
-                      </div>
-
-                      <div>
-                        <label className="block text-xs font-medium uppercase tracking-[0.08em] text-[#667085]" htmlFor={`keywords-${competitor.id}`}>
-                          Organic keywords
-                        </label>
-                        <input
-                          id={`keywords-${competitor.id}`}
-                          name="organicKeywords"
-                          type="number"
-                          min="0"
-                          defaultValue={competitor.metrics?.organicKeywords ?? ''}
-                          className="mt-2 w-full rounded-lg border border-[#D0D5DD] bg-white px-3 py-2 text-sm text-[#111827]"
-                        />
-                      </div>
-
-                      <div>
-                        <label className="block text-xs font-medium uppercase tracking-[0.08em] text-[#667085]" htmlFor={`ref-domains-${competitor.id}`}>
-                          Referring domains
-                        </label>
-                        <input
-                          id={`ref-domains-${competitor.id}`}
-                          name="referringDomains"
-                          type="number"
-                          min="0"
-                          defaultValue={competitor.metrics?.referringDomains ?? ''}
-                          className="mt-2 w-full rounded-lg border border-[#D0D5DD] bg-white px-3 py-2 text-sm text-[#111827]"
-                        />
-                      </div>
-
-                      <div>
-                        <label className="block text-xs font-medium uppercase tracking-[0.08em] text-[#667085]" htmlFor={`backlinks-${competitor.id}`}>
-                          Backlinks
-                        </label>
-                        <input
-                          id={`backlinks-${competitor.id}`}
-                          name="backlinks"
-                          type="number"
-                          min="0"
-                          defaultValue={competitor.metrics?.backlinks ?? ''}
-                          className="mt-2 w-full rounded-lg border border-[#D0D5DD] bg-white px-3 py-2 text-sm text-[#111827]"
-                        />
-                      </div>
-
-                      <div>
-                        <label className="block text-xs font-medium uppercase tracking-[0.08em] text-[#667085]" htmlFor={`captured-at-${competitor.id}`}>
-                          Captured at
-                        </label>
-                        <input
-                          id={`captured-at-${competitor.id}`}
-                          name="capturedAt"
-                          type="date"
-                          defaultValue={competitor.metrics?.capturedAt ? competitor.metrics.capturedAt.slice(0, 10) : ''}
-                          className="mt-2 w-full rounded-lg border border-[#D0D5DD] bg-white px-3 py-2 text-sm text-[#111827]"
-                        />
-                      </div>
-                    </div>
-
-                    <div>
-                      <label className="block text-xs font-medium uppercase tracking-[0.08em] text-[#667085]" htmlFor={`top-pages-${competitor.id}`}>
-                        Top pages
-                      </label>
-                      <textarea
-                        id={`top-pages-${competitor.id}`}
-                        name="topPages"
-                        rows={5}
-                        defaultValue={formatCompetitorTopPages(competitor.metrics?.topPages)}
-                        placeholder="One page per line: https://example.com/page | 1200 | best keyword | optional note"
-                        className="mt-2 w-full rounded-lg border border-[#D0D5DD] bg-white px-3 py-2 text-sm text-[#111827]"
-                      />
-                    </div>
-
-                    <div className="flex flex-wrap gap-2">
-                      <button
-                        type="submit"
-                        className="rounded-lg bg-[#111827] px-4 py-2 text-sm font-medium text-white transition hover:bg-[#1F2937]"
-                      >
-                        Save metrics
-                      </button>
-                      {competitor.metrics ? (
-                        <span className="rounded-full bg-[#F9FAFB] px-3 py-2 text-xs font-medium text-[#667085]">
-                          DR {competitor.metrics.domainRating ?? 'n/a'} · Traffic {competitor.metrics.organicTraffic ?? 'n/a'}
-                        </span>
-                      ) : null}
-                    </div>
-                  </form>
-                </article>
-              ))}
-            </div>
-          ) : (
-            <div className="rounded-lg border border-[#E4E7EC] bg-[#FCFCFD] p-8 text-center">
-              <p className="text-sm text-[#9CA3AF]">No workflow competitors saved yet.</p>
-            </div>
-          )}
-
-          <div className="rounded-lg border border-[#E4E7EC] bg-[#FCFCFD] p-4">
+          <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
             <div className="max-w-2xl">
-              <h3 className="text-base font-semibold text-[#111827]">Checkpoint artifact</h3>
+              <h2 className="text-lg font-semibold text-[#111827]">Competitor buckets</h2>
               <p className="mt-1 text-sm text-[#667085]">
-                Capture the current competitor checkpoint artifact after updating the workspace so the reviewer can approve the step in the same view.
+                Identify direct and organic competitors from SERP and Ahrefs, then assign each to a bucket for downstream research.
               </p>
             </div>
 
-            {canAutoGenerateCurrentStep ? (
-              <div className="mb-4 mt-4">
-                <GenerateStepButton projectId={projectId} workflowId={workflowId} stepKey={currentStepKey ?? ''} />
-              </div>
-            ) : null}
-
-            <div className="mt-4">{currentStepArtifactForm}</div>
+            {lockedStepHeaderIndicator ?? autoGenerateHeaderControl}
           </div>
 
           {activeCheckpointReview}
+
+          {renderCollapsedInputPanel({
+            description:
+              'Use this panel to add or refine competitor rows, review the saved roster, and approve the checkpoint after updating the source data.',
+            children: (
+              <>
+                <form action={createCompetitorAction} className="grid gap-4 rounded-lg border border-[#E4E7EC] bg-white p-4">
+                  <input type="hidden" name="projectId" value={projectId} />
+                  <input type="hidden" name="workflowId" value={workflowId} />
+
+                  <div className="grid gap-4 sm:grid-cols-3">
+                    <div className="sm:col-span-3">
+                      <label className="block text-xs font-medium uppercase tracking-[0.08em] text-[#667085]" htmlFor="competitor-domain">
+                        Competitor domain
+                      </label>
+                      <input
+                        id="competitor-domain"
+                        name="domain"
+                        type="text"
+                        placeholder="example.com"
+                        className="mt-2 w-full rounded-lg border border-[#D0D5DD] bg-white px-3 py-2 text-sm text-[#111827]"
+                        required
+                      />
+                    </div>
+
+                    <div>
+                      <label className="block text-xs font-medium uppercase tracking-[0.08em] text-[#667085]" htmlFor="competitor-bucket">
+                        Bucket
+                      </label>
+                      <select
+                        id="competitor-bucket"
+                        name="bucket"
+                        defaultValue="DIRECT"
+                        className="mt-2 w-full rounded-lg border border-[#D0D5DD] bg-white px-3 py-2 text-sm text-[#111827]"
+                      >
+                        <option value="DIRECT">Direct</option>
+                        <option value="ORGANIC">Organic</option>
+                        <option value="UNCLASSIFIED">Unclassified</option>
+                      </select>
+                    </div>
+
+                    <div>
+                      <label className="block text-xs font-medium uppercase tracking-[0.08em] text-[#667085]" htmlFor="competitor-status">
+                        Status
+                      </label>
+                      <select
+                        id="competitor-status"
+                        name="status"
+                        defaultValue="APPROVED"
+                        className="mt-2 w-full rounded-lg border border-[#D0D5DD] bg-white px-3 py-2 text-sm text-[#111827]"
+                      >
+                        <option value="APPROVED">Approved</option>
+                        <option value="CANDIDATE">Candidate</option>
+                        <option value="REJECTED">Rejected</option>
+                      </select>
+                    </div>
+                  </div>
+
+                  <div>
+                    <label className="block text-xs font-medium uppercase tracking-[0.08em] text-[#667085]" htmlFor="competitor-rationale">
+                      Why this competitor belongs in the workflow
+                    </label>
+                    <textarea
+                      id="competitor-rationale"
+                      name="rationale"
+                      rows={3}
+                      placeholder="Example: same commercial offer set in AE with repeated SERP overlap on high-intent categories"
+                      className="mt-2 w-full rounded-lg border border-[#D0D5DD] bg-white px-3 py-2 text-sm text-[#111827]"
+                    />
+                  </div>
+
+                  <div>
+                    <label className="block text-xs font-medium uppercase tracking-[0.08em] text-[#667085]" htmlFor="competitor-notes">
+                      Notes
+                    </label>
+                    <textarea
+                      id="competitor-notes"
+                      name="notes"
+                      rows={2}
+                      placeholder="Optional: exclusions, edge cases, or follow-up notes"
+                      className="mt-2 w-full rounded-lg border border-[#D0D5DD] bg-white px-3 py-2 text-sm text-[#111827]"
+                    />
+                  </div>
+
+                  <div>
+                    <button
+                      type="submit"
+                      className="rounded-lg bg-[#111827] px-4 py-2 text-sm font-medium text-white transition hover:bg-[#1F2937]"
+                    >
+                      Save competitor
+                    </button>
+                  </div>
+                </form>
+
+                {workflow.competitors && workflow.competitors.length > 0 ? (
+                  <div className="grid gap-3">
+                    {workflow.competitors.map((competitor) => (
+                      <div
+                        key={competitor.id}
+                        className="flex flex-col gap-2 rounded-lg border border-[#E4E7EC] bg-white p-4 sm:flex-row sm:items-start sm:justify-between"
+                      >
+                        <div>
+                          <p className="text-sm font-semibold text-[#111827]">{competitor.domain}</p>
+                          {competitor.rationale ? <p className="mt-1 text-sm text-[#667085]">{competitor.rationale}</p> : null}
+                        </div>
+                        <div className="flex shrink-0 flex-wrap gap-2">
+                          <span className="rounded-full bg-[#EEF4FF] px-3 py-1 text-xs font-medium text-[#3538CD]">{competitor.bucket}</span>
+                          <span className="rounded-full bg-[#F4F6FA] px-3 py-1 text-xs font-medium text-[#344054]">{competitor.status}</span>
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                ) : (
+                  <div className="rounded-lg border border-[#E4E7EC] bg-white p-8 text-center">
+                    <p className="text-sm text-[#9CA3AF]">No competitors added yet.</p>
+                  </div>
+                )}
+              </>
+            ),
+          })}
+        </section>
+      );
+    }
+
+    if (showCompetitorMetricsWorkspace) {
+      return (
+        <section className="space-y-4 rounded-xl border border-[#E8EAF0] bg-white p-6 shadow-sm">
+          <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
+            <div className="max-w-2xl">
+              <h2 className="text-lg font-semibold text-[#111827]">Competitor metrics</h2>
+              <p className="mt-1 text-sm text-[#667085]">
+                Capture domain authority, traffic, keyword footprint, and top pages for each approved competitor.
+              </p>
+            </div>
+
+            {lockedStepHeaderIndicator ?? autoGenerateHeaderControl}
+          </div>
+
+          {activeCheckpointReview}
+
+          {renderCollapsedInputPanel({
+            description:
+              'Use this panel to capture comparable metrics and top-page evidence for each competitor, then approve the checkpoint from the step form once the source data is current.',
+            children: (
+              <>
+                {workflow.competitors && workflow.competitors.length > 0 ? (
+                  <div className="grid gap-4">
+                    {workflow.competitors.map((competitor) => (
+                      <article key={competitor.id} className="rounded-lg border border-[#E4E7EC] bg-white p-4">
+                        <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
+                          <div>
+                            <h3 className="text-base font-semibold text-[#111827]">{competitor.domain}</h3>
+                            {competitor.rationale ? <p className="mt-1 text-sm text-[#667085]">{competitor.rationale}</p> : null}
+                            {competitor.notes ? <p className="mt-2 text-sm text-[#667085]">{competitor.notes}</p> : null}
+                          </div>
+
+                          <div className="flex flex-wrap gap-2">
+                            <span className="rounded-full bg-[#EEF4FF] px-3 py-1 text-xs font-medium text-[#3538CD]">{competitor.bucket}</span>
+                            <span className="rounded-full bg-[#F4F6FA] px-3 py-1 text-xs font-medium text-[#344054]">{competitor.status}</span>
+                          </div>
+                        </div>
+
+                        <form action={saveCompetitorMetricsAction} className="mt-4 grid gap-4 rounded-lg border border-[#D0D5DD] bg-[#FCFCFD] p-4">
+                          <input type="hidden" name="projectId" value={projectId} />
+                          <input type="hidden" name="workflowId" value={workflowId} />
+                          <input type="hidden" name="competitorId" value={competitor.id} />
+
+                          <fieldset disabled={isReadOnlyStepView} className="grid gap-4">
+                            <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
+                              <div>
+                                <p className="text-sm font-medium text-[#111827]">Comparable metrics</p>
+                                <p className="mt-1 text-xs text-[#667085]">
+                                  Capture the latest DR, traffic, keyword footprint, and top pages for this competitor.
+                                </p>
+                              </div>
+                              {competitor.metrics ? (
+                                <span className="rounded-full bg-white px-3 py-1 text-xs font-medium text-[#667085]">
+                                  Captured {new Date(competitor.metrics.capturedAt).toLocaleDateString()}
+                                </span>
+                              ) : null}
+                            </div>
+
+                            <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
+                              <div>
+                                <label className="block text-xs font-medium uppercase tracking-[0.08em] text-[#667085]" htmlFor={`dr-${competitor.id}`}>
+                                  Domain rating
+                                </label>
+                                <input
+                                  id={`dr-${competitor.id}`}
+                                  name="domainRating"
+                                  type="number"
+                                  min="0"
+                                  defaultValue={competitor.metrics?.domainRating ?? ''}
+                                  className="mt-2 w-full rounded-lg border border-[#D0D5DD] bg-white px-3 py-2 text-sm text-[#111827]"
+                                />
+                              </div>
+
+                              <div>
+                                <label className="block text-xs font-medium uppercase tracking-[0.08em] text-[#667085]" htmlFor={`traffic-${competitor.id}`}>
+                                  Organic traffic
+                                </label>
+                                <input
+                                  id={`traffic-${competitor.id}`}
+                                  name="organicTraffic"
+                                  type="number"
+                                  min="0"
+                                  defaultValue={competitor.metrics?.organicTraffic ?? ''}
+                                  className="mt-2 w-full rounded-lg border border-[#D0D5DD] bg-white px-3 py-2 text-sm text-[#111827]"
+                                />
+                              </div>
+
+                              <div>
+                                <label className="block text-xs font-medium uppercase tracking-[0.08em] text-[#667085]" htmlFor={`keywords-${competitor.id}`}>
+                                  Organic keywords
+                                </label>
+                                <input
+                                  id={`keywords-${competitor.id}`}
+                                  name="organicKeywords"
+                                  type="number"
+                                  min="0"
+                                  defaultValue={competitor.metrics?.organicKeywords ?? ''}
+                                  className="mt-2 w-full rounded-lg border border-[#D0D5DD] bg-white px-3 py-2 text-sm text-[#111827]"
+                                />
+                              </div>
+
+                              <div>
+                                <label className="block text-xs font-medium uppercase tracking-[0.08em] text-[#667085]" htmlFor={`ref-domains-${competitor.id}`}>
+                                  Referring domains
+                                </label>
+                                <input
+                                  id={`ref-domains-${competitor.id}`}
+                                  name="referringDomains"
+                                  type="number"
+                                  min="0"
+                                  defaultValue={competitor.metrics?.referringDomains ?? ''}
+                                  className="mt-2 w-full rounded-lg border border-[#D0D5DD] bg-white px-3 py-2 text-sm text-[#111827]"
+                                />
+                              </div>
+
+                              <div>
+                                <label className="block text-xs font-medium uppercase tracking-[0.08em] text-[#667085]" htmlFor={`backlinks-${competitor.id}`}>
+                                  Backlinks
+                                </label>
+                                <input
+                                  id={`backlinks-${competitor.id}`}
+                                  name="backlinks"
+                                  type="number"
+                                  min="0"
+                                  defaultValue={competitor.metrics?.backlinks ?? ''}
+                                  className="mt-2 w-full rounded-lg border border-[#D0D5DD] bg-white px-3 py-2 text-sm text-[#111827]"
+                                />
+                              </div>
+
+                              <div>
+                                <label className="block text-xs font-medium uppercase tracking-[0.08em] text-[#667085]" htmlFor={`captured-at-${competitor.id}`}>
+                                  Captured at
+                                </label>
+                                <input
+                                  id={`captured-at-${competitor.id}`}
+                                  name="capturedAt"
+                                  type="date"
+                                  defaultValue={competitor.metrics?.capturedAt ? competitor.metrics.capturedAt.slice(0, 10) : ''}
+                                  className="mt-2 w-full rounded-lg border border-[#D0D5DD] bg-white px-3 py-2 text-sm text-[#111827]"
+                                />
+                              </div>
+                            </div>
+
+                            <div>
+                              <label className="block text-xs font-medium uppercase tracking-[0.08em] text-[#667085]" htmlFor={`top-pages-${competitor.id}`}>
+                                Top pages
+                              </label>
+                              <textarea
+                                id={`top-pages-${competitor.id}`}
+                                name="topPages"
+                                rows={5}
+                                defaultValue={formatCompetitorTopPages(competitor.metrics?.topPages)}
+                                placeholder="One page per line: https://example.com/page | 1200 | best keyword | optional note"
+                                className="mt-2 w-full rounded-lg border border-[#D0D5DD] bg-white px-3 py-2 text-sm text-[#111827]"
+                              />
+                            </div>
+
+                            <div className="flex flex-wrap gap-2">
+                              <button
+                                type="submit"
+                                className="rounded-lg bg-[#111827] px-4 py-2 text-sm font-medium text-white transition hover:bg-[#1F2937]"
+                              >
+                                Save metrics
+                              </button>
+                              {competitor.metrics ? (
+                                <span className="rounded-full bg-white px-3 py-2 text-xs font-medium text-[#667085]">
+                                  DR {competitor.metrics.domainRating ?? 'n/a'} · Traffic {competitor.metrics.organicTraffic ?? 'n/a'}
+                                </span>
+                              ) : null}
+                            </div>
+                          </fieldset>
+                        </form>
+                      </article>
+                    ))}
+                  </div>
+                ) : (
+                  <div className="rounded-lg border border-[#E4E7EC] bg-white p-8 text-center">
+                    <p className="text-sm text-[#9CA3AF]">No workflow competitors saved yet. Add them in the competitor-buckets step first.</p>
+                  </div>
+                )}
+              </>
+            ),
+          })}
         </section>
       );
     }
@@ -2977,113 +3402,122 @@ export default async function KeywordWorkflowPage({
     if (showMethod01Workspace) {
       return (
         <section className="space-y-4 rounded-xl border border-[#E8EAF0] bg-white p-6 shadow-sm">
-          <div className="max-w-2xl">
-            <h2 className="text-lg font-semibold text-[#111827]">Method 01 source set</h2>
-            <p className="mt-1 text-sm text-[#667085]">
-              Build the Method 01 artifact from approved direct competitors only. This creates a structured checkpoint artifact tied back to the selected source competitors.
-            </p>
-          </div>
-
-          {approvedDirectCompetitors.length === 0 ? (
-            <div className="rounded-lg border border-[#E4E7EC] bg-[#FCFCFD] p-8 text-center">
-              <p className="text-sm text-[#9CA3AF]">
-                No approved direct competitors yet. Save at least one approved direct competitor above before capturing Method 01.
+          <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
+            <div className="max-w-2xl">
+              <h2 className="text-lg font-semibold text-[#111827]">Method 01 source set</h2>
+              <p className="mt-1 text-sm text-[#667085]">
+                Build the Method 01 checkpoint from approved direct competitors only. This creates a structured checkpoint tied back to the selected source competitors.
               </p>
             </div>
-          ) : (
-            <form action={createMethod01ArtifactAction} className="grid gap-4 rounded-lg border border-[#E4E7EC] bg-[#FCFCFD] p-4">
-              <input type="hidden" name="projectId" value={projectId} />
-              <input type="hidden" name="workflowId" value={workflowId} />
 
-              <div className="rounded-lg border border-[#D0D5DD] bg-white p-4">
-                <p className="text-sm font-medium text-[#111827]">Approved direct competitors</p>
-                <p className="mt-1 text-xs text-[#667085]">
-                  Only approved direct competitors appear here because Method 01 should mine competitor top pages from the approved direct set.
-                </p>
-                <p className="mt-2 text-xs text-[#667085]">
-                  Stored competitor top pages are ingested automatically when you generate the artifact. The fields below are only for extra strategist context.
-                </p>
-
-                <div className="mt-4 grid gap-3">
-                  {approvedDirectCompetitors.map((competitor) => (
-                    <label key={competitor.id} className="flex items-start gap-3 rounded-lg border border-[#E4E7EC] p-3">
-                      <input
-                        type="checkbox"
-                        name="sourceCompetitor"
-                        value={JSON.stringify({
-                          id: competitor.id,
-                          domain: competitor.domain,
-                          bucket: competitor.bucket,
-                          status: competitor.status,
-                          metrics: competitor.metrics
-                            ? {
-                                domainRating: competitor.metrics.domainRating,
-                                organicTraffic: competitor.metrics.organicTraffic,
-                                organicKeywords: competitor.metrics.organicKeywords,
-                                referringDomains: competitor.metrics.referringDomains,
-                                backlinks: competitor.metrics.backlinks,
-                                capturedAt: competitor.metrics.capturedAt,
-                                topPages: competitor.metrics.topPages,
-                              }
-                            : null,
-                        })}
-                        defaultChecked
-                        className="mt-1 h-4 w-4 rounded border border-[#D0D5DD]"
-                      />
-
-                      <div className="min-w-0 flex-1">
-                        <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
-                          <p className="text-sm font-medium text-[#111827]">{competitor.domain}</p>
-                          <div className="flex flex-wrap gap-2">
-                            {competitor.metrics ? <span className="rounded-full bg-[#F9FAFB] px-3 py-1 text-xs font-medium text-[#667085]">DR {competitor.metrics.domainRating ?? 'n/a'}</span> : null}
-                            {competitor.metrics ? <span className="rounded-full bg-[#F9FAFB] px-3 py-1 text-xs font-medium text-[#667085]">Traffic {competitor.metrics.organicTraffic ?? 'n/a'}</span> : null}
-                            {competitor.metrics ? <span className="rounded-full bg-[#F9FAFB] px-3 py-1 text-xs font-medium text-[#667085]">Keywords {competitor.metrics.organicKeywords ?? 'n/a'}</span> : null}
-                          </div>
-                        </div>
-                        {competitor.rationale ? <p className="mt-2 text-sm text-[#667085]">{competitor.rationale}</p> : null}
-                      </div>
-                    </label>
-                  ))}
-                </div>
-              </div>
-
-              <div>
-                <label className="block text-xs font-medium uppercase tracking-[0.08em] text-[#667085]" htmlFor="method01-summary">Summary note</label>
-                <input id="method01-summary" name="summary" type="text" placeholder="Example: Direct competitors confirm category and comparison page opportunities worth mining" className="mt-2 w-full rounded-lg border border-[#D0D5DD] bg-white px-3 py-2 text-sm text-[#111827]" />
-              </div>
-
-              <div>
-                <label className="block text-xs font-medium uppercase tracking-[0.08em] text-[#667085]" htmlFor="method01-findings">Additional analyst notes</label>
-                <textarea id="method01-findings" name="keyFindings" rows={5} placeholder="Optional: add extra Method 01 observations per line" className="mt-2 w-full rounded-lg border border-[#D0D5DD] bg-white px-3 py-2 text-sm text-[#111827]" />
-              </div>
-
-              <div>
-                <label className="block text-xs font-medium uppercase tracking-[0.08em] text-[#667085]" htmlFor="method01-top-pages">Additional top page candidates</label>
-                <textarea id="method01-top-pages" name="topPageCandidates" rows={5} placeholder="Optional: add extra pages as https://example.com/page | 1200 | best keyword | optional note" className="mt-2 w-full rounded-lg border border-[#D0D5DD] bg-white px-3 py-2 text-sm text-[#111827]" />
-              </div>
-
-              <div>
-                <label className="block text-xs font-medium uppercase tracking-[0.08em] text-[#667085]" htmlFor="method01-action">Recommended next move</label>
-                <textarea id="method01-action" name="recommendedAction" rows={3} placeholder="Example: merge the strongest competitor-page themes into the consolidation pass" className="mt-2 w-full rounded-lg border border-[#D0D5DD] bg-white px-3 py-2 text-sm text-[#111827]" />
-              </div>
-
-              <div>
-                <label className="block text-xs font-medium uppercase tracking-[0.08em] text-[#667085]" htmlFor="method01-evidence">Evidence or analyst notes</label>
-                <textarea id="method01-evidence" name="evidence" rows={4} placeholder="Top page observations, ranking patterns, or fit notes" className="mt-2 w-full rounded-lg border border-[#D0D5DD] bg-white px-3 py-2 text-sm text-[#111827]" />
-              </div>
-
-              <div>
-                <label className="block text-xs font-medium uppercase tracking-[0.08em] text-[#667085]" htmlFor="method01-open-questions">Open questions or blockers</label>
-                <textarea id="method01-open-questions" name="openQuestions" rows={3} placeholder="Optional: one question or blocker per line" className="mt-2 w-full rounded-lg border border-[#D0D5DD] bg-white px-3 py-2 text-sm text-[#111827]" />
-              </div>
-
-              <div>
-                <button type="submit" className="rounded-lg bg-[#111827] px-4 py-2 text-sm font-medium text-white transition hover:bg-[#1F2937]">Generate Method 01 artifact</button>
-              </div>
-            </form>
-          )}
+            {lockedStepHeaderIndicator}
+          </div>
 
           {activeCheckpointReview}
+
+          {renderCollapsedInputPanel({
+            description:
+              'Use this panel to choose the approved direct competitors that should seed Method 01 and generate a fresh checkpoint when the source set is ready.',
+            children:
+              approvedDirectCompetitors.length === 0 ? (
+                <div className="rounded-lg border border-[#E4E7EC] bg-white p-8 text-center">
+                  <p className="text-sm text-[#9CA3AF]">
+                    No approved direct competitors yet. Save at least one approved direct competitor above before capturing Method 01.
+                  </p>
+                </div>
+              ) : (
+                <form action={createMethod01ArtifactAction} className="grid gap-4 rounded-lg border border-[#E4E7EC] bg-white p-4">
+                  <input type="hidden" name="projectId" value={projectId} />
+                  <input type="hidden" name="workflowId" value={workflowId} />
+
+                  <div className="rounded-lg border border-[#D0D5DD] bg-[#FCFCFD] p-4">
+                    <p className="text-sm font-medium text-[#111827]">Approved direct competitors</p>
+                    <p className="mt-1 text-xs text-[#667085]">
+                      Only approved direct competitors appear here because Method 01 should mine competitor top pages from the approved direct set.
+                    </p>
+                    <p className="mt-2 text-xs text-[#667085]">
+                      Stored competitor top pages are ingested automatically when you generate the checkpoint. The fields below are only for extra strategist context.
+                    </p>
+
+                    <div className="mt-4 grid gap-3">
+                      {approvedDirectCompetitors.map((competitor) => (
+                        <label key={competitor.id} className="flex items-start gap-3 rounded-lg border border-[#E4E7EC] bg-white p-3">
+                          <input
+                            type="checkbox"
+                            name="sourceCompetitor"
+                            value={JSON.stringify({
+                              id: competitor.id,
+                              domain: competitor.domain,
+                              bucket: competitor.bucket,
+                              status: competitor.status,
+                              metrics: competitor.metrics
+                                ? {
+                                    domainRating: competitor.metrics.domainRating,
+                                    organicTraffic: competitor.metrics.organicTraffic,
+                                    organicKeywords: competitor.metrics.organicKeywords,
+                                    referringDomains: competitor.metrics.referringDomains,
+                                    backlinks: competitor.metrics.backlinks,
+                                    capturedAt: competitor.metrics.capturedAt,
+                                    topPages: competitor.metrics.topPages,
+                                  }
+                                : null,
+                            })}
+                            defaultChecked
+                            className="mt-1 h-4 w-4 rounded border border-[#D0D5DD]"
+                          />
+
+                          <div className="min-w-0 flex-1">
+                            <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
+                              <p className="text-sm font-medium text-[#111827]">{competitor.domain}</p>
+                              <div className="flex flex-wrap gap-2">
+                                {competitor.metrics ? <span className="rounded-full bg-[#F9FAFB] px-3 py-1 text-xs font-medium text-[#667085]">DR {competitor.metrics.domainRating ?? 'n/a'}</span> : null}
+                                {competitor.metrics ? <span className="rounded-full bg-[#F9FAFB] px-3 py-1 text-xs font-medium text-[#667085]">Traffic {competitor.metrics.organicTraffic ?? 'n/a'}</span> : null}
+                                {competitor.metrics ? <span className="rounded-full bg-[#F9FAFB] px-3 py-1 text-xs font-medium text-[#667085]">Keywords {competitor.metrics.organicKeywords ?? 'n/a'}</span> : null}
+                              </div>
+                            </div>
+                            {competitor.rationale ? <p className="mt-2 text-sm text-[#667085]">{competitor.rationale}</p> : null}
+                          </div>
+                        </label>
+                      ))}
+                    </div>
+                  </div>
+
+                  <div>
+                    <label className="block text-xs font-medium uppercase tracking-[0.08em] text-[#667085]" htmlFor="method01-summary">Summary note</label>
+                    <input id="method01-summary" name="summary" type="text" placeholder="Example: Direct competitors confirm category and comparison page opportunities worth mining" className="mt-2 w-full rounded-lg border border-[#D0D5DD] bg-white px-3 py-2 text-sm text-[#111827]" />
+                  </div>
+
+                  <div>
+                    <label className="block text-xs font-medium uppercase tracking-[0.08em] text-[#667085]" htmlFor="method01-findings">Additional analyst notes</label>
+                    <textarea id="method01-findings" name="keyFindings" rows={5} placeholder="Optional: add extra Method 01 observations per line" className="mt-2 w-full rounded-lg border border-[#D0D5DD] bg-white px-3 py-2 text-sm text-[#111827]" />
+                  </div>
+
+                  <div>
+                    <label className="block text-xs font-medium uppercase tracking-[0.08em] text-[#667085]" htmlFor="method01-top-pages">Additional top page candidates</label>
+                    <textarea id="method01-top-pages" name="topPageCandidates" rows={5} placeholder="Optional: add extra pages as https://example.com/page | 1200 | best keyword | optional note" className="mt-2 w-full rounded-lg border border-[#D0D5DD] bg-white px-3 py-2 text-sm text-[#111827]" />
+                  </div>
+
+                  <div>
+                    <label className="block text-xs font-medium uppercase tracking-[0.08em] text-[#667085]" htmlFor="method01-action">Recommended next move</label>
+                    <textarea id="method01-action" name="recommendedAction" rows={3} placeholder="Example: merge the strongest competitor-page themes into the consolidation pass" className="mt-2 w-full rounded-lg border border-[#D0D5DD] bg-white px-3 py-2 text-sm text-[#111827]" />
+                  </div>
+
+                  <div>
+                    <label className="block text-xs font-medium uppercase tracking-[0.08em] text-[#667085]" htmlFor="method01-evidence">Evidence or analyst notes</label>
+                    <textarea id="method01-evidence" name="evidence" rows={4} placeholder="Top page observations, ranking patterns, or fit notes" className="mt-2 w-full rounded-lg border border-[#D0D5DD] bg-white px-3 py-2 text-sm text-[#111827]" />
+                  </div>
+
+                  <div>
+                    <label className="block text-xs font-medium uppercase tracking-[0.08em] text-[#667085]" htmlFor="method01-open-questions">Open questions or blockers</label>
+                    <textarea id="method01-open-questions" name="openQuestions" rows={3} placeholder="Optional: one question or blocker per line" className="mt-2 w-full rounded-lg border border-[#D0D5DD] bg-white px-3 py-2 text-sm text-[#111827]" />
+                  </div>
+
+                  <div>
+                    <button type="submit" className="rounded-lg bg-[#111827] px-4 py-2 text-sm font-medium text-white transition hover:bg-[#1F2937]">Generate Method 01 checkpoint</button>
+                  </div>
+                </form>
+              ),
+          })}
         </section>
       );
     }
@@ -3091,93 +3525,256 @@ export default async function KeywordWorkflowPage({
     if (showMethod02Workspace) {
       return (
         <section className="space-y-4 rounded-xl border border-[#E8EAF0] bg-white p-6 shadow-sm">
-          <div className="max-w-2xl">
-            <h2 className="text-lg font-semibold text-[#111827]">Method 02 seed expansion</h2>
-            <p className="mt-1 text-sm text-[#667085]">
-              Build the Method 02 artifact from stored project keyword rows when they exist, or fall back to the current project seed keywords until the approved-seed ledger is promoted.
-            </p>
+          <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
+            <div className="max-w-2xl">
+              <h2 className="text-lg font-semibold text-[#111827]">Method 02 seed expansion</h2>
+              <p className="mt-1 text-sm text-[#667085]">
+                Build the Method 02 checkpoint from stored project keyword rows when they exist, or fall back to the current project seed keywords until the approved-seed checkpoint is promoted.
+              </p>
+            </div>
+
+            {lockedStepHeaderIndicator}
           </div>
 
-          {sourceMethod02Keywords.length === 0 ? (
-            <div className="rounded-lg border border-[#E4E7EC] bg-[#FCFCFD] p-8 text-center">
-              <p className="text-sm text-[#9CA3AF]">No seed keywords are stored on this project yet.</p>
-            </div>
-          ) : (
-            <form action={createMethod02ArtifactAction} className="grid gap-4 rounded-lg border border-[#E4E7EC] bg-[#FCFCFD] p-4">
-              <input type="hidden" name="projectId" value={projectId} />
-              <input type="hidden" name="workflowId" value={workflowId} />
+          {activeCheckpointReview}
 
-              <div className="rounded-lg border border-[#D0D5DD] bg-white p-4">
-                <p className="text-sm font-medium text-[#111827]">Method 02 source keywords</p>
-                <p className="mt-1 text-xs text-[#667085]">Select the stored keywords that should drive matching terms, related terms, and parent-topic grouping in Method 02.</p>
-                <p className="mt-2 text-xs text-[#667085]">
-                  {method02UsesDiscoveredKeywords
-                    ? 'Stored project keyword rows are grouped automatically into parent topic candidates when you generate the artifact.'
-                    : 'No project keyword rows are stored yet, so Method 02 will use the current project seed list as an interim source set.'}
-                </p>
+          {renderCollapsedInputPanel({
+            description:
+              'Use this panel to choose the seed set that should drive Method 02 and generate a fresh checkpoint once the source keywords look right.',
+            children:
+              sourceMethod02Keywords.length === 0 ? (
+                <div className="rounded-lg border border-[#E4E7EC] bg-white p-8 text-center">
+                  <p className="text-sm text-[#9CA3AF]">No seed keywords are stored on this project yet.</p>
+                </div>
+              ) : (
+                <form action={createMethod02ArtifactAction} className="grid gap-4 rounded-lg border border-[#E4E7EC] bg-white p-4">
+                  <input type="hidden" name="projectId" value={projectId} />
+                  <input type="hidden" name="workflowId" value={workflowId} />
 
-                <div className="mt-4 grid gap-3 sm:grid-cols-2">
-                  {sourceMethod02Keywords.map((sourceKeyword) => (
-                    <label key={sourceKeyword.keyword} className="flex items-start gap-3 rounded-lg border border-[#E4E7EC] p-3">
-                      <input type="checkbox" name="sourceSeedKeyword" value={JSON.stringify(sourceKeyword)} defaultChecked className="mt-1 h-4 w-4 rounded border border-[#D0D5DD]" />
+                  <div className="rounded-lg border border-[#D0D5DD] bg-[#FCFCFD] p-4">
+                    <p className="text-sm font-medium text-[#111827]">Method 02 source keywords</p>
+                    <p className="mt-1 text-xs text-[#667085]">Select the stored keywords that should drive matching terms, related terms, and parent-topic grouping in Method 02.</p>
+                    <p className="mt-2 text-xs text-[#667085]">
+                      {method02UsesDiscoveredKeywords
+                        ? 'Stored project keyword rows are grouped automatically into parent topic candidates when you generate the checkpoint.'
+                        : 'No project keyword rows are stored yet, so Method 02 will use the current project seed list as an interim source set.'}
+                    </p>
 
-                      <div className="min-w-0 flex-1">
-                        <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
-                          <span className="text-sm text-[#111827]">{sourceKeyword.keyword}</span>
-                          <div className="flex flex-wrap gap-2">
-                            {typeof sourceKeyword.searchVolume === 'number' ? <span className="rounded-full bg-[#F9FAFB] px-3 py-1 text-xs font-medium text-[#667085]">Volume {sourceKeyword.searchVolume}</span> : null}
-                            {sourceKeyword.intent ? <span className="rounded-full bg-[#F9FAFB] px-3 py-1 text-xs font-medium text-[#667085]">{sourceKeyword.intent}</span> : null}
+                    <div className="mt-4 grid gap-3 sm:grid-cols-2">
+                      {sourceMethod02Keywords.map((sourceKeyword) => (
+                        <label key={sourceKeyword.keyword} className="flex items-start gap-3 rounded-lg border border-[#E4E7EC] bg-white p-3">
+                          <input type="checkbox" name="sourceSeedKeyword" value={JSON.stringify(sourceKeyword)} defaultChecked className="mt-1 h-4 w-4 rounded border border-[#D0D5DD]" />
+
+                          <div className="min-w-0 flex-1">
+                            <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
+                              <span className="text-sm text-[#111827]">{sourceKeyword.keyword}</span>
+                              <div className="flex flex-wrap gap-2">
+                                {typeof sourceKeyword.searchVolume === 'number' ? <span className="rounded-full bg-[#F9FAFB] px-3 py-1 text-xs font-medium text-[#667085]">Volume {sourceKeyword.searchVolume}</span> : null}
+                                {sourceKeyword.intent ? <span className="rounded-full bg-[#F9FAFB] px-3 py-1 text-xs font-medium text-[#667085]">{sourceKeyword.intent}</span> : null}
+                              </div>
+                            </div>
+                            {sourceKeyword.parentTopic ? <p className="mt-2 text-sm text-[#667085]">Parent topic: {sourceKeyword.parentTopic}</p> : null}
                           </div>
-                        </div>
-                        {sourceKeyword.parentTopic ? <p className="mt-2 text-sm text-[#667085]">Parent topic: {sourceKeyword.parentTopic}</p> : null}
-                      </div>
-                    </label>
-                  ))}
+                        </label>
+                      ))}
+                    </div>
+                  </div>
+
+                  <div>
+                    <label className="block text-xs font-medium uppercase tracking-[0.08em] text-[#667085]" htmlFor="method02-summary">Summary note</label>
+                    <input id="method02-summary" name="summary" type="text" placeholder="Example: Seed expansion widened the service cluster into pricing, package, and comparison variants" className="mt-2 w-full rounded-lg border border-[#D0D5DD] bg-white px-3 py-2 text-sm text-[#111827]" />
+                  </div>
+
+                  <div>
+                    <label className="block text-xs font-medium uppercase tracking-[0.08em] text-[#667085]" htmlFor="method02-findings">Additional analyst notes</label>
+                    <textarea id="method02-findings" name="keyFindings" rows={5} placeholder="Optional: add extra Method 02 observations per line" className="mt-2 w-full rounded-lg border border-[#D0D5DD] bg-white px-3 py-2 text-sm text-[#111827]" />
+                  </div>
+
+                  <div>
+                    <label className="block text-xs font-medium uppercase tracking-[0.08em] text-[#667085]" htmlFor="method02-parent-topics">Additional parent topic candidates</label>
+                    <textarea id="method02-parent-topics" name="parentTopicCandidates" rows={5} placeholder="Optional: add extra candidates as Parent Topic | Cluster Keyword | optional note" className="mt-2 w-full rounded-lg border border-[#D0D5DD] bg-white px-3 py-2 text-sm text-[#111827]" />
+                  </div>
+
+                  <div>
+                    <label className="block text-xs font-medium uppercase tracking-[0.08em] text-[#667085]" htmlFor="method02-questions">Additional question and related-term opportunities</label>
+                    <textarea id="method02-questions" name="questionKeywords" rows={4} placeholder="Optional: add extra question or related-term opportunities per line" className="mt-2 w-full rounded-lg border border-[#D0D5DD] bg-white px-3 py-2 text-sm text-[#111827]" />
+                  </div>
+
+                  <div>
+                    <label className="block text-xs font-medium uppercase tracking-[0.08em] text-[#667085]" htmlFor="method02-action">Recommended next move</label>
+                    <textarea id="method02-action" name="recommendedAction" rows={3} placeholder="Example: merge the strongest parent topics into the consolidation pass and compare them against Method 01" className="mt-2 w-full rounded-lg border border-[#D0D5DD] bg-white px-3 py-2 text-sm text-[#111827]" />
+                  </div>
+
+                  <div>
+                    <label className="block text-xs font-medium uppercase tracking-[0.08em] text-[#667085]" htmlFor="method02-evidence">Evidence or analyst notes</label>
+                    <textarea id="method02-evidence" name="evidence" rows={4} placeholder="Parent topic observations, questions-tab notes, or related-term evidence" className="mt-2 w-full rounded-lg border border-[#D0D5DD] bg-white px-3 py-2 text-sm text-[#111827]" />
+                  </div>
+
+                  <div>
+                    <label className="block text-xs font-medium uppercase tracking-[0.08em] text-[#667085]" htmlFor="method02-open-questions">Open questions or blockers</label>
+                    <textarea id="method02-open-questions" name="openQuestions" rows={3} placeholder="Optional: one question or blocker per line" className="mt-2 w-full rounded-lg border border-[#D0D5DD] bg-white px-3 py-2 text-sm text-[#111827]" />
+                  </div>
+
+                  <div>
+                    <button type="submit" className="rounded-lg bg-[#111827] px-4 py-2 text-sm font-medium text-white transition hover:bg-[#1F2937]">Generate Method 02 checkpoint</button>
+                  </div>
+                </form>
+              ),
+          })}
+        </section>
+      );
+    }
+
+    if (showMethod03Workspace) {
+      const method03GapKeywords = (() => {
+        const payload = activeArtifact?.payload as Record<string, unknown> | null | undefined;
+        if (!payload) return [];
+        const raw = payload.gapKeywords;
+        if (!Array.isArray(raw)) return [];
+        return raw as Array<{ keyword: string; volume: number | null; difficulty: number | null; competitorCount: number; competitors: string[]; intent: string; funnel: string; contentType: string; parentTopic: string }>;
+      })();
+      const method03CompetitorsAnalyzed = (() => {
+        const payload = activeArtifact?.payload as Record<string, unknown> | null | undefined;
+        const raw = payload?.competitorsAnalyzed;
+        return Array.isArray(raw) ? (raw as string[]) : approvedDirectCompetitors.map((c) => c.domain);
+      })();
+      const method03DataSource = (() => {
+        const payload = activeArtifact?.payload as Record<string, unknown> | null | undefined;
+        return typeof payload?.dataSource === 'string' ? payload.dataSource : null;
+      })();
+
+      return (
+        <section className="space-y-4 rounded-xl border border-[#E8EAF0] bg-white p-6 shadow-sm">
+          <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
+            <div className="max-w-2xl">
+              <h2 className="text-lg font-semibold text-[#111827]">Method 03 — Content gap</h2>
+              <p className="mt-1 text-sm text-[#667085]">
+                Auto-generated via Ahrefs API approximation and OpenAI classification. Override with a manual Ahrefs UI export below for higher accuracy before approving.
+              </p>
+            </div>
+            {lockedStepHeaderIndicator ?? <GenerateStepButton projectId={projectId} workflowId={workflowId} stepKey="method03-content-gap-import" variant="inline" />}
+          </div>
+
+          {method03GapKeywords.length > 0 ? (
+            <div className="rounded-lg border border-[#E4E7EC] bg-[#FCFCFD] p-4">
+              <div className="flex flex-wrap items-center justify-between gap-3">
+                <p className="text-sm font-medium text-[#111827]">
+                  {method03GapKeywords.length} gap keyword{method03GapKeywords.length === 1 ? '' : 's'} found
+                </p>
+                <div className="flex flex-wrap gap-2">
+                  {method03DataSource === 'api-approximation' ? (
+                    <span className="rounded-full bg-[#FFF8E5] px-3 py-1 text-xs font-medium text-[#B45309]">API approximation — override with Ahrefs UI export below for accuracy</span>
+                  ) : method03DataSource === 'manual-override' ? (
+                    <span className="rounded-full bg-[#ECFDF3] px-3 py-1 text-xs font-medium text-[#027A48]">Manual Ahrefs export applied</span>
+                  ) : null}
+                  <span className="rounded-full bg-[#F4F6FA] px-3 py-1 text-xs font-medium text-[#344054]">{method03CompetitorsAnalyzed.length} competitor{method03CompetitorsAnalyzed.length === 1 ? '' : 's'} analysed</span>
                 </div>
               </div>
 
-              <div>
-                <label className="block text-xs font-medium uppercase tracking-[0.08em] text-[#667085]" htmlFor="method02-summary">Summary note</label>
-                <input id="method02-summary" name="summary" type="text" placeholder="Example: Seed expansion widened the service cluster into pricing, package, and comparison variants" className="mt-2 w-full rounded-lg border border-[#D0D5DD] bg-white px-3 py-2 text-sm text-[#111827]" />
+              <div className="mt-3 flex flex-wrap gap-2">
+                {method03CompetitorsAnalyzed.map((domain) => (
+                  <span key={domain} className="rounded-full bg-white px-3 py-1 text-xs font-medium text-[#344054] border border-[#D0D5DD]">{domain}</span>
+                ))}
               </div>
 
-              <div>
-                <label className="block text-xs font-medium uppercase tracking-[0.08em] text-[#667085]" htmlFor="method02-findings">Additional analyst notes</label>
-                <textarea id="method02-findings" name="keyFindings" rows={5} placeholder="Optional: add extra Method 02 observations per line" className="mt-2 w-full rounded-lg border border-[#D0D5DD] bg-white px-3 py-2 text-sm text-[#111827]" />
+              <div className="mt-4 overflow-x-auto">
+                <table className="w-full text-left text-sm">
+                  <thead>
+                    <tr className="border-b border-[#E4E7EC]">
+                      <th className="pb-2 pr-4 text-xs font-medium uppercase tracking-[0.08em] text-[#667085]">Keyword</th>
+                      <th className="pb-2 pr-4 text-xs font-medium uppercase tracking-[0.08em] text-[#667085]">Volume</th>
+                      <th className="pb-2 pr-4 text-xs font-medium uppercase tracking-[0.08em] text-[#667085]">KD</th>
+                      <th className="pb-2 pr-4 text-xs font-medium uppercase tracking-[0.08em] text-[#667085]">Intent</th>
+                      <th className="pb-2 pr-4 text-xs font-medium uppercase tracking-[0.08em] text-[#667085]">Funnel</th>
+                      <th className="pb-2 pr-4 text-xs font-medium uppercase tracking-[0.08em] text-[#667085]">Content type</th>
+                      <th className="pb-2 text-xs font-medium uppercase tracking-[0.08em] text-[#667085]">Parent topic</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {method03GapKeywords.slice(0, 50).map((kw) => (
+                      <tr key={kw.keyword} className="border-b border-[#F2F4F7]">
+                        <td className="py-2 pr-4 font-medium text-[#111827]">{kw.keyword}</td>
+                        <td className="py-2 pr-4 text-[#344054]">{kw.volume != null ? kw.volume.toLocaleString() : '—'}</td>
+                        <td className="py-2 pr-4 text-[#344054]">{kw.difficulty != null ? kw.difficulty : '—'}</td>
+                        <td className="py-2 pr-4 text-[#344054]">{kw.intent}</td>
+                        <td className="py-2 pr-4 text-[#344054]">{kw.funnel}</td>
+                        <td className="py-2 pr-4 text-[#344054]">{kw.contentType}</td>
+                        <td className="py-2 text-[#344054]">{kw.parentTopic}</td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+                {method03GapKeywords.length > 50 ? (
+                  <p className="mt-2 text-xs text-[#667085]">Showing top 50 of {method03GapKeywords.length} gap keywords.</p>
+                ) : null}
               </div>
-
-              <div>
-                <label className="block text-xs font-medium uppercase tracking-[0.08em] text-[#667085]" htmlFor="method02-parent-topics">Additional parent topic candidates</label>
-                <textarea id="method02-parent-topics" name="parentTopicCandidates" rows={5} placeholder="Optional: add extra candidates as Parent Topic | Cluster Keyword | optional note" className="mt-2 w-full rounded-lg border border-[#D0D5DD] bg-white px-3 py-2 text-sm text-[#111827]" />
-              </div>
-
-              <div>
-                <label className="block text-xs font-medium uppercase tracking-[0.08em] text-[#667085]" htmlFor="method02-questions">Additional question and related-term opportunities</label>
-                <textarea id="method02-questions" name="questionKeywords" rows={4} placeholder="Optional: add extra question or related-term opportunities per line" className="mt-2 w-full rounded-lg border border-[#D0D5DD] bg-white px-3 py-2 text-sm text-[#111827]" />
-              </div>
-
-              <div>
-                <label className="block text-xs font-medium uppercase tracking-[0.08em] text-[#667085]" htmlFor="method02-action">Recommended next move</label>
-                <textarea id="method02-action" name="recommendedAction" rows={3} placeholder="Example: merge the strongest parent topics into the consolidation pass and compare them against Method 01" className="mt-2 w-full rounded-lg border border-[#D0D5DD] bg-white px-3 py-2 text-sm text-[#111827]" />
-              </div>
-
-              <div>
-                <label className="block text-xs font-medium uppercase tracking-[0.08em] text-[#667085]" htmlFor="method02-evidence">Evidence or analyst notes</label>
-                <textarea id="method02-evidence" name="evidence" rows={4} placeholder="Parent topic observations, questions-tab notes, or related-term evidence" className="mt-2 w-full rounded-lg border border-[#D0D5DD] bg-white px-3 py-2 text-sm text-[#111827]" />
-              </div>
-
-              <div>
-                <label className="block text-xs font-medium uppercase tracking-[0.08em] text-[#667085]" htmlFor="method02-open-questions">Open questions or blockers</label>
-                <textarea id="method02-open-questions" name="openQuestions" rows={3} placeholder="Optional: one question or blocker per line" className="mt-2 w-full rounded-lg border border-[#D0D5DD] bg-white px-3 py-2 text-sm text-[#111827]" />
-              </div>
-
-              <div>
-                <button type="submit" className="rounded-lg bg-[#111827] px-4 py-2 text-sm font-medium text-white transition hover:bg-[#1F2937]">Generate Method 02 artifact</button>
-              </div>
-            </form>
-          )}
+            </div>
+          ) : null}
 
           {activeCheckpointReview}
+
+          {!isReadOnlyStepView ? (
+            <CollapsiblePanel
+              title="Override with manual Ahrefs export"
+              defaultOpen={!activeArtifact}
+              className="mt-4 rounded-xl border border-[#E4E7EC] bg-[#FCFCFD] p-5"
+            >
+              <div className="mt-3 space-y-4">
+                <div className="rounded-lg border border-[#E4E7EC] bg-white p-4">
+                  <p className="text-sm font-medium text-[#111827]">How to get the Ahrefs Content Gap export</p>
+                  <ol className="mt-2 list-decimal space-y-1 pl-5 text-sm text-[#667085]">
+                    <li>Open Site Explorer in Ahrefs for <strong>{approvedDirectCompetitors[0]?.domain ?? 'a direct competitor'}</strong> (or the client site).</li>
+                    <li>Go to <strong>Content Gap</strong> and add these approved direct competitors:{' '}
+                      {approvedDirectCompetitors.map((c) => <strong key={c.domain}>{c.domain}</strong>).reduce<React.ReactNode[]>((acc, el, i) => i === 0 ? [el] : [...acc, ', ', el], [])}
+                    </li>
+                    <li>Keep the client site in the comparison and filter for keywords competitors rank for but the client does not.</li>
+                    <li>Export the filtered CSV or TSV with the header row intact.</li>
+                    <li>Paste the full export below — it will replace the API approximation above.</li>
+                  </ol>
+                </div>
+
+                <form action={approveArtifactAction} className="grid gap-4">
+                  <input type="hidden" name="projectId" value={projectId} />
+                  <input type="hidden" name="workflowId" value={workflowId} />
+                  <input type="hidden" name="stepKey" value="method03-content-gap-import" />
+                  <input type="hidden" name="decision" value="APPROVE" />
+
+                  <div>
+                    <label className="block text-xs font-medium uppercase tracking-[0.08em] text-[#667085]" htmlFor="method03-summary">Summary note</label>
+                    <input id="method03-summary" name="summary" type="text" placeholder="Example: Content Gap confirmed missed mid-funnel comparison pages absent from the client site" className="mt-2 w-full rounded-lg border border-[#D0D5DD] bg-white px-3 py-2 text-sm text-[#111827]" />
+                  </div>
+
+                  <div>
+                    <label className="block text-xs font-medium uppercase tracking-[0.08em] text-[#667085]" htmlFor="method03-findings">Strategist notes</label>
+                    <textarea id="method03-findings" name="keyFindings" rows={4} placeholder="One gap insight per line" className="mt-2 w-full rounded-lg border border-[#D0D5DD] bg-white px-3 py-2 text-sm text-[#111827]" />
+                  </div>
+
+                  <div>
+                    <label className="block text-xs font-medium uppercase tracking-[0.08em] text-[#667085]" htmlFor="method03-content-gap-export">Ahrefs Content Gap export (CSV or TSV)</label>
+                    <textarea
+                      id="method03-content-gap-export"
+                      name="contentGapImport"
+                      rows={10}
+                      placeholder="Paste the exported CSV or TSV, including the header row. This will replace the API approximation."
+                      className="mt-2 w-full rounded-lg border border-[#D0D5DD] bg-white px-3 py-2 font-mono text-sm text-[#111827]"
+                    />
+                    <p className="mt-1 text-xs text-[#667085]">Optional. Leave blank to approve the API approximation as-is.</p>
+                  </div>
+
+                  <div>
+                    <label className="block text-xs font-medium uppercase tracking-[0.08em] text-[#667085]" htmlFor="method03-action">Recommended next move</label>
+                    <textarea id="method03-action" name="recommendedAction" rows={3} placeholder="Example: consolidate cross-method winners and remove Phase 1 duplicates" className="mt-2 w-full rounded-lg border border-[#D0D5DD] bg-white px-3 py-2 text-sm text-[#111827]" />
+                  </div>
+
+                  <div>
+                    <button type="submit" className="rounded-lg bg-[#111827] px-4 py-2 text-sm font-medium text-white transition hover:bg-[#1F2937]">
+                      {activeArtifact ? 'Approve Method 03 checkpoint' : 'Save and approve Method 03'}
+                    </button>
+                  </div>
+                </form>
+              </div>
+            </CollapsiblePanel>
+          ) : null}
         </section>
       );
     }
@@ -3185,25 +3782,29 @@ export default async function KeywordWorkflowPage({
     if (showConsolidatedKeywordsWorkspace) {
       return (
         <section className="space-y-4 rounded-xl border border-[#E8EAF0] bg-white p-6 shadow-sm">
-          <div className="max-w-2xl">
-            <h2 className="text-lg font-semibold text-[#111827]">Consolidated keywords</h2>
-            <p className="mt-1 text-sm text-[#667085]">
-              Generate a first-pass consolidated ledger from the latest approved workflow artifacts before the topical map review.
-            </p>
+          <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
+            <div className="max-w-2xl">
+              <h2 className="text-lg font-semibold text-[#111827]">Consolidated keywords</h2>
+              <p className="mt-1 text-sm text-[#667085]">
+                Generate a first-pass consolidated ledger from the latest approved workflow checkpoints before the topical map review.
+              </p>
+            </div>
+
+            {lockedStepHeaderIndicator}
           </div>
 
           {consolidationSourceArtifacts.length === 0 ? (
             <div className="rounded-lg border border-[#E4E7EC] bg-[#FCFCFD] p-8 text-center">
-              <p className="text-sm text-[#9CA3AF]">Approve Phase 1, Method 01, Method 02, or Method 03 artifacts before generating consolidated keywords.</p>
+              <p className="text-sm text-[#9CA3AF]">Approve Phase 1, Method 01, Method 02, or Method 03 checkpoints before generating consolidated keywords.</p>
             </div>
-          ) : (
+          ) : !isReadOnlyStepView ? (
             <form action={createConsolidatedKeywordsArtifactAction} className="grid gap-4 rounded-lg border border-[#E4E7EC] bg-[#FCFCFD] p-4">
               <input type="hidden" name="projectId" value={projectId} />
               <input type="hidden" name="workflowId" value={workflowId} />
 
               <div className="rounded-lg border border-[#D0D5DD] bg-white p-4">
                 <p className="text-sm font-medium text-[#111827]">Approved consolidation sources</p>
-                <p className="mt-1 text-xs text-[#667085]">The generator uses the latest approved artifacts per step, so pending revisions do not block a first-pass ledger.</p>
+                <p className="mt-1 text-xs text-[#667085]">The generator uses the latest approved checkpoints per step, so pending revisions do not block a first-pass ledger.</p>
 
                 <div className="mt-4 grid gap-3">
                   {consolidationSourceArtifacts.map((artifact) => (
@@ -3214,7 +3815,6 @@ export default async function KeywordWorkflowPage({
                         value={JSON.stringify({
                           id: artifact.id,
                           stepKey: artifact.stepKey,
-                          version: artifact.version,
                           payload: artifact.payload,
                         })}
                       />
@@ -3222,7 +3822,6 @@ export default async function KeywordWorkflowPage({
                       <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
                         <p className="text-sm font-medium text-[#111827]">{artifact.stepKey}</p>
                         <div className="flex flex-wrap gap-2">
-                          <span className="rounded-full bg-[#F4F6FA] px-3 py-1 text-xs font-medium text-[#344054]">Version {artifact.version}</span>
                           <span className="rounded-full bg-[#ECFDF3] px-3 py-1 text-xs font-medium text-[#027A48]">Approved source</span>
                         </div>
                       </div>
@@ -3232,10 +3831,10 @@ export default async function KeywordWorkflowPage({
               </div>
 
               <div>
-                <button type="submit" className="rounded-lg bg-[#111827] px-4 py-2 text-sm font-medium text-white transition hover:bg-[#1F2937]">Generate consolidated keyword artifact</button>
+                <button type="submit" className="rounded-lg bg-[#111827] px-4 py-2 text-sm font-medium text-white transition hover:bg-[#1F2937]">Generate consolidated keyword checkpoint</button>
               </div>
             </form>
-          )}
+          ) : null}
 
           {activeCheckpointReview}
         </section>
@@ -3245,18 +3844,22 @@ export default async function KeywordWorkflowPage({
     if (showTopicalMapWorkspace) {
       return (
         <section className="space-y-4 rounded-xl border border-[#E8EAF0] bg-white p-6 shadow-sm">
-          <div className="max-w-2xl">
-            <h2 className="text-lg font-semibold text-[#111827]">Topical map</h2>
-            <p className="mt-1 text-sm text-[#667085]">
-              Generate a first-pass pillar and cluster map from the latest approved consolidated ledger before content brief generation.
-            </p>
+          <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
+            <div className="max-w-2xl">
+              <h2 className="text-lg font-semibold text-[#111827]">Topical map</h2>
+              <p className="mt-1 text-sm text-[#667085]">
+                Generate a first-pass pillar and cluster map from the latest approved consolidated checkpoint before content brief generation.
+              </p>
+            </div>
+
+            {lockedStepHeaderIndicator}
           </div>
 
           {!approvedConsolidatedArtifact ? (
             <div className="rounded-lg border border-[#E4E7EC] bg-[#FCFCFD] p-8 text-center">
-              <p className="text-sm text-[#9CA3AF]">Approve a consolidated keywords artifact before generating the topical map.</p>
+              <p className="text-sm text-[#9CA3AF]">Approve a consolidated keywords checkpoint before generating the topical map.</p>
             </div>
-          ) : (
+          ) : !isReadOnlyStepView ? (
             <form action={createTopicalMapArtifactAction} className="grid gap-4 rounded-lg border border-[#E4E7EC] bg-[#FCFCFD] p-4">
               <input type="hidden" name="projectId" value={projectId} />
               <input type="hidden" name="workflowId" value={workflowId} />
@@ -3266,7 +3869,6 @@ export default async function KeywordWorkflowPage({
                 value={JSON.stringify({
                   id: approvedConsolidatedArtifact.id,
                   stepKey: approvedConsolidatedArtifact.stepKey,
-                  version: approvedConsolidatedArtifact.version,
                   payload: approvedConsolidatedArtifact.payload,
                 })}
               />
@@ -3282,17 +3884,16 @@ export default async function KeywordWorkflowPage({
                   </div>
 
                   <div className="flex flex-wrap gap-2">
-                    <span className="rounded-full bg-[#F4F6FA] px-3 py-1 text-xs font-medium text-[#344054]">Version {approvedConsolidatedArtifact.version}</span>
                     <span className="rounded-full bg-[#ECFDF3] px-3 py-1 text-xs font-medium text-[#027A48]">Approved source</span>
                   </div>
                 </div>
               </div>
 
               <div>
-                <button type="submit" className="rounded-lg bg-[#111827] px-4 py-2 text-sm font-medium text-white transition hover:bg-[#1F2937]">Generate topical map artifact</button>
+                <button type="submit" className="rounded-lg bg-[#111827] px-4 py-2 text-sm font-medium text-white transition hover:bg-[#1F2937]">Generate topical map checkpoint</button>
               </div>
             </form>
-          )}
+          ) : null}
 
           {activeCheckpointReview}
         </section>
@@ -3302,151 +3903,220 @@ export default async function KeywordWorkflowPage({
     if (showContentBriefWorkspace) {
       return (
         <section className="space-y-4 rounded-xl border border-[#E8EAF0] bg-white p-6 shadow-sm">
-          <div className="max-w-2xl">
-            <h2 className="text-lg font-semibold text-[#111827]">Content brief handoff</h2>
-            <p className="mt-1 text-sm text-[#667085]">
-              Promote an approved topical-map node into a workflow-aware content brief input that can be reviewed before article generation.
-            </p>
+          <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
+            <div className="max-w-2xl">
+              <h2 className="text-lg font-semibold text-[#111827]">Content brief handoff</h2>
+              <p className="mt-1 text-sm text-[#667085]">
+                Promote an approved topical-map node into a workflow-aware content brief input that can be reviewed before article generation.
+              </p>
+            </div>
+
+            {lockedStepHeaderIndicator}
           </div>
 
-          {!approvedTopicalMapArtifact || approvedContentBriefQueue.length === 0 ? (
-            <div className="rounded-lg border border-[#E4E7EC] bg-[#FCFCFD] p-8 text-center">
-              <p className="text-sm text-[#9CA3AF]">Approve a topical-map artifact with queued content nodes before generating a content brief artifact.</p>
-            </div>
-          ) : (
-            <form action={createContentBriefArtifactAction} className="grid gap-4 rounded-lg border border-[#E4E7EC] bg-[#FCFCFD] p-4">
-              <input type="hidden" name="projectId" value={projectId} />
-              <input type="hidden" name="workflowId" value={workflowId} />
-              <input type="hidden" name="language" value={workflow.language} />
-              <input type="hidden" name="country" value={workflow.country} />
-              <input
-                type="hidden"
-                name="sourceArtifact"
-                value={JSON.stringify({
-                  id: approvedTopicalMapArtifact.id,
-                  stepKey: approvedTopicalMapArtifact.stepKey,
-                  version: approvedTopicalMapArtifact.version,
-                  payload: approvedTopicalMapArtifact.payload,
-                })}
-              />
-
-              <div className="rounded-lg border border-[#D0D5DD] bg-white p-4">
-                <p className="text-sm font-medium text-[#111827]">Approved brief queue</p>
-                <p className="mt-1 text-xs text-[#667085]">Select one approved topical-map node to promote into a structured brief input artifact.</p>
-
-                <div className="mt-4 grid gap-3">
-                  {approvedContentBriefQueue.map((queueEntry, index) => (
-                    <label key={`${queueEntry.pillar}-${queueEntry.keyword}`} className="flex items-start gap-3 rounded-lg border border-[#E4E7EC] p-3">
-                      <input type="radio" name="selectedQueueKey" value={`${queueEntry.pillar}::${queueEntry.keyword}`} defaultChecked={index === 0} className="mt-1 h-4 w-4 border border-[#D0D5DD]" />
-
-                      <div className="min-w-0 flex-1">
-                        <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
-                          <div>
-                            <p className="text-sm font-medium text-[#111827]">{queueEntry.keyword}</p>
-                            <p className="mt-1 text-xs text-[#667085]">Pillar: {queueEntry.pillar}</p>
-                          </div>
-
-                          <div className="flex flex-wrap gap-2">
-                            <span className="rounded-full bg-[#F4F6FA] px-3 py-1 text-xs font-medium text-[#344054]">{queueEntry.contentType}</span>
-                            {queueEntry.suggestedUrlPath ? <span className="rounded-full bg-[#F9FAFB] px-3 py-1 text-xs font-medium text-[#667085]">{queueEntry.suggestedUrlPath}</span> : null}
-                          </div>
-                        </div>
-                      </div>
-                    </label>
-                  ))}
-                </div>
-              </div>
-
-              <div>
-                <label className="block text-xs font-medium uppercase tracking-[0.08em] text-[#667085]" htmlFor="content-brief-editorial-notes">Editorial notes</label>
-                <textarea id="content-brief-editorial-notes" name="editorialNotes" rows={4} placeholder="Optional: CTA, internal-link priorities, conversion notes, or editor guidance" className="mt-2 w-full rounded-lg border border-[#D0D5DD] bg-white px-3 py-2 text-sm text-[#111827]" />
-              </div>
-
-              <div>
-                <button type="submit" className="rounded-lg bg-[#111827] px-4 py-2 text-sm font-medium text-white transition hover:bg-[#1F2937]">Generate content brief artifact</button>
-              </div>
-            </form>
-          )}
-
           {activeCheckpointReview}
+
+          {renderCollapsedInputPanel({
+            description:
+              'Use this panel to choose the approved topical-map node and editorial notes that should become the next content-brief checkpoint.',
+            children:
+              !approvedTopicalMapArtifact || approvedContentBriefQueue.length === 0 ? (
+                <div className="rounded-lg border border-[#E4E7EC] bg-white p-8 text-center">
+                  <p className="text-sm text-[#9CA3AF]">Approve a topical-map checkpoint with queued content nodes before generating a content brief checkpoint.</p>
+                </div>
+              ) : (
+                <form action={createContentBriefArtifactAction} className="grid gap-4 rounded-lg border border-[#E4E7EC] bg-white p-4">
+                  <input type="hidden" name="projectId" value={projectId} />
+                  <input type="hidden" name="workflowId" value={workflowId} />
+                  <input type="hidden" name="language" value={workflow.language} />
+                  <input type="hidden" name="country" value={workflow.country} />
+                  <input
+                    type="hidden"
+                    name="sourceArtifact"
+                    value={JSON.stringify({
+                      id: approvedTopicalMapArtifact.id,
+                      stepKey: approvedTopicalMapArtifact.stepKey,
+                      payload: approvedTopicalMapArtifact.payload,
+                    })}
+                  />
+
+                  <div className="rounded-lg border border-[#D0D5DD] bg-[#FCFCFD] p-4">
+                    <p className="text-sm font-medium text-[#111827]">Approved brief queue</p>
+                    <p className="mt-1 text-xs text-[#667085]">Select one approved topical-map node to promote into a structured brief input checkpoint.</p>
+
+                    <div className="mt-4 grid gap-3">
+                      {approvedContentBriefQueue.map((queueEntry, index) => (
+                        <label key={`${queueEntry.pillar}-${queueEntry.keyword}`} className="flex items-start gap-3 rounded-lg border border-[#E4E7EC] bg-white p-3">
+                          <input type="radio" name="selectedQueueKey" value={`${queueEntry.pillar}::${queueEntry.keyword}`} defaultChecked={index === 0} className="mt-1 h-4 w-4 border border-[#D0D5DD]" />
+
+                          <div className="min-w-0 flex-1">
+                            <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
+                              <div>
+                                <p className="text-sm font-medium text-[#111827]">{queueEntry.keyword}</p>
+                                <p className="mt-1 text-xs text-[#667085]">Pillar: {queueEntry.pillar}</p>
+                              </div>
+
+                              <div className="flex flex-wrap gap-2">
+                                <span className="rounded-full bg-[#F4F6FA] px-3 py-1 text-xs font-medium text-[#344054]">{queueEntry.contentType}</span>
+                                {queueEntry.suggestedUrlPath ? <span className="rounded-full bg-[#F9FAFB] px-3 py-1 text-xs font-medium text-[#667085]">{queueEntry.suggestedUrlPath}</span> : null}
+                              </div>
+                            </div>
+                          </div>
+                        </label>
+                      ))}
+                    </div>
+                  </div>
+
+                  <div>
+                    <label className="block text-xs font-medium uppercase tracking-[0.08em] text-[#667085]" htmlFor="content-brief-editorial-notes">Editorial notes</label>
+                    <textarea id="content-brief-editorial-notes" name="editorialNotes" rows={4} placeholder="Optional: CTA, internal-link priorities, conversion notes, or editor guidance" className="mt-2 w-full rounded-lg border border-[#D0D5DD] bg-white px-3 py-2 text-sm text-[#111827]" />
+                  </div>
+
+                  <div>
+                    <button type="submit" className="rounded-lg bg-[#111827] px-4 py-2 text-sm font-medium text-white transition hover:bg-[#1F2937]">Generate content brief checkpoint</button>
+                  </div>
+                </form>
+              ),
+          })}
         </section>
       );
     }
 
     if (showContentArticleWorkspace) {
       return (
+        <>
+        <section className="space-y-4 rounded-xl border border-[#E8EAF0] bg-white p-6 shadow-sm">
+          <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
+            <div className="max-w-2xl">
+              <h2 className="text-lg font-semibold text-[#111827]">Content article</h2>
+              <p className="mt-1 text-sm text-[#667085]">
+                Promote an approved content brief into a workflow-aware article input checkpoint before queue-backed draft generation is wired in.
+              </p>
+            </div>
+
+            {lockedStepHeaderIndicator}
+          </div>
+
+          {activeCheckpointReview}
+
+          {renderCollapsedInputPanel({
+            description:
+              'Use this panel to choose the approved content-brief source and title direction that should seed the next content-article checkpoint.',
+            children:
+              !approvedContentBriefArtifact || !approvedContentBrief ? (
+                <div className="rounded-lg border border-[#E4E7EC] bg-white p-8 text-center">
+                  <p className="text-sm text-[#9CA3AF]">Approve a content-brief checkpoint before generating the content article checkpoint.</p>
+                </div>
+              ) : (
+                <form action={createContentArticleArtifactAction} className="grid gap-4 rounded-lg border border-[#E4E7EC] bg-white p-4">
+                  <input type="hidden" name="projectId" value={projectId} />
+                  <input type="hidden" name="workflowId" value={workflowId} />
+                  <input
+                    type="hidden"
+                    name="sourceArtifact"
+                    value={JSON.stringify({
+                      id: approvedContentBriefArtifact.id,
+                      stepKey: approvedContentBriefArtifact.stepKey,
+                      payload: approvedContentBriefArtifact.payload,
+                    })}
+                  />
+
+                  <div className="rounded-lg border border-[#D0D5DD] bg-[#FCFCFD] p-4">
+                    <p className="text-sm font-medium text-[#111827]">Approved article source</p>
+                    <p className="mt-1 text-xs text-[#667085]">The article input generator uses the latest approved content brief as the single downstream source of truth.</p>
+
+                    <div className="mt-4 flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+                      <div>
+                        <p className="text-sm font-medium text-[#111827]">{approvedContentBrief.targetKeyword}</p>
+                        <p className="mt-1 text-xs text-[#667085]">Pillar: {approvedContentBrief.pillar}</p>
+                      </div>
+
+                      <div className="flex flex-wrap gap-2">
+                        <span className="rounded-full bg-[#F4F6FA] px-3 py-1 text-xs font-medium text-[#344054]">{approvedContentBrief.contentType}</span>
+                      </div>
+                    </div>
+                  </div>
+
+                  <div className="rounded-lg border border-[#D0D5DD] bg-[#FCFCFD] p-4">
+                    <p className="text-sm font-medium text-[#111827]">Title selection</p>
+                    <p className="mt-1 text-xs text-[#667085]">Choose the approved article title direction that should anchor the next checkpoint.</p>
+
+                    <div className="mt-4 grid gap-3">
+                      {contentArticleTitleOptions.map((title, index) => (
+                        <label key={title} className="flex items-start gap-3 rounded-lg border border-[#E4E7EC] bg-white p-3">
+                          <input type="radio" name="selectedTitle" value={title} defaultChecked={index === 0} className="mt-1 h-4 w-4 border border-[#D0D5DD]" />
+
+                          <span className="text-sm text-[#111827]">{title}</span>
+                        </label>
+                      ))}
+                    </div>
+                  </div>
+
+                  <div>
+                    <label className="block text-xs font-medium uppercase tracking-[0.08em] text-[#667085]" htmlFor="content-article-notes">Draft notes</label>
+                    <textarea id="content-article-notes" name="articleNotes" rows={4} placeholder="Optional: final angle, CTA emphasis, proof points, or editorial direction for the article draft" className="mt-2 w-full rounded-lg border border-[#D0D5DD] bg-white px-3 py-2 text-sm text-[#111827]" />
+                  </div>
+
+                  <div>
+                    <button type="submit" className="rounded-lg bg-[#111827] px-4 py-2 text-sm font-medium text-white transition hover:bg-[#1F2937]">Generate content article checkpoint</button>
+                  </div>
+                </form>
+              ),
+          })}
+        </section>
+
         <section className="space-y-4 rounded-xl border border-[#E8EAF0] bg-white p-6 shadow-sm">
           <div className="max-w-2xl">
-            <h2 className="text-lg font-semibold text-[#111827]">Content article</h2>
+            <h2 className="text-lg font-semibold text-[#111827]">Persisted content outputs</h2>
             <p className="mt-1 text-sm text-[#667085]">
-              Promote an approved content brief into a workflow-aware article input artifact before queue-backed draft generation is wired in.
+              Approving a content article checkpoint automatically triggers AI article generation — the card below updates live once the draft is ready.
             </p>
           </div>
 
-          {!approvedContentBriefArtifact || !approvedContentBrief ? (
+          {persistedContentPieces.length === 0 ? (
             <div className="rounded-lg border border-[#E4E7EC] bg-[#FCFCFD] p-8 text-center">
-              <p className="text-sm text-[#9CA3AF]">Approve a content-brief artifact before generating the content article artifact.</p>
+              <p className="text-sm text-[#9CA3AF]">
+                Approve a content article checkpoint to generate workflow-linked content pieces.
+              </p>
             </div>
           ) : (
-            <form action={createContentArticleArtifactAction} className="grid gap-4 rounded-lg border border-[#E4E7EC] bg-[#FCFCFD] p-4">
-              <input type="hidden" name="projectId" value={projectId} />
-              <input type="hidden" name="workflowId" value={workflowId} />
-              <input
-                type="hidden"
-                name="sourceArtifact"
-                value={JSON.stringify({
-                  id: approvedContentBriefArtifact.id,
-                  stepKey: approvedContentBriefArtifact.stepKey,
-                  version: approvedContentBriefArtifact.version,
-                  payload: approvedContentBriefArtifact.payload,
-                })}
-              />
+            <div className="grid gap-4">
+              {persistedContentPieces.map((piece) => {
+                const persistedKeyword = persistedKeywordsById.get(piece.keywordId);
+                const briefRecord = readObjectRecord(piece.brief);
+                const reviewNotes = readObjectRecord(piece.reviewNotes);
+                const articleInput = readObjectRecord(reviewNotes?.articleInput);
+                const pillar =
+                  typeof briefRecord?.pillar === 'string' && briefRecord.pillar.trim().length > 0
+                    ? briefRecord.pillar.trim()
+                    : persistedKeyword?.parentTopic ?? '—';
+                const suggestedUrlPath =
+                  typeof briefRecord?.suggestedUrlPath === 'string' && briefRecord.suggestedUrlPath.trim().length > 0
+                    ? briefRecord.suggestedUrlPath.trim()
+                    : null;
+                const articleSectionCount = Array.isArray(articleInput?.articleSections)
+                  ? articleInput.articleSections.filter(
+                      (value): value is string => typeof value === 'string' && value.trim().length > 0,
+                    ).length
+                  : 0;
 
-              <div className="rounded-lg border border-[#D0D5DD] bg-white p-4">
-                <p className="text-sm font-medium text-[#111827]">Approved article source</p>
-                <p className="mt-1 text-xs text-[#667085]">The article input generator uses the latest approved content brief as the single downstream source of truth.</p>
-
-                <div className="mt-4 flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
-                  <div>
-                    <p className="text-sm font-medium text-[#111827]">{approvedContentBrief.targetKeyword}</p>
-                    <p className="mt-1 text-xs text-[#667085]">Pillar: {approvedContentBrief.pillar}</p>
-                  </div>
-
-                  <div className="flex flex-wrap gap-2">
-                    <span className="rounded-full bg-[#F4F6FA] px-3 py-1 text-xs font-medium text-[#344054]">{approvedContentBrief.contentType}</span>
-                    <span className="rounded-full bg-[#F4F6FA] px-3 py-1 text-xs font-medium text-[#344054]">Version {approvedContentBriefArtifact.version}</span>
-                  </div>
-                </div>
-              </div>
-
-              <div className="rounded-lg border border-[#D0D5DD] bg-white p-4">
-                <p className="text-sm font-medium text-[#111827]">Title selection</p>
-                <p className="mt-1 text-xs text-[#667085]">Choose the approved article title direction that should anchor the next artifact version.</p>
-
-                <div className="mt-4 grid gap-3">
-                  {contentArticleTitleOptions.map((title, index) => (
-                    <label key={title} className="flex items-start gap-3 rounded-lg border border-[#E4E7EC] p-3">
-                      <input type="radio" name="selectedTitle" value={title} defaultChecked={index === 0} className="mt-1 h-4 w-4 border border-[#D0D5DD]" />
-
-                      <span className="text-sm text-[#111827]">{title}</span>
-                    </label>
-                  ))}
-                </div>
-              </div>
-
-              <div>
-                <label className="block text-xs font-medium uppercase tracking-[0.08em] text-[#667085]" htmlFor="content-article-notes">Draft notes</label>
-                <textarea id="content-article-notes" name="articleNotes" rows={4} placeholder="Optional: final angle, CTA emphasis, proof points, or editorial direction for the article draft" className="mt-2 w-full rounded-lg border border-[#D0D5DD] bg-white px-3 py-2 text-sm text-[#111827]" />
-              </div>
-
-              <div>
-                <button type="submit" className="rounded-lg bg-[#111827] px-4 py-2 text-sm font-medium text-white transition hover:bg-[#1F2937]">Generate content article artifact</button>
-              </div>
-            </form>
+                return (
+                  <ContentPieceStatusCard
+                    key={piece.id}
+                    initialPiece={piece}
+                    keyword={persistedKeyword?.keyword ?? null}
+                    pillar={pillar}
+                    suggestedUrlPath={suggestedUrlPath}
+                    articleSectionCount={articleSectionCount}
+                    workflowCountry={workflow.country}
+                    apiUrl={process.env.NEXT_PUBLIC_API_URL ?? 'http://localhost:3002'}
+                  />
+                );
+              })}
+            </div>
           )}
-
-          {activeCheckpointReview}
         </section>
+        </>
       );
     }
 
@@ -3462,7 +4132,7 @@ export default async function KeywordWorkflowPage({
           </Link>
           <h1 className="mt-2 text-[32px] font-bold text-[#111827]">Workflow shell</h1>
           <p className="mt-1 text-sm text-[#667085]">
-            Review the current workflow run, add internal artifacts manually, and record checkpoint decisions.
+            Review the current workflow run, add internal checkpoints manually, and record checkpoint decisions.
           </p>
         </div>
 
@@ -3529,7 +4199,6 @@ export default async function KeywordWorkflowPage({
           projectWebsiteUrl={project.websiteUrl}
           workflowId={workflowId}
           defaultStep={workflow.currentCheckpoint ?? 'business-profile'}
-          latestSaveStateByStep={latestSaveStateByStep}
           seedKeywordStepSource={seedKeywordStepSource}
           initialValuesByStep={
             businessProfileDraftValues || seedKeywordDraftValues || serpNicheMapDraftValues
@@ -3547,7 +4216,7 @@ export default async function KeywordWorkflowPage({
             <div>
               <h3 className="text-base font-semibold text-[#111827]">Approve current checkpoint</h3>
               <p className="mt-1 text-sm text-[#667085]">
-                Approval is the next step after saving the active artifact version. Review the latest saved output here before continuing the workflow.
+                Approval is the next step after saving the active checkpoint. Review the latest saved output here before continuing the workflow.
               </p>
             </div>
 
@@ -3557,7 +4226,7 @@ export default async function KeywordWorkflowPage({
                   {isWorkflowStepKey(activeArtifact.stepKey) ? formatWorkflowStepLabel(activeArtifact.stepKey) : activeArtifact.stepKey}
                 </span>
                 <span className="rounded-full bg-white px-3 py-1 text-xs font-medium text-[#344054]">
-                  Version {activeArtifact.version}
+                  Latest checkpoint
                 </span>
                 <span className="rounded-full bg-[#EEF4FF] px-3 py-1 text-xs font-medium text-[#3538CD]">
                   {activeArtifact.status.replaceAll('_', ' ')}
@@ -3569,7 +4238,7 @@ export default async function KeywordWorkflowPage({
           {!activeArtifact ? (
             <div className="mt-4 rounded-lg border border-[#E4E7EC] bg-white p-4">
               <p className="text-sm text-[#667085]">
-                Save an artifact version for the current step before requesting approval.
+                Save a checkpoint for the current step before requesting approval.
               </p>
             </div>
           ) : (
@@ -3597,7 +4266,7 @@ export default async function KeywordWorkflowPage({
 
               {hasArtifactPayloadContent(activeArtifact.payload) ? (
                 <details className="mt-4 rounded-lg border border-[#E4E7EC] bg-white p-4">
-                  <summary className="cursor-pointer text-sm font-medium text-[#111827]">Review latest artifact details</summary>
+                  <summary className="cursor-pointer text-sm font-medium text-[#111827]">Review latest checkpoint details</summary>
                   <div className="mt-3">
                     <ArtifactPayloadView payload={activeArtifact.payload} />
                   </div>
@@ -4089,6 +4758,7 @@ export default async function KeywordWorkflowPage({
                 Generate Method 01 artifact
               </button>
             </div>
+              </fieldset>
           </form>
         )}
       </section>
@@ -4101,6 +4771,8 @@ export default async function KeywordWorkflowPage({
           </p>
         </div>
 
+          {selectedStepNotice}
+
         {sourceMethod02Keywords.length === 0 ? (
           <div className="rounded-lg border border-[#E4E7EC] bg-[#FCFCFD] p-8 text-center">
             <p className="text-sm text-[#9CA3AF]">No seed keywords are stored on this project yet.</p>
@@ -4109,6 +4781,8 @@ export default async function KeywordWorkflowPage({
           <form action={createMethod02ArtifactAction} className="grid gap-4 rounded-lg border border-[#E4E7EC] bg-[#FCFCFD] p-4">
             <input type="hidden" name="projectId" value={projectId} />
             <input type="hidden" name="workflowId" value={workflowId} />
+
+              <fieldset disabled={isReadOnlyStepView} className="grid gap-4">
 
             <div className="rounded-lg border border-[#D0D5DD] bg-white p-4">
               <p className="text-sm font-medium text-[#111827]">Method 02 source keywords</p>
@@ -4256,6 +4930,7 @@ export default async function KeywordWorkflowPage({
                 Generate Method 02 artifact
               </button>
             </div>
+              </fieldset>
           </form>
         )}
       </section>
@@ -4268,6 +4943,8 @@ export default async function KeywordWorkflowPage({
           </p>
         </div>
 
+          {selectedStepNotice}
+
         {consolidationSourceArtifacts.length === 0 ? (
           <div className="rounded-lg border border-[#E4E7EC] bg-[#FCFCFD] p-8 text-center">
             <p className="text-sm text-[#9CA3AF]">
@@ -4278,6 +4955,8 @@ export default async function KeywordWorkflowPage({
           <form action={createConsolidatedKeywordsArtifactAction} className="grid gap-4 rounded-lg border border-[#E4E7EC] bg-[#FCFCFD] p-4">
             <input type="hidden" name="projectId" value={projectId} />
             <input type="hidden" name="workflowId" value={workflowId} />
+
+              <fieldset disabled={isReadOnlyStepView} className="grid gap-4">
 
             <div className="rounded-lg border border-[#D0D5DD] bg-white p-4">
               <p className="text-sm font-medium text-[#111827]">Approved consolidation sources</p>
@@ -4294,7 +4973,6 @@ export default async function KeywordWorkflowPage({
                       value={JSON.stringify({
                         id: artifact.id,
                         stepKey: artifact.stepKey,
-                        version: artifact.version,
                         payload: artifact.payload,
                       })}
                     />
@@ -4302,9 +4980,6 @@ export default async function KeywordWorkflowPage({
                     <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
                       <p className="text-sm font-medium text-[#111827]">{artifact.stepKey}</p>
                       <div className="flex flex-wrap gap-2">
-                        <span className="rounded-full bg-[#F4F6FA] px-3 py-1 text-xs font-medium text-[#344054]">
-                          Version {artifact.version}
-                        </span>
                         <span className="rounded-full bg-[#ECFDF3] px-3 py-1 text-xs font-medium text-[#027A48]">
                           Approved source
                         </span>
@@ -4323,6 +4998,7 @@ export default async function KeywordWorkflowPage({
                 Generate consolidated keyword artifact
               </button>
             </div>
+              </fieldset>
           </form>
         )}
       </section>
@@ -4334,6 +5010,8 @@ export default async function KeywordWorkflowPage({
             Generate a first-pass pillar and cluster map from the latest approved consolidated ledger before content brief generation.
           </p>
         </div>
+
+          {selectedStepNotice}
 
         {!approvedConsolidatedArtifact ? (
           <div className="rounded-lg border border-[#E4E7EC] bg-[#FCFCFD] p-8 text-center">
@@ -4351,10 +5029,11 @@ export default async function KeywordWorkflowPage({
               value={JSON.stringify({
                 id: approvedConsolidatedArtifact.id,
                 stepKey: approvedConsolidatedArtifact.stepKey,
-                version: approvedConsolidatedArtifact.version,
                 payload: approvedConsolidatedArtifact.payload,
               })}
             />
+
+            <fieldset disabled={isReadOnlyStepView} className="grid gap-4">
 
             <div className="rounded-lg border border-[#D0D5DD] bg-white p-4">
               <p className="text-sm font-medium text-[#111827]">Approved topical map source</p>
@@ -4371,9 +5050,6 @@ export default async function KeywordWorkflowPage({
                 </div>
 
                 <div className="flex flex-wrap gap-2">
-                  <span className="rounded-full bg-[#F4F6FA] px-3 py-1 text-xs font-medium text-[#344054]">
-                    Version {approvedConsolidatedArtifact.version}
-                  </span>
                   <span className="rounded-full bg-[#ECFDF3] px-3 py-1 text-xs font-medium text-[#027A48]">
                     Approved source
                   </span>
@@ -4389,6 +5065,7 @@ export default async function KeywordWorkflowPage({
                 Generate topical map artifact
               </button>
             </div>
+            </fieldset>
           </form>
         )}
       </section>
@@ -4546,6 +5223,8 @@ export default async function KeywordWorkflowPage({
           </p>
         </div>
 
+          {selectedStepNotice}
+
         {!approvedTopicalMapArtifact || approvedContentBriefQueue.length === 0 ? (
           <div className="rounded-lg border border-[#E4E7EC] bg-[#FCFCFD] p-8 text-center">
             <p className="text-sm text-[#9CA3AF]">
@@ -4564,10 +5243,11 @@ export default async function KeywordWorkflowPage({
               value={JSON.stringify({
                 id: approvedTopicalMapArtifact.id,
                 stepKey: approvedTopicalMapArtifact.stepKey,
-                version: approvedTopicalMapArtifact.version,
                 payload: approvedTopicalMapArtifact.payload,
               })}
             />
+
+            <fieldset disabled={isReadOnlyStepView} className="grid gap-4">
 
             <div className="rounded-lg border border-[#D0D5DD] bg-white p-4">
               <p className="text-sm font-medium text-[#111827]">Approved brief queue</p>
@@ -4631,6 +5311,7 @@ export default async function KeywordWorkflowPage({
                 Generate content brief artifact
               </button>
             </div>
+            </fieldset>
           </form>
         )}
       </section>
@@ -4642,6 +5323,8 @@ export default async function KeywordWorkflowPage({
             Promote an approved content brief into a workflow-aware article input artifact before queue-backed draft generation is wired in.
           </p>
         </div>
+
+          {selectedStepNotice}
 
         {!approvedContentBriefArtifact || !approvedContentBrief ? (
           <div className="rounded-lg border border-[#E4E7EC] bg-[#FCFCFD] p-8 text-center">
@@ -4659,10 +5342,11 @@ export default async function KeywordWorkflowPage({
               value={JSON.stringify({
                 id: approvedContentBriefArtifact.id,
                 stepKey: approvedContentBriefArtifact.stepKey,
-                version: approvedContentBriefArtifact.version,
                 payload: approvedContentBriefArtifact.payload,
               })}
             />
+
+            <fieldset disabled={isReadOnlyStepView} className="grid gap-4">
 
             <div className="rounded-lg border border-[#D0D5DD] bg-white p-4">
               <p className="text-sm font-medium text-[#111827]">Approved article source</p>
@@ -4680,9 +5364,6 @@ export default async function KeywordWorkflowPage({
                   <span className="rounded-full bg-[#F4F6FA] px-3 py-1 text-xs font-medium text-[#344054]">
                     {approvedContentBrief.contentType}
                   </span>
-                  <span className="rounded-full bg-[#F4F6FA] px-3 py-1 text-xs font-medium text-[#344054]">
-                    Version {approvedContentBriefArtifact.version}
-                  </span>
                 </div>
               </div>
             </div>
@@ -4690,7 +5371,7 @@ export default async function KeywordWorkflowPage({
             <div className="rounded-lg border border-[#D0D5DD] bg-white p-4">
               <p className="text-sm font-medium text-[#111827]">Title selection</p>
               <p className="mt-1 text-xs text-[#667085]">
-                Choose the approved article title direction that should anchor the next artifact version.
+                Choose the approved article title direction that should anchor the next checkpoint.
               </p>
 
               <div className="mt-4 grid gap-3">
@@ -4731,6 +5412,7 @@ export default async function KeywordWorkflowPage({
                 Generate content article artifact
               </button>
             </div>
+            </fieldset>
           </form>
         )}
       </section>
@@ -4739,9 +5421,8 @@ export default async function KeywordWorkflowPage({
         <div className="max-w-2xl">
           <h2 className="text-lg font-semibold text-[#111827]">Persisted content outputs</h2>
           <p className="mt-1 text-sm text-[#667085]">
-            Approved content checkpoints now upsert workflow-linked rows into `content_pieces`. Article approvals
-            currently persist the selected draft input and title, while generated article copy remains deferred to the
-            content queue.
+            Approved content checkpoints upsert workflow-linked rows into content_pieces. Approving a content article
+            checkpoint automatically triggers AI article generation — the card below updates live once the draft is ready.
           </p>
         </div>
 
@@ -4773,48 +5454,16 @@ export default async function KeywordWorkflowPage({
                 : 0;
 
               return (
-                <article key={piece.id} className="rounded-lg border border-[#E4E7EC] bg-[#FCFCFD] p-4">
-                  <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
-                    <div>
-                      <h3 className="text-base font-semibold text-[#111827]">{piece.title}</h3>
-                      <p className="mt-1 text-sm text-[#667085]">
-                        {persistedKeyword?.keyword ?? `Keyword ID ${piece.keywordId}`}
-                      </p>
-                    </div>
-
-                    <div className="flex flex-wrap gap-2">
-                      <span className="rounded-full bg-[#EEF4FF] px-3 py-1 text-xs font-medium text-[#3538CD]">
-                        {piece.status}
-                      </span>
-                      <span className="rounded-full bg-[#F4F6FA] px-3 py-1 text-xs font-medium text-[#344054]">
-                        {piece.language.toUpperCase()} / {(piece.country ?? workflow.country).toUpperCase()}
-                      </span>
-                      <span className="rounded-full bg-[#F9FAFB] px-3 py-1 text-xs font-medium text-[#667085]">
-                        {articleInput ? 'Article input saved' : 'Brief saved'}
-                      </span>
-                    </div>
-                  </div>
-
-                  <div className="mt-4 grid gap-3 sm:grid-cols-2">
-                    <div className="rounded-lg border border-[#E4E7EC] bg-white p-3">
-                      <p className="text-xs font-medium uppercase tracking-[0.08em] text-[#667085]">Pillar</p>
-                      <p className="mt-2 text-sm font-medium text-[#111827]">{pillar}</p>
-                      {suggestedUrlPath ? <p className="mt-1 text-xs text-[#667085]">{suggestedUrlPath}</p> : null}
-                    </div>
-
-                    <div className="rounded-lg border border-[#E4E7EC] bg-white p-3">
-                      <p className="text-xs font-medium uppercase tracking-[0.08em] text-[#667085]">Draft readiness</p>
-                      <p className="mt-2 text-sm font-medium text-[#111827]">
-                        {articleInput
-                          ? `${articleSectionCount} planned section${articleSectionCount === 1 ? '' : 's'} persisted`
-                          : 'Awaiting approved article input'}
-                      </p>
-                      <p className="mt-1 text-xs text-[#667085]">
-                        Saved {new Date(piece.createdAt).toLocaleDateString()}
-                      </p>
-                    </div>
-                  </div>
-                </article>
+                <ContentPieceStatusCard
+                  key={piece.id}
+                  initialPiece={piece}
+                  keyword={persistedKeyword?.keyword ?? null}
+                  pillar={pillar}
+                  suggestedUrlPath={suggestedUrlPath}
+                  articleSectionCount={articleSectionCount}
+                  workflowCountry={workflow.country}
+                  apiUrl={process.env.NEXT_PUBLIC_API_URL ?? 'http://localhost:3002'}
+                />
               );
             })}
           </div>
@@ -4829,7 +5478,7 @@ export default async function KeywordWorkflowPage({
 
         {secondaryCheckpointArtifacts.length === 0 ? (
           <div className="rounded-xl border border-[#E8EAF0] bg-white p-8 text-center shadow-sm">
-            <p className="text-sm text-[#9CA3AF]">No additional checkpoint artifacts to review yet.</p>
+            <p className="text-sm text-[#9CA3AF]">No additional checkpoint records to review yet.</p>
           </div>
         ) : (
           <div className="grid gap-4">
@@ -4844,7 +5493,7 @@ export default async function KeywordWorkflowPage({
                       <h3 className="text-base font-semibold text-[#111827]">
                         {isWorkflowStepKey(artifact.stepKey) ? formatWorkflowStepLabel(artifact.stepKey) : artifact.stepKey}
                       </h3>
-                      <p className="mt-1 text-sm text-[#667085]">Version {artifact.version}</p>
+                      <p className="mt-1 text-sm text-[#667085]">Saved {new Date(artifact.createdAt).toLocaleString()}</p>
                     </div>
                     <div className="flex flex-wrap gap-2">
                       <span className="rounded-full bg-[#F4F6FA] px-3 py-1 text-xs font-medium text-[#344054]">
@@ -4865,7 +5514,7 @@ export default async function KeywordWorkflowPage({
 
                   {hasArtifactPayloadContent(artifact.payload) ? (
                     <div className="mt-4">
-                      <p className="text-xs font-medium uppercase tracking-[0.08em] text-[#667085]">Artifact details</p>
+                      <p className="text-xs font-medium uppercase tracking-[0.08em] text-[#667085]">Checkpoint details</p>
                       <div className="mt-2 rounded-lg bg-[#F9FAFB] p-3">
                         <ArtifactPayloadView payload={artifact.payload} />
                       </div>
@@ -4937,15 +5586,15 @@ export default async function KeywordWorkflowPage({
 
       <section className="space-y-4">
         <div>
-          <h2 className="text-lg font-semibold text-[#111827]">Artifact revision history</h2>
+          <h2 className="text-lg font-semibold text-[#111827]">Checkpoint history</h2>
           <p className="mt-1 text-sm text-[#667085]">
-            Full version history grouped by workflow step so strategists can review prior revisions, not only the latest card.
+            Full checkpoint history grouped by workflow step so strategists can review prior saved records, not only the latest card.
           </p>
         </div>
 
         {artifactHistory.length === 0 ? (
           <div className="rounded-xl border border-[#E8EAF0] bg-white p-8 text-center shadow-sm">
-            <p className="text-sm text-[#9CA3AF]">No artifact history yet for this workflow.</p>
+            <p className="text-sm text-[#9CA3AF]">No checkpoint history yet for this workflow.</p>
           </div>
         ) : (
           <div className="grid gap-4">
@@ -4954,7 +5603,7 @@ export default async function KeywordWorkflowPage({
                 <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
                   <div>
                     <h3 className="text-base font-semibold text-[#111827]">{stepKey}</h3>
-                    <p className="mt-1 text-sm text-[#667085]">{versions.length} version{versions.length === 1 ? '' : 's'}</p>
+                    <p className="mt-1 text-sm text-[#667085]">{versions.length} checkpoint record{versions.length === 1 ? '' : 's'}</p>
                   </div>
                   <span className="rounded-full bg-[#F4F6FA] px-3 py-1 text-xs font-medium text-[#344054]">
                     Latest: {versions[0]?.status.replaceAll('_', ' ')}
@@ -4970,7 +5619,7 @@ export default async function KeywordWorkflowPage({
                       <div key={artifact.id} className="rounded-lg border border-[#E4E7EC] bg-[#FCFCFD] p-4">
                         <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
                           <div>
-                            <p className="text-sm font-medium text-[#111827]">Version {artifact.version}</p>
+                            <p className="text-sm font-medium text-[#111827]">Checkpoint record</p>
                             <p className="mt-1 text-xs text-[#667085]">
                               Created {new Date(artifact.createdAt).toLocaleString()}
                             </p>
@@ -4994,7 +5643,7 @@ export default async function KeywordWorkflowPage({
 
                         {hasArtifactPayloadContent(artifact.payload) ? (
                           <div className="mt-3">
-                            <p className="text-xs font-medium uppercase tracking-[0.08em] text-[#667085]">Artifact details</p>
+                            <p className="text-xs font-medium uppercase tracking-[0.08em] text-[#667085]">Checkpoint details</p>
                             <div className="mt-2 rounded-lg bg-white p-3">
                               <ArtifactPayloadView payload={artifact.payload} />
                             </div>

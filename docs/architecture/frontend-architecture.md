@@ -49,4 +49,4 @@ frontend/src/
 
 ## API Communication
 
-All API calls go through `shared/utils/api.ts` (`apiFetch()`) which prefixes `NEXT_PUBLIC_API_URL` and handles JSON serialization/error throwing. In local development, it falls back to `http://localhost:3002` so the frontend talks to the Nest API even when the env var is unset. Feature-specific services wrap `apiFetch` with typed interfaces.
+All API calls go through `shared/utils/api.ts` (`apiFetch()`) which resolves a base URL from `API_URL` or `INTERNAL_API_URL` first, then falls back to `NEXT_PUBLIC_API_URL`, and handles JSON serialization/error throwing. In local development, it falls back to `http://localhost:3002` and normalizes the older `localhost:3005` dev setting back to the active Nest API port so stale shell env does not break SSR or client fetches. Feature-specific services wrap `apiFetch` with typed interfaces.

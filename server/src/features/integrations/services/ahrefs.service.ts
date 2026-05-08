@@ -47,6 +47,20 @@ export interface AhrefsOrganicCompetitor {
 
 const CACHE_TTL_SECONDS = 7 * 24 * 60 * 60; // 7 days
 
+function resolveRedisHost() {
+  const configuredHost = process.env.REDIS_HOST?.trim();
+
+  if (configuredHost) {
+    if (process.platform === 'win32' && configuredHost.toLowerCase() === 'localhost') {
+      return '127.0.0.1';
+    }
+
+    return configuredHost;
+  }
+
+  return process.platform === 'win32' ? '127.0.0.1' : 'localhost';
+}
+
 @Injectable()
 export class AhrefsService {
   private readonly logger = new Logger(AhrefsService.name);
@@ -57,7 +71,7 @@ export class AhrefsService {
   constructor(private readonly config: ConfigService) {
     this.apiKey = this.config.get<string>('AHREFS_API_KEY', '');
     this.redis = new Redis({
-      host: process.env.REDIS_HOST || 'localhost',
+      host: resolveRedisHost(),
       port: parseInt(process.env.REDIS_PORT || '6379', 10),
       lazyConnect: true,
       maxRetriesPerRequest: 1,

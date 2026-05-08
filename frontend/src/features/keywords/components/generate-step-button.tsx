@@ -33,15 +33,20 @@ const GENERATE_STEPS: Record<string, { label: string; description: string }> = {
     label: 'Generate Method 02',
     description: 'Expands approved seed keywords via Ahrefs matching and related terms.',
   },
+  'method03-content-gap-import': {
+    label: 'Generate Method 03',
+    description: 'Runs API-based content gap analysis against approved direct competitors, then classifies results with OpenAI.',
+  },
 };
 
 interface GenerateStepButtonProps {
   projectId: string;
   workflowId: string;
   stepKey: string;
+  variant?: 'card' | 'inline';
 }
 
-export function GenerateStepButton({ projectId, workflowId, stepKey }: GenerateStepButtonProps) {
+export function GenerateStepButton({ projectId, workflowId, stepKey, variant = 'card' }: GenerateStepButtonProps) {
   const router = useRouter();
   const [job, setJob] = useState<WorkflowJob | null>(null);
   const [error, setError] = useState<string | null>(null);
@@ -99,6 +104,58 @@ export function GenerateStepButton({ projectId, workflowId, stepKey }: GenerateS
     }
   };
 
+  const button = (
+    <button
+      type="button"
+      onClick={handleGenerate}
+      disabled={isTriggering || isRunning}
+      aria-label={config.label}
+      title={config.description}
+      className="shrink-0 rounded-lg bg-[#6366F1] px-4 py-2 text-sm font-medium text-white shadow-sm transition-colors hover:bg-[#4F46E5] disabled:cursor-not-allowed disabled:opacity-50"
+    >
+      {isTriggering ? 'Starting…' : isRunning ? 'Running…' : 'Generate'}
+    </button>
+  );
+
+  if (variant === 'inline') {
+    return (
+      <div className="flex flex-col gap-2 sm:items-end">
+        {button}
+
+        {isRunning && job ? (
+          <div className="w-full min-w-[180px] sm:w-[220px]">
+            <div className="flex items-center justify-between text-xs text-[#667085]">
+              <span>Processing…</span>
+              <span>{job.progress}%</span>
+            </div>
+            <div className="mt-1 h-1.5 w-full overflow-hidden rounded-full bg-[#E4E7EC]">
+              <div
+                className="h-full rounded-full bg-[#6366F1] transition-all duration-500"
+                style={{ width: `${job.progress}%` }}
+              />
+            </div>
+          </div>
+        ) : null}
+
+        {isDone ? (
+          <p className="max-w-[220px] text-xs font-medium text-green-600 sm:text-right">
+            Research complete. Refreshing…
+          </p>
+        ) : null}
+
+        {isFailed ? (
+          <p className="max-w-[220px] text-xs font-medium text-red-600 sm:text-right">
+            {job?.error ?? 'Generation failed. Check server logs.'}
+          </p>
+        ) : null}
+
+        {error && !isFailed ? (
+          <p className="max-w-[220px] text-xs font-medium text-red-600 sm:text-right">{error}</p>
+        ) : null}
+      </div>
+    );
+  }
+
   return (
     <div className="rounded-lg border border-[#E4E7EC] bg-[#F9FAFB] p-4">
       <div className="flex items-start justify-between gap-4">
@@ -107,14 +164,7 @@ export function GenerateStepButton({ projectId, workflowId, stepKey }: GenerateS
           <p className="mt-0.5 text-xs text-[#667085]">{config.description}</p>
         </div>
 
-        <button
-          type="button"
-          onClick={handleGenerate}
-          disabled={isTriggering || isRunning}
-          className="shrink-0 rounded-lg bg-[#6366F1] px-4 py-2 text-sm font-medium text-white shadow-sm transition-colors hover:bg-[#4F46E5] disabled:cursor-not-allowed disabled:opacity-50"
-        >
-          {isTriggering ? 'Starting…' : isRunning ? 'Running…' : 'Generate'}
-        </button>
+        {button}
       </div>
 
       {isRunning && job && (

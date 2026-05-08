@@ -3,13 +3,14 @@ import { InjectQueue } from '@nestjs/bullmq';
 import { Queue } from 'bullmq';
 import { eq, desc } from 'drizzle-orm';
 import { DatabaseService } from '../../shared/database/database.service';
-import { contentPieces } from '../../db/schema';
+import { contentPieces, keywords } from '../../db/schema';
 
 @Injectable()
 export class ContentService {
   constructor(
     private readonly database: DatabaseService,
     @InjectQueue('content-queue') private readonly contentQueue: Queue,
+    @InjectQueue('keyword-queue') private readonly keywordQueue: Queue,
   ) {}
 
   async findAll(status?: string) {
@@ -38,9 +39,16 @@ export class ContentService {
   }
 
   async generateArticle(keywordId: string) {
-    await this.contentQueue.add('generate-article', {
-      keywordId,
-      action: 'generate-article',
+    const [kw] = await this.database.db
+      .select()
+      .from(keywords)
+      .where(eq(keywords.id, keywordId));
+    if (!kw) throw new NotFoundException(`Keyword ${keywordId} not found`);
+
+    await this.keywordQueue.add('generate-article', {
+      workflowRunId: kw.workflowRunId ?? '',
+      targetKeyword: kw.keyword,
+      projectId: kw.projectId,
     });
     return { message: 'Article generation started' };
   }

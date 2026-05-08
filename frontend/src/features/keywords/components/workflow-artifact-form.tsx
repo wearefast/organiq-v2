@@ -175,29 +175,21 @@ type ArtifactFormInitialValues = {
 
 type SeedKeywordStepSource = {
   sourceArtifactId: string | null;
-  sourceVersion: number | null;
   keywords: string[];
-};
-
-type StepSaveState = {
-  version: number | null;
-  status: string | null;
 };
 
 interface WorkflowArtifactFormProps {
   action: (formData: FormData) => void | Promise<void>;
-  generateBusinessProfileAction?: (formData: FormData) => void | Promise<void>;
   projectId: string;
-  projectWebsiteUrl?: string;
   workflowId: string;
   defaultStep: string;
   lockedStep?: boolean;
+  readOnly?: boolean;
   initialValuesByStep?: Partial<Record<StepKey, ArtifactFormInitialValues>>;
   seedKeywordStepSource?: SeedKeywordStepSource;
-  latestSaveStateByStep?: Partial<Record<string, StepSaveState>>;
 }
 
-function SaveArtifactButton() {
+function ApproveArtifactButton() {
   const { pending } = useFormStatus();
 
   return (
@@ -206,28 +198,25 @@ function SaveArtifactButton() {
       disabled={pending}
       className="rounded-lg bg-[#111827] px-4 py-2 text-sm font-medium text-white transition hover:bg-[#1F2937] disabled:cursor-wait disabled:bg-[#667085]"
     >
-      {pending ? 'Saving artifact...' : 'Save artifact version'}
+      {pending ? 'Approving and continuing...' : 'Approve and continue'}
     </button>
   );
 }
 
 export function WorkflowArtifactForm({
   action,
-  generateBusinessProfileAction,
   projectId,
-  projectWebsiteUrl,
   workflowId,
   defaultStep,
   lockedStep = false,
+  readOnly = false,
   initialValuesByStep,
   seedKeywordStepSource,
-  latestSaveStateByStep,
 }: WorkflowArtifactFormProps) {
   const initialStep = (defaultStep in STEP_TEMPLATES ? defaultStep : 'business-profile') as StepKey;
   const [stepKey, setStepKey] = useState<StepKey>(initialStep);
   const isContentGapStep = stepKey === 'method03-content-gap-import';
   const isPhase1BaselineStep = stepKey === 'phase1-baseline';
-  const isBusinessProfileStep = stepKey === 'business-profile';
   const isSeedKeywordStep = stepKey === 'seed-keywords';
 
   useEffect(() => {
@@ -236,14 +225,16 @@ export function WorkflowArtifactForm({
 
   const template = useMemo(() => STEP_TEMPLATES[stepKey], [stepKey]);
   const initialValues = initialValuesByStep?.[stepKey];
-  const latestSaveState = latestSaveStateByStep?.[stepKey];
+
+  if (readOnly) {
+    return null;
+  }
 
   return (
     <form action={action} className="mt-6 grid gap-4">
       <input type="hidden" name="projectId" value={projectId} />
       <input type="hidden" name="workflowId" value={workflowId} />
       <input type="hidden" name="stepKey" value={stepKey} />
-      <input type="hidden" name="websiteUrl" value={projectWebsiteUrl ?? ''} />
 
       {!lockedStep ? (
         <div>
@@ -265,69 +256,15 @@ export function WorkflowArtifactForm({
         </div>
       ) : null}
 
-      <div className="rounded-lg border border-[#E4E7EC] bg-[#FCFCFD] p-4">
-        <p className="text-sm font-medium text-[#111827]">{template.title}</p>
-        <p className="mt-1 text-sm text-[#667085]">{template.guidance}</p>
-        <div className="mt-3 flex flex-wrap items-center gap-2 text-xs">
-          <span className="rounded-full bg-white px-3 py-1 font-medium text-[#344054]">
-            {latestSaveState?.version ? `Latest saved version: v${latestSaveState.version}` : 'No saved version yet'}
-          </span>
-          {latestSaveState?.status ? (
-            <span className="rounded-full bg-[#EEF4FF] px-3 py-1 font-medium text-[#3538CD]">
-              {latestSaveState.status.replaceAll('_', ' ')}
-            </span>
-          ) : null}
-        </div>
-      </div>
-
-      {isBusinessProfileStep && generateBusinessProfileAction ? (
-        <div className="rounded-lg border border-[#E4E7EC] bg-[#FCFCFD] p-4">
-          <p className="text-sm font-medium text-[#111827]">Generate Step 1 draft</p>
-          <p className="mt-1 text-sm text-[#667085]">
-            Fetch the project website, ask OpenAI to draft the business profile, then review and edit the populated fields before approval.
-          </p>
-          {projectWebsiteUrl ? (
-            <p className="mt-2 text-xs text-[#667085]">Source website: {projectWebsiteUrl}</p>
-          ) : null}
-
-          <div className="mt-4">
-            <label className="block text-xs font-medium uppercase tracking-[0.08em] text-[#667085]" htmlFor="businessProfileContext">
-              Optional supporting content
-            </label>
-            <textarea
-              id="businessProfileContext"
-              name="businessProfileContext"
-              rows={6}
-              placeholder="Paste homepage or service-page content here if you want to supplement the automatic website fetch."
-              className="mt-2 w-full rounded-lg border border-[#D0D5DD] bg-white px-3 py-2 text-sm text-[#111827]"
-            />
-            <p className="mt-2 text-xs text-[#667085]">
-              Use this when the homepage alone is thin or when the main service page has the details you want the draft to reflect.
-            </p>
-          </div>
-
-          <div className="mt-4">
-            <button
-              type="submit"
-              formAction={generateBusinessProfileAction}
-              formNoValidate
-              className="rounded-lg border border-[#111827] bg-white px-4 py-2 text-sm font-medium text-[#111827] transition hover:bg-[#F9FAFB]"
-            >
-              Generate business profile draft
-            </button>
-          </div>
-        </div>
-      ) : null}
-
       {isSeedKeywordStep ? (
         <div className="rounded-lg border border-[#E4E7EC] bg-[#FCFCFD] p-4">
           <p className="text-sm font-medium text-[#111827]">Step 1 seed keyword handoff</p>
           {seedKeywordStepSource ? (
             <>
               <p className="mt-1 text-sm text-[#667085]">
-                Loaded {seedKeywordStepSource.keywords.length} generated seed keyword{seedKeywordStepSource.keywords.length === 1 ? '' : 's'} from the latest business-profile artifact. Edit the confirmed list below before saving Step 2.
+                Loaded {seedKeywordStepSource.keywords.length} generated seed keyword{seedKeywordStepSource.keywords.length === 1 ? '' : 's'} from the latest business-profile checkpoint. Edit the confirmed list below before approving Step 2.
               </p>
-              <p className="mt-2 text-xs text-[#667085]">Source artifact: business-profile v{seedKeywordStepSource.sourceVersion ?? 'n/a'}</p>
+              <p className="mt-2 text-xs text-[#667085]">Source checkpoint: business-profile</p>
               <div className="mt-3 flex flex-wrap gap-2">
                 {seedKeywordStepSource.keywords.map((keyword) => (
                   <span
@@ -341,7 +278,7 @@ export function WorkflowArtifactForm({
             </>
           ) : (
             <p className="mt-1 text-sm text-[#667085]">
-              Generate or save a business-profile artifact first so Step 2 can load the seed keywords for confirmation.
+              Generate or approve the business-profile step first so Step 2 can load the seed keywords for confirmation.
             </p>
           )}
         </div>
@@ -532,7 +469,7 @@ export function WorkflowArtifactForm({
       </div>
 
       <div>
-        <SaveArtifactButton />
+        <ApproveArtifactButton />
       </div>
     </form>
   );

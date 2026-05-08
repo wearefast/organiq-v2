@@ -144,7 +144,7 @@ Remaining near-term gaps:
 
 - no dedicated cross-run comparison page beyond the per-project workspace
 - no worker-driven artifact generation yet
-- no full revision-history UI for prior artifact versions
+- no compare or diff UI for prior checkpoint records
 
 ## Technical Debt
 
@@ -161,11 +161,30 @@ The next planned workflow step is now implemented:
 
 | Area | Implemented |
 |------|-------------|
-| Artifact revision history | Full artifact history is now rendered per step in the workflow shell, including prior versions and their latest decisions |
+| Checkpoint history | Full checkpoint history is now rendered per step in the workflow shell, including prior saved records and their latest decisions |
+| Active-step checkpoint mutation | Backend saves and worker regenerations now rewrite the current step artifact in place instead of appending a new active-step version, and the API rejects edit/generate attempts for approved or non-current steps |
+| Approval-triggered auto-generation | Approving a step now automatically queues the next step when that step already has a workflow generator mapping, so the workflow advances without a separate manual trigger for auto steps |
+| Inline generate actions | Auto-generated steps now place the generate button beside the active workspace title so the trigger stays in the header instead of occupying its own block below the intro copy |
+| Business-profile header generation | The Business Profile workspace now keeps the draft-generation trigger beside the step header and keeps optional supporting content collapsed by default in a header disclosure instead of a standalone card inside the form |
+| Business-profile seed keyword preservation | Step 1 now preserves structured seed keywords when the business profile is approved and backfills them from legacy “Suggested seed keywords” findings so the Step 1 output and Step 2 handoff both keep the generated seed list |
+| Seed-keywords header generation | The Seed Keywords workspace now shows a header-level Generate button that creates the Step 2 draft from the latest Business Profile seed candidates and stays disabled until Step 1 provides a source set |
+| Read-only non-current steps | The workflow shell now distinguishes the selected step from the actual editable checkpoint, hides edit/review actions for non-current steps, removes standalone read-only cards, and shows the locked state with a header lock icon instead |
+| Locked-step payload visibility | Locked and approved steps now render their saved checkpoint payload inline in the review panel instead of hiding the approved content behind a collapsed disclosure |
+| Locked-step decision cleanup | Locked-step review panels no longer repeat the decision in a separate card because the current decision already appears in the status badge row |
+| Locked-step status placement | Locked-step workspaces now place the current status pill directly under the lock icon in the header and remove duplicate status pills from the read-only card and checkpoint panel |
+| Locked-step review shell cleanup | Locked-step workspaces no longer wrap the latest summary and approved details in a separate checkpoint-status card shell; the saved content now sits directly in the workspace body |
+| Legacy checkpoint copy normalization | Previously saved summary and payload text now render with checkpoint language in the workflow shell, and version-only payload fields are hidden from review surfaces so older data reads consistently during the no-version rollout |
 | Workflow step wizard | The workflow shell now renders a left-side wizard sub-panel with a collapsed numbered step rail, icon-based checkpoint states, custom hover/focus tooltips anchored beneath each step title, and compact single-row step metadata across the full keyword workflow |
+| Neutral upcoming rail styling | The next scheduled step in the workflow rail now uses the same neutral marker, badge, and icon styling as the rest of the upcoming steps instead of a separate orange accent |
 | Collapsible workflow rail | The left workflow step rail now uses the full rail width, scrolls within the viewport, and keeps the collapse control inside the rail card so long runs stay usable during editing and review |
 | Active workspace focus | The main workflow pane now renders only the active step workspace and keeps checkpoint approval in that same view, instead of stacking non-active step workspaces, secondary review cards, and revision history below it |
-| Artifact save feedback | The step-aware artifact form now shows the latest saved version/status for the selected step and a pending save state so successful saves are visible without hunting through the review cards |
+| Output-first generic workspace | Generic artifact-form steps now render the latest checkpoint output and approval actions before a collapsed Input panel, so strategists land on the saved result first |
+| Output-first competitor workspaces | Competitor buckets and competitor metrics now lead with the saved checkpoint output and keep competitor entry, saved rosters, and metrics authoring inside a collapsed Input panel |
+| Output-first method and handoff workspaces | Method 01, Method 02, content brief, and content article now open on the latest checkpoint output first and move source selection or generation controls behind the same collapsed Input shell |
+| Overflow-safe payload review | Human-readable checkpoint payload cards now allow nested grid cells to shrink and wrap long URL/list values, so competitor discovery output no longer overlaps neighboring review content |
+| Above-the-fold review actions | Data-heavy steps like Competitor Buckets now keep approval controls above the long checkpoint payload so Approve / Request revision / Reject remain visible without scrolling through the full result first |
+| Specialized competitor approval flow | Competitor Buckets and Competitor Metrics no longer hide approval inside the collapsed artifact form; they now use the visible review card actions in the output-first shell |
+| Approval-implies-save flow | The step-aware artifact form now treats approval as the persistence boundary for editable workflow steps, so approving from the form saves the current values and advances the workflow without a separate save-checkpoint action |
 | Human-readable artifact review | Workflow artifact payloads now render as labeled sections and lists instead of raw JSON blocks inside the active checkpoint, secondary review cards, and revision history |
 | Step advancement on approval | Approving a checkpoint now advances the workflow shell to the next step instead of leaving the just-approved step selected as the active workspace |
 | Inline active-step approval | The current step workspace now includes the latest saved artifact summary, payload preview, and approval controls directly below authoring so approval is the next action instead of a bottom-of-page jump |
@@ -190,6 +209,8 @@ The next planned workflow step is now implemented:
 Updated near-term gaps:
 
 - no dedicated cross-run comparison page beyond the per-project workspace
+- the new output-first Input/Output shell now covers generic, competitor, Method 01/02, and content handoff steps; Phase 1, Method 03, consolidation, and topical-map generation surfaces still need the same treatment
+- checkpoint history still reflects legacy stored records even though the active-step data model now persists and reads checkpoint rows without a version column
 - Method 01 now auto-ingests stored competitor top pages, but keyword candidate extraction and ranking are still strategist-reviewed
 - Method 02 can auto-build from stored project keyword rows, but it still falls back to the project seed-keyword set until a dedicated approved-seed checkpoint ledger is promoted into the source selector
 - Consolidated-keyword promotion currently infers `intent` and `funnel` when the approved artifact payload does not yet store explicit classification fields
