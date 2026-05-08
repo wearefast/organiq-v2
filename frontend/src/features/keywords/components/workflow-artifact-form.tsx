@@ -1,7 +1,6 @@
 'use client';
 
-import { useEffect, useMemo, useState } from 'react';
-import { useFormStatus } from 'react-dom';
+import { startTransition, useEffect, useMemo, useState } from 'react';
 
 const STEP_TEMPLATES = {
   'business-profile': {
@@ -189,16 +188,21 @@ interface WorkflowArtifactFormProps {
   seedKeywordStepSource?: SeedKeywordStepSource;
 }
 
-function ApproveArtifactButton() {
-  const { pending } = useFormStatus();
-
+function ApproveArtifactButton({ isPending }: { isPending: boolean }) {
   return (
     <button
       type="submit"
-      disabled={pending}
+      disabled={isPending}
       className="rounded-lg bg-[#111827] px-4 py-2 text-sm font-medium text-white transition hover:bg-[#1F2937] disabled:cursor-wait disabled:bg-[#667085]"
     >
-      {pending ? 'Approving and continuing...' : 'Approve and continue'}
+      {isPending ? (
+        <span className="flex items-center gap-2">
+          <span className="inline-block h-3.5 w-3.5 animate-spin rounded-full border-2 border-white border-t-transparent" />
+          Approving and continuing…
+        </span>
+      ) : (
+        'Approve and continue'
+      )}
     </button>
   );
 }
@@ -215,23 +219,45 @@ export function WorkflowArtifactForm({
 }: WorkflowArtifactFormProps) {
   const initialStep = (defaultStep in STEP_TEMPLATES ? defaultStep : 'business-profile') as StepKey;
   const [stepKey, setStepKey] = useState<StepKey>(initialStep);
+  const [isPending, setIsPending] = useState(false);
+  const [actionError, setActionError] = useState<string | null>(null);
   const isContentGapStep = stepKey === 'method03-content-gap-import';
   const isPhase1BaselineStep = stepKey === 'phase1-baseline';
   const isSeedKeywordStep = stepKey === 'seed-keywords';
 
   useEffect(() => {
     setStepKey(initialStep);
+    setActionError(null);
   }, [initialStep]);
 
   const template = useMemo(() => STEP_TEMPLATES[stepKey], [stepKey]);
   const initialValues = initialValuesByStep?.[stepKey];
+
+  const handleSubmit = (event: React.FormEvent<HTMLFormElement>) => {
+    event.preventDefault();
+    if (isPending) return;
+    const formData = new FormData(event.currentTarget);
+    setActionError(null);
+    setIsPending(true);
+    startTransition(async () => {
+      try {
+        await action(formData);
+      } catch (err: unknown) {
+        // Re-throw Next.js redirect/notFound signals so the router can handle them
+        if (err && typeof err === 'object' && 'digest' in err) throw err;
+        setActionError(err instanceof Error ? err.message : 'An error occurred. Please try again.');
+      } finally {
+        setIsPending(false);
+      }
+    });
+  };
 
   if (readOnly) {
     return null;
   }
 
   return (
-    <form action={action} className="mt-6 grid gap-4">
+    <form onSubmit={handleSubmit} className="mt-6 grid gap-4">
       <input type="hidden" name="projectId" value={projectId} />
       <input type="hidden" name="workflowId" value={workflowId} />
       <input type="hidden" name="stepKey" value={stepKey} />
@@ -468,8 +494,15 @@ export function WorkflowArtifactForm({
       </div>
       </div>
 
+      {actionError ? (
+        <div className="rounded-xl border border-[#F3D0D0] bg-[#FFF6F6] p-4" role="alert">
+          <p className="text-sm font-medium text-[#DA304F]">Action failed</p>
+          <p className="mt-1 text-sm text-[#DA304F]">{actionError}</p>
+        </div>
+      ) : null}
+
       <div>
-        <ApproveArtifactButton />
+        <ApproveArtifactButton isPending={isPending} />
       </div>
     </form>
   );

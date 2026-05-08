@@ -1,5 +1,5 @@
 import { readFile } from 'fs/promises';
-import { type ReactNode } from 'react';
+import { Fragment, type ReactNode } from 'react';
 import Link from 'next/link';
 import { revalidatePath } from 'next/cache';
 import { redirect } from 'next/navigation';
@@ -23,6 +23,13 @@ import { WorkflowArtifactForm } from '@/features/keywords/components/workflow-ar
 import { WorkflowShellLayout, CollapsedWorkflowRail } from '@/features/keywords/components/workflow-shell-layout';
 import { GenerateStepButton } from '@/features/keywords/components/generate-step-button';
 import { ContentPieceStatusCard } from '@/features/keywords/components/content-piece-status-card';
+import { KeywordLedgerTable, type LedgerKeyword } from '@/features/keywords/components/keyword-ledger-table';
+import { TopicalMapView } from '@/features/keywords/components/topical-map-view';
+import { Method03Table } from '@/features/keywords/components/method03-table';
+import { SerpCandidatesView } from '@/features/keywords/components/serp-candidates-view';
+import { CompetitorMetricsView } from '@/features/keywords/components/competitor-metrics-view';
+import { BusinessProfileKeyFindings } from '@/features/keywords/components/business-profile-key-findings';
+import { Method01PagesView } from '@/features/keywords/components/method01-pages-view';
 
 const WORKFLOW_STEPS = [
   'business-profile',
@@ -2655,6 +2662,8 @@ export default async function KeywordWorkflowPage({
           approvedContentBrief.contentType,
         )
     : [];
+  const PHASE_GROUPS: Record<number, string> = { 0: 'Discovery', 5: 'Research', 9: 'Synthesis', 11: 'Content' };
+
   const workflowWizard = (
     <section className="w-full rounded-xl border border-[#E8EAF0] bg-white p-5 shadow-sm">
       <div>
@@ -2668,43 +2677,54 @@ export default async function KeywordWorkflowPage({
             {completedStepCount}
             <span className="text-base font-medium text-[#667085]">/{WORKFLOW_STEPS.length}</span>
           </p>
+          <p className="mt-0.5 text-xs text-[#9CA3AF]">
+            {completedStepCount === WORKFLOW_STEPS.length
+              ? 'All steps complete'
+              : `${WORKFLOW_STEPS.length - completedStepCount} step${WORKFLOW_STEPS.length - completedStepCount === 1 ? '' : 's'} remaining`}
+          </p>
         </div>
       </div>
 
       <div className="mt-5 space-y-0">
         {wizardSteps.map((step, index) => (
-          <Link
-            key={step.stepKey}
-            href={`/dashboard/keywords/${projectId}/workflows/${workflowId}?step=${step.stepKey}`}
-            className="group relative -mx-2 flex gap-3 rounded-lg px-2 py-1 outline-none transition-colors hover:bg-[#FCFCFD] focus-visible:bg-[#FCFCFD] focus-visible:ring-2 focus-visible:ring-[#DA304F]/25"
-          >
-            <div className="flex flex-col items-center">
-              <div className={`flex h-8 w-8 items-center justify-center rounded-full border text-xs font-semibold ${step.markerTone}`}>
-                {index + 1}
-              </div>
-              {index < wizardSteps.length - 1 ? (
-                <div className={`min-h-[26px] w-px ${step.visualStatus === 'complete' ? 'bg-[#12B76A]' : 'bg-[#E4E7EC]'}`} />
-              ) : null}
-            </div>
-
-            <div className="min-w-0 flex-1 pb-5">
-              <div className="flex min-w-0 items-center gap-2">
-                <div className="relative min-w-0 flex-1">
-                  <p className="min-w-0 truncate text-sm font-medium text-[#111827]">{step.title}</p>
-
-                  <div className="pointer-events-none absolute left-0 top-full z-20 mt-1.5 w-56 rounded-lg border border-[#E8EAF0] bg-white px-3 py-2 text-xs leading-5 text-[#4B5563] opacity-0 shadow-lg transition-opacity duration-150 group-hover:opacity-100 group-focus-visible:opacity-100">
-                    {step.description}
-                  </div>
+          <Fragment key={step.stepKey}>
+            {PHASE_GROUPS[index] !== undefined ? (
+              <p className={`${index === 0 ? '' : 'mt-3 pt-3 '}text-[10px] font-semibold uppercase tracking-[0.12em] text-[#9CA3AF]`}>
+                {PHASE_GROUPS[index]}
+              </p>
+            ) : null}
+            <Link
+              href={`/dashboard/keywords/${projectId}/workflows/${workflowId}?step=${step.stepKey}`}
+              className="group relative -mx-2 flex gap-3 rounded-lg px-2 py-1 outline-none transition-colors hover:bg-[#FCFCFD] focus-visible:bg-[#FCFCFD] focus-visible:ring-2 focus-visible:ring-[#DA304F]/25"
+            >
+              <div className="flex flex-col items-center">
+                <div className={`flex h-8 w-8 items-center justify-center rounded-full border text-xs font-semibold ${step.markerTone}`}>
+                  {index + 1}
                 </div>
-                <span
-                  className={`inline-flex h-6 w-6 shrink-0 items-center justify-center rounded-full ${step.badgeTone}`}
-                  aria-label={step.statusLabel}
-                >
-                  <WorkflowStatusIcon status={step.visualStatus} />
-                </span>
+                {index < wizardSteps.length - 1 ? (
+                  <div className={`min-h-[26px] w-px ${step.visualStatus === 'complete' ? 'bg-[#12B76A]' : 'bg-[#E4E7EC]'}`} />
+                ) : null}
               </div>
-            </div>
-          </Link>
+
+              <div className="min-w-0 flex-1 pb-5">
+                <div className="flex min-w-0 items-center gap-2">
+                  <div className="relative min-w-0 flex-1">
+                    <p className="min-w-0 truncate text-sm font-medium text-[#111827]">{step.title}</p>
+
+                    <div className="pointer-events-none absolute left-0 top-full z-20 mt-1.5 w-56 rounded-lg border border-[#E8EAF0] bg-white px-3 py-2 text-xs leading-5 text-[#4B5563] opacity-0 shadow-lg transition-opacity duration-150 group-hover:opacity-100 group-focus-visible:opacity-100">
+                      {step.description}
+                    </div>
+                  </div>
+                  <span
+                    className={`inline-flex h-6 w-6 shrink-0 items-center justify-center rounded-full ${step.badgeTone}`}
+                    aria-label={step.statusLabel}
+                  >
+                    <WorkflowStatusIcon status={step.visualStatus} />
+                  </span>
+                </div>
+              </div>
+            </Link>
+          </Fragment>
         ))}
       </div>
     </section>
@@ -2929,13 +2949,6 @@ export default async function KeywordWorkflowPage({
         </div>
       ) : (
         <>
-          {readArtifactText(activeArtifact.summary) ? (
-            <div className={isReadOnlyStepView ? 'rounded-lg border border-[#E4E7EC] bg-white p-4' : 'mt-4 rounded-lg border border-[#E4E7EC] bg-white p-4'}>
-              <p className="text-xs font-medium uppercase tracking-[0.08em] text-[#667085]">Latest summary</p>
-              <p className="mt-2 whitespace-pre-wrap text-sm text-[#111827]">{readArtifactText(activeArtifact.summary)}</p>
-            </div>
-          ) : null}
-
           {activeArtifact.approvals?.[0] && !isReadOnlyStepView ? (
             <div className="mt-4 rounded-lg border border-[#E4E7EC] bg-white p-4">
               <p className="text-xs font-medium uppercase tracking-[0.08em] text-[#667085]">Latest decision</p>
@@ -2997,24 +3010,31 @@ export default async function KeywordWorkflowPage({
             </form>
           ) : null}
 
-          {hasArtifactPayloadContent(activeArtifactPayload) ? (
+          {hasArtifactPayloadContent(activeArtifactPayload) && !showCompetitorBucketsWorkspace && !showCompetitorMetricsWorkspace && !showBusinessProfileWorkspace && !showMethod01Workspace ? (
             showsInlineCheckpointOutput ? (
               <div className="rounded-lg border border-[#E4E7EC] bg-white p-4">
                 <p className="text-xs font-medium uppercase tracking-[0.08em] text-[#667085]">
                   {isReadOnlyStepView ? 'Approved checkpoint details' : 'Latest checkpoint output'}
                 </p>
                 <div className="mt-3">
-                  <ArtifactPayloadView payload={activeArtifactPayload} />
+                  <ArtifactPayloadView payload={activeArtifactPayload} hiddenKeys={isReadOnlyStepView ? ['recommendedAction'] : undefined} />
                 </div>
               </div>
             ) : (
               <details className="mt-4 rounded-lg border border-[#E4E7EC] bg-white p-4">
                 <summary className="cursor-pointer text-sm font-medium text-[#111827]">Review latest checkpoint details</summary>
                 <div className="mt-3">
-                  <ArtifactPayloadView payload={activeArtifactPayload} />
+                  <ArtifactPayloadView payload={activeArtifactPayload} hiddenKeys={isReadOnlyStepView ? ['recommendedAction'] : undefined} />
                 </div>
               </details>
             )
+          ) : null}
+
+          {readArtifactText(activeArtifact.summary) ? (
+            <div className="mt-4 rounded-lg border border-[#E4E7EC] bg-white p-4">
+              <p className="text-xs font-medium uppercase tracking-[0.08em] text-[#667085]">Latest summary</p>
+              <p className="mt-2 whitespace-pre-wrap text-sm text-[#111827]">{readArtifactText(activeArtifact.summary)}</p>
+            </div>
           ) : null}
         </>
       )}
@@ -3054,6 +3074,15 @@ export default async function KeywordWorkflowPage({
           </div>
 
           {seedKeywordsHeaderGenerationForm}
+
+          {showBusinessProfileWorkspace && Array.isArray(activeArtifactPayload?.keyFindings) && activeArtifactPayload.keyFindings.length > 0 ? (
+            <BusinessProfileKeyFindings
+              keyFindings={activeArtifactPayload.keyFindings as string[]}
+              openQuestions={Array.isArray(activeArtifactPayload?.openQuestions) ? (activeArtifactPayload.openQuestions as string[]) : undefined}
+              seedKeywords={Array.isArray(activeArtifactPayload?.seedKeywords) ? (activeArtifactPayload.seedKeywords as string[]) : undefined}
+            />
+          ) : null}
+
           {activeCheckpointReview}
 
           {!isReadOnlyStepView ? (
@@ -3086,6 +3115,21 @@ export default async function KeywordWorkflowPage({
 
             {lockedStepHeaderIndicator ?? autoGenerateHeaderControl}
           </div>
+
+          {(activeArtifactPayload?.serpCandidates || activeArtifactPayload?.ahrefsOrganic) ? (
+            <SerpCandidatesView
+              serpCandidates={
+                Array.isArray(activeArtifactPayload.serpCandidates)
+                  ? (activeArtifactPayload.serpCandidates as Array<{ domain: string; occurrences: number; avgPosition: number; sampleUrls?: string[] }>)
+                  : []
+              }
+              ahrefsOrganic={
+                Array.isArray(activeArtifactPayload.ahrefsOrganic)
+                  ? (activeArtifactPayload.ahrefsOrganic as Array<{ domain: string; domainRating?: number | null; keywordsCommon?: number | null; traffic?: number | null }>)
+                  : []
+              }
+            />
+          ) : null}
 
           {activeCheckpointReview}
 
@@ -3225,6 +3269,23 @@ export default async function KeywordWorkflowPage({
 
             {lockedStepHeaderIndicator ?? autoGenerateHeaderControl}
           </div>
+
+          {Array.isArray(activeArtifactPayload?.competitorMetrics) && activeArtifactPayload.competitorMetrics.length > 0 ? (
+            <CompetitorMetricsView
+              competitorMetrics={
+                activeArtifactPayload.competitorMetrics as Array<{
+                  domain: string;
+                  bucket?: string | null;
+                  domainRating?: number | null;
+                  organicTraffic?: number | null;
+                  organicKeywords?: number | null;
+                  referringDomains?: number | null;
+                  backlinks?: number | null;
+                  topPages?: Array<{ url: string; traffic?: number | null; topKeyword?: string | null; topKeywordVolume?: number | null; topKeywordPosition?: number | null }>;
+                }>
+              }
+            />
+          ) : null}
 
           {activeCheckpointReview}
 
@@ -3412,6 +3473,22 @@ export default async function KeywordWorkflowPage({
 
             {lockedStepHeaderIndicator}
           </div>
+
+          {Array.isArray(activeArtifactPayload?.competitorPages) && activeArtifactPayload.competitorPages.length > 0 ? (
+            <Method01PagesView
+              pages={
+                activeArtifactPayload.competitorPages as Array<{
+                  domain: string;
+                  url: string;
+                  traffic?: number | null;
+                  topKeyword?: string | null;
+                  topKeywordVolume?: number | null;
+                  topKeywordPosition?: number | null;
+                }>
+              }
+              country={typeof activeArtifactPayload?.country === 'string' ? activeArtifactPayload.country : null}
+            />
+          ) : null}
 
           {activeCheckpointReview}
 
@@ -3678,35 +3755,7 @@ export default async function KeywordWorkflowPage({
               </div>
 
               <div className="mt-4 overflow-x-auto">
-                <table className="w-full text-left text-sm">
-                  <thead>
-                    <tr className="border-b border-[#E4E7EC]">
-                      <th className="pb-2 pr-4 text-xs font-medium uppercase tracking-[0.08em] text-[#667085]">Keyword</th>
-                      <th className="pb-2 pr-4 text-xs font-medium uppercase tracking-[0.08em] text-[#667085]">Volume</th>
-                      <th className="pb-2 pr-4 text-xs font-medium uppercase tracking-[0.08em] text-[#667085]">KD</th>
-                      <th className="pb-2 pr-4 text-xs font-medium uppercase tracking-[0.08em] text-[#667085]">Intent</th>
-                      <th className="pb-2 pr-4 text-xs font-medium uppercase tracking-[0.08em] text-[#667085]">Funnel</th>
-                      <th className="pb-2 pr-4 text-xs font-medium uppercase tracking-[0.08em] text-[#667085]">Content type</th>
-                      <th className="pb-2 text-xs font-medium uppercase tracking-[0.08em] text-[#667085]">Parent topic</th>
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {method03GapKeywords.slice(0, 50).map((kw) => (
-                      <tr key={kw.keyword} className="border-b border-[#F2F4F7]">
-                        <td className="py-2 pr-4 font-medium text-[#111827]">{kw.keyword}</td>
-                        <td className="py-2 pr-4 text-[#344054]">{kw.volume != null ? kw.volume.toLocaleString() : '—'}</td>
-                        <td className="py-2 pr-4 text-[#344054]">{kw.difficulty != null ? kw.difficulty : '—'}</td>
-                        <td className="py-2 pr-4 text-[#344054]">{kw.intent}</td>
-                        <td className="py-2 pr-4 text-[#344054]">{kw.funnel}</td>
-                        <td className="py-2 pr-4 text-[#344054]">{kw.contentType}</td>
-                        <td className="py-2 text-[#344054]">{kw.parentTopic}</td>
-                      </tr>
-                    ))}
-                  </tbody>
-                </table>
-                {method03GapKeywords.length > 50 ? (
-                  <p className="mt-2 text-xs text-[#667085]">Showing top 50 of {method03GapKeywords.length} gap keywords.</p>
-                ) : null}
+                <Method03Table keywords={method03GapKeywords} />
               </div>
             </div>
           ) : null}
@@ -3836,6 +3885,21 @@ export default async function KeywordWorkflowPage({
             </form>
           ) : null}
 
+          {activeArtifactPayload?.consolidatedKeywords ? (
+            <KeywordLedgerTable
+              consolidatedKeywords={
+                Array.isArray(activeArtifactPayload.consolidatedKeywords)
+                  ? (activeArtifactPayload.consolidatedKeywords as LedgerKeyword[])
+                  : []
+              }
+              duplicateCount={
+                Array.isArray(activeArtifactPayload.duplicateExistingKeywords)
+                  ? activeArtifactPayload.duplicateExistingKeywords.length
+                  : 0
+              }
+            />
+          ) : null}
+
           {activeCheckpointReview}
         </section>
       );
@@ -3893,6 +3957,32 @@ export default async function KeywordWorkflowPage({
                 <button type="submit" className="rounded-lg bg-[#111827] px-4 py-2 text-sm font-medium text-white transition hover:bg-[#1F2937]">Generate topical map checkpoint</button>
               </div>
             </form>
+          ) : null}
+
+          {activeArtifactPayload?.primaryTopics ? (
+            <TopicalMapView
+              primaryTopics={
+                Array.isArray(activeArtifactPayload.primaryTopics)
+                  ? (activeArtifactPayload.primaryTopics as Array<{
+                      pillar: string;
+                      clusterKeywords: string[];
+                      clusterCount: number;
+                      suggestedUrlPath: string | null;
+                      sourceMethods: string[];
+                    }>)
+                  : []
+              }
+              contentBriefQueue={
+                Array.isArray(activeArtifactPayload.contentBriefQueue)
+                  ? (activeArtifactPayload.contentBriefQueue as Array<{
+                      keyword: string;
+                      pillar: string;
+                      contentType: 'pillar' | 'cluster';
+                      suggestedUrlPath: string | null;
+                    }>)
+                  : []
+              }
+            />
           ) : null}
 
           {activeCheckpointReview}

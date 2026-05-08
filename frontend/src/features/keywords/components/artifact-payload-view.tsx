@@ -1,7 +1,7 @@
 import { type ReactNode } from 'react';
 
 const ITEM_TITLE_KEYS = ['headline', 'title', 'keyword', 'pillar', 'domain', 'url', 'stepKey', 'parentTopic', 'targetKeyword', 'id'] as const;
-const HIDDEN_PAYLOAD_KEYS = new Set(['version', 'sourceVersion', 'sourceArtifactVersion']);
+const HIDDEN_PAYLOAD_KEYS = new Set(['version', 'sourceVersion', 'sourceArtifactVersion', 'evidence', 'headline']);
 
 function isRecord(value: unknown): value is Record<string, unknown> {
   return Boolean(value) && typeof value === 'object' && !Array.isArray(value);
@@ -144,10 +144,23 @@ function renderArtifactValue(value: unknown, depth = 0): ReactNode {
   return null;
 }
 
-export function ArtifactPayloadView({ payload }: { payload: Record<string, unknown> | null | undefined }) {
+export function ArtifactPayloadView({ payload, hiddenKeys }: { payload: Record<string, unknown> | null | undefined; hiddenKeys?: string[] }) {
   if (!hasArtifactPayloadContent(payload)) {
     return null;
   }
 
-  return <div>{renderArtifactValue(payload)}</div>;
+  const effectiveHiddenKeys = hiddenKeys?.length
+    ? new Set([...HIDDEN_PAYLOAD_KEYS, ...hiddenKeys])
+    : HIDDEN_PAYLOAD_KEYS;
+
+  function renderPayload(value: unknown, depth = 0): ReturnType<typeof renderArtifactValue> {
+    if (!hasArtifactPayloadContent(value)) return null;
+    if (typeof value !== 'object' || value === null || Array.isArray(value)) return renderArtifactValue(value, depth);
+    const filtered = Object.fromEntries(
+      Object.entries(value as Record<string, unknown>).filter(([k]) => !effectiveHiddenKeys.has(k)),
+    );
+    return renderArtifactValue(filtered, depth);
+  }
+
+  return <div>{renderPayload(payload)}</div>;
 }
