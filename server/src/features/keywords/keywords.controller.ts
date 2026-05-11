@@ -1,197 +1,79 @@
-import { Controller, Post, Get, Param, Body } from '@nestjs/common';
-import { ApiTags, ApiOperation } from '@nestjs/swagger';
-import { KeywordsService } from './keywords.service';
-import { CreateKeywordProjectDto } from './dto/create-keyword-project.dto';
-import { CreateKeywordWorkflowDto } from './dto/create-keyword-workflow.dto';
+import {
+  Controller,
+  Get,
+  Post,
+  Patch,
+  Delete,
+  Param,
+  Body,
+  Query,
+  UseGuards,
+} from '@nestjs/common';
+import { ApiTags, ApiBearerAuth } from '@nestjs/swagger';
+import { KeywordsService, BulkKeywordInput } from './keywords.service';
+import { ClerkGuard } from '../auth/clerk.guard';
+import { OrgMembershipGuard } from '../auth/org-membership.guard';
 
 @ApiTags('keywords')
-@Controller('keywords')
+@ApiBearerAuth()
+@UseGuards(ClerkGuard, OrgMembershipGuard)
+@Controller('projects/:projectId/keywords')
 export class KeywordsController {
   constructor(private readonly keywordsService: KeywordsService) {}
 
-  @Post('projects')
-  @ApiOperation({ summary: 'Create keyword research project' })
-  async createProject(@Body() dto: CreateKeywordProjectDto) {
-    // TODO: Extract userId from Clerk JWT
-    const userId = 'temp-user-id';
-    return this.keywordsService.createProject(userId, dto);
-  }
-
-  @Get('projects')
-  @ApiOperation({ summary: 'List keyword projects' })
-  async findAllProjects() {
-    const userId = 'temp-user-id';
-    return this.keywordsService.findAllProjects(userId);
-  }
-
-  @Get('projects/:id')
-  @ApiOperation({ summary: 'Get keyword project with keywords' })
-  async getProject(@Param('id') id: string) {
-    return this.keywordsService.getProject(id);
-  }
-
-  @Get('projects/:id/keywords')
-  @ApiOperation({ summary: 'Get keywords for a project' })
-  async getKeywords(@Param('id') id: string) {
-    return this.keywordsService.getKeywords(id);
-  }
-
-  @Post('projects/:id/workflows')
-  @ApiOperation({ summary: 'Create a keyword workflow run for a project' })
-  async createWorkflow(@Param('id') id: string, @Body() dto: CreateKeywordWorkflowDto) {
-    return this.keywordsService.createWorkflow(id, dto);
-  }
-
-  @Get('projects/:id/workflows/:workflowId')
-  @ApiOperation({ summary: 'Get a keyword workflow run with artifacts and approvals' })
-  async getWorkflow(@Param('id') id: string, @Param('workflowId') workflowId: string) {
-    return this.keywordsService.getWorkflow(id, workflowId);
-  }
-
-  @Post('projects/:id/workflows/:workflowId/content-gap-imports')
-  @ApiOperation({ summary: 'Create a normalized manual Content Gap import for Method 03' })
-  async createContentGapImport(
-    @Param('id') id: string,
-    @Param('workflowId') workflowId: string,
-    @Body()
-    body: {
-      rawImport: string;
-      notes?: string;
-    },
+  @Get()
+  async findAll(
+    @Param('projectId') projectId: string,
+    @Query('status') status?: string,
   ) {
-    return this.keywordsService.createContentGapImport(id, workflowId, body);
+    if (status) {
+      return this.keywordsService.findByProjectAndStatus(projectId, status);
+    }
+    return this.keywordsService.findAllByProject(projectId);
   }
 
-  @Post('projects/:id/workflows/:workflowId/competitors')
-  @ApiOperation({ summary: 'Create a structured competitor candidate for the workflow' })
-  async createWorkflowCompetitor(
-    @Param('id') id: string,
-    @Param('workflowId') workflowId: string,
-    @Body()
-    body: {
-      domain: string;
-      bucket?: 'DIRECT' | 'ORGANIC' | 'UNCLASSIFIED';
-      status?: 'CANDIDATE' | 'APPROVED' | 'REJECTED';
-      rationale?: string;
-      notes?: string;
-    },
-  ) {
-    return this.keywordsService.createWorkflowCompetitor(id, workflowId, body);
+  @Get('stats')
+  async getStats(@Param('projectId') projectId: string) {
+    return this.keywordsService.getStats(projectId);
   }
 
-  @Post('projects/:id/workflows/:workflowId/competitors/:competitorId/metrics')
-  @ApiOperation({ summary: 'Create or update structured metrics for a workflow competitor' })
-  async upsertWorkflowCompetitorMetrics(
+  @Get(':id')
+  async findOne(
+    @Param('projectId') projectId: string,
     @Param('id') id: string,
-    @Param('workflowId') workflowId: string,
-    @Param('competitorId') competitorId: string,
-    @Body()
-    body: {
-      domainRating?: number | null;
-      organicTraffic?: number | null;
-      organicKeywords?: number | null;
-      referringDomains?: number | null;
-      backlinks?: number | null;
-      topPages?: Record<string, unknown>[];
-      capturedAt?: string;
-    },
   ) {
-    return this.keywordsService.upsertWorkflowCompetitorMetrics(id, workflowId, competitorId, body);
+    return this.keywordsService.findById(id, projectId);
   }
 
-  @Post('projects/:id/workflows/:workflowId/artifacts')
-  @ApiOperation({ summary: 'Create a workflow checkpoint for a workflow step' })
-  async createWorkflowArtifact(
-    @Param('id') id: string,
-    @Param('workflowId') workflowId: string,
-    @Body()
-    body: {
-      stepKey: string;
-      summary?: Record<string, unknown>;
-      payload: Record<string, unknown>;
-    },
+  @Post('bulk')
+  async bulkUpsert(
+    @Param('projectId') projectId: string,
+    @Body() body: { workflowRunId?: string; keywords: BulkKeywordInput[] },
   ) {
-    return this.keywordsService.createWorkflowArtifact(id, workflowId, body);
-  }
-
-  @Get('projects/:id/workflows/:workflowId/checkpoints/:stepKey')
-  @ApiOperation({ summary: 'Get the latest artifact and approvals for a workflow checkpoint' })
-  async getCheckpoint(
-    @Param('id') id: string,
-    @Param('workflowId') workflowId: string,
-    @Param('stepKey') stepKey: string,
-  ) {
-    return this.keywordsService.getCheckpoint(id, workflowId, stepKey);
-  }
-
-  @Post('projects/:id/workflows/:workflowId/checkpoints/:stepKey/approve')
-  @ApiOperation({ summary: 'Approve the latest artifact for a workflow checkpoint' })
-  async approveCheckpoint(
-    @Param('id') id: string,
-    @Param('workflowId') workflowId: string,
-    @Param('stepKey') stepKey: string,
-    @Body() body: { notes?: string },
-  ) {
-    return this.keywordsService.recordCheckpointDecision(id, workflowId, stepKey, 'APPROVED', body?.notes);
-  }
-
-  @Post('projects/:id/workflows/:workflowId/checkpoints/:stepKey/request-revision')
-  @ApiOperation({ summary: 'Request revision on the latest artifact for a workflow checkpoint' })
-  async requestCheckpointRevision(
-    @Param('id') id: string,
-    @Param('workflowId') workflowId: string,
-    @Param('stepKey') stepKey: string,
-    @Body() body: { notes?: string },
-  ) {
-    return this.keywordsService.recordCheckpointDecision(
-      id,
-      workflowId,
-      stepKey,
-      'REVISION_REQUESTED',
-      body?.notes,
+    return this.keywordsService.bulkUpsert(
+      projectId,
+      body.workflowRunId ?? null,
+      body.keywords,
     );
   }
 
-  @Post('projects/:id/workflows/:workflowId/checkpoints/:stepKey/reject')
-  @ApiOperation({ summary: 'Reject the latest artifact for a workflow checkpoint' })
-  async rejectCheckpoint(
-    @Param('id') id: string,
-    @Param('workflowId') workflowId: string,
-    @Param('stepKey') stepKey: string,
-    @Body() body: { notes?: string },
+  @Patch('status')
+  async updateStatus(
+    @Param('projectId') projectId: string,
+    @Body() body: { keywordIds: string[]; status: string },
   ) {
-    return this.keywordsService.recordCheckpointDecision(id, workflowId, stepKey, 'REJECTED', body?.notes);
+    return this.keywordsService.updateStatus(
+      projectId,
+      body.keywordIds,
+      body.status as any,
+    );
   }
 
-  @Post('projects/:id/discover')
-  @ApiOperation({ summary: 'Trigger keyword discovery (SOP Steps 4-7)' })
-  async triggerDiscovery(@Param('id') id: string) {
-    return this.keywordsService.triggerDiscovery(id);
-  }
-
-  @Post('projects/:id/gap-analysis')
-  @ApiOperation({ summary: 'Trigger content gap analysis (SOP Method 3)' })
-  async triggerGapAnalysis(@Param('id') id: string) {
-    return this.keywordsService.triggerGapAnalysis(id);
-  }
-
-  @Post('projects/:id/workflows/:workflowId/steps/:stepKey/generate')
-  @ApiOperation({ summary: 'Trigger automated research generation for a workflow step' })
-  async generateStep(
+  @Delete(':id')
+  async remove(
+    @Param('projectId') projectId: string,
     @Param('id') id: string,
-    @Param('workflowId') workflowId: string,
-    @Param('stepKey') stepKey: string,
   ) {
-    return this.keywordsService.enqueueStepGeneration(id, workflowId, stepKey);
-  }
-
-  @Get('projects/:id/workflows/:workflowId/jobs/:jobId')
-  @ApiOperation({ summary: 'Get the status of a workflow generation job' })
-  async getJobStatus(
-    @Param('id') id: string,
-    @Param('workflowId') workflowId: string,
-    @Param('jobId') jobId: string,
-  ) {
-    return this.keywordsService.getJobStatus(id, workflowId, jobId);
+    return this.keywordsService.remove(id, projectId);
   }
 }

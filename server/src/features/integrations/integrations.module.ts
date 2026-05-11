@@ -1,24 +1,30 @@
 import { Module } from '@nestjs/common';
-import { AhrefsService } from './services/ahrefs.service';
-import { SerpService } from './services/serp.service';
-import { OpenAIService } from './services/openai.service';
-import { PageSpeedService } from './services/pagespeed.service';
-import { ScraperService } from './services/scraper.service';
+import { AhrefsModule } from './ahrefs/ahrefs.module';
+import { DataForSeoModule } from './dataforseo/dataforseo.module';
+import { FirecrawlModule } from './firecrawl/firecrawl.module';
+import { OpenAiModule } from './openai/openai.module';
+import { PageSpeedModule } from './pagespeed/pagespeed.module';
+import { SerperModule } from './serper/serper.module';
+import { GscModule } from './gsc/gsc.module';
 
 @Module({
-  providers: [
-    AhrefsService,
-    SerpService,
-    OpenAIService,
-    PageSpeedService,
-    ScraperService,
+  imports: [
+    AhrefsModule,
+    DataForSeoModule,
+    FirecrawlModule,
+    OpenAiModule,
+    PageSpeedModule,
+    SerperModule,
+    GscModule,
   ],
   exports: [
-    AhrefsService,
-    SerpService,
-    OpenAIService,
-    PageSpeedService,
-    ScraperService,
+    AhrefsModule,
+    DataForSeoModule,
+    FirecrawlModule,
+    OpenAiModule,
+    PageSpeedModule,
+    SerperModule,
+    GscModule,
   ],
 })
 export class IntegrationsModule {}

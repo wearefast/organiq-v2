@@ -3,7 +3,7 @@ import { Pool } from 'pg';
 import * as schema from './schema';
 
 const pool = new Pool({
-  connectionString: process.env.DATABASE_URL || 'postgresql://calibrate:calibrate@localhost:5433/calibrate_commerce',
+  connectionString: process.env.DATABASE_URL || 'postgresql://pulse:pulse@localhost:5433/pulse_v2',
 });
 
 export const db = drizzle(pool, { schema });

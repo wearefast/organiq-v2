@@ -5,6 +5,6 @@ export default defineConfig({
   out: './drizzle',
   dialect: 'postgresql',
   dbCredentials: {
-    url: process.env.DATABASE_URL || 'postgresql://calibrate:calibrate@localhost:5432/calibrate_commerce',
+    url: process.env.DATABASE_URL || 'postgresql://pulse:pulse@localhost:5433/pulse_v2',
   },
 });

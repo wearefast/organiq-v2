@@ -1,27 +1,33 @@
 import type { Metadata } from 'next';
-import { DM_Mono } from 'next/font/google';
-import { AuthProvider } from '@/shared/hooks/use-auth';
+import { Inter, JetBrains_Mono } from 'next/font/google';
+import { ClerkProvider } from '@clerk/nextjs';
 import './globals.css';
 
-const dmMono = DM_Mono({
+const inter = Inter({
   subsets: ['latin'],
-  weight: ['300', '400', '500'],
-  variable: '--font-dm-mono',
+  variable: '--font-inter',
+  display: 'swap',
+});
+
+const jetbrainsMono = JetBrains_Mono({
+  subsets: ['latin'],
+  variable: '--font-mono',
   display: 'swap',
 });
 
 export const metadata: Metadata = {
-  title: 'Calibrate Commerce — Organic Visibility Engine',
-  description:
-    'Get a free personalised SEO, GEO & AEO audit report. Discover content gaps, traffic loss, and competitor insights.',
+  title: 'Pulse OS',
+  description: 'Agent-led SEO/GEO/AEO strategy operating system',
 };
 
 export default function RootLayout({ children }: { children: React.ReactNode }) {
   return (
-    <html lang="en" className={dmMono.variable}>
-      <body className="min-h-screen antialiased">
-        <AuthProvider>{children}</AuthProvider>
-      </body>
-    </html>
+    <ClerkProvider>
+      <html lang="en" className={`${inter.variable} ${jetbrainsMono.variable} dark`}>
+        <body className="min-h-screen bg-shell text-zinc-100 antialiased">
+          {children}
+        </body>
+      </html>
+    </ClerkProvider>
   );
 }

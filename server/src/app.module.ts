@@ -4,12 +4,17 @@ import { BullModule } from '@nestjs/bullmq';
 import { resolve } from 'path';
 import { DatabaseModule } from './shared/database/database.module';
 import { HealthModule } from './shared/health/health.module';
-import { AuditModule } from './features/audit/audit.module';
-import { LeadsModule } from './features/leads/leads.module';
-import { KeywordsModule } from './features/keywords/keywords.module';
-import { ContentModule } from './features/content/content.module';
+import { PromptModule } from './shared/prompt/prompt.module';
+import { AuthModule } from './features/auth/auth.module';
+import { OrganizationsModule } from './features/organizations/organizations.module';
+import { CreditsModule } from './features/credits/credits.module';
+import { WorkspacesModule } from './features/workspaces/workspaces.module';
+import { ProjectsModule } from './features/projects/projects.module';
 import { IntegrationsModule } from './features/integrations/integrations.module';
-import { WebhooksModule } from './features/webhooks/webhooks.module';
+import { AgentsModule } from './agents/agents.module';
+import { WorkflowsModule } from './features/workflows/workflows.module';
+import { KeywordsModule } from './features/keywords/keywords.module';
+import { validateEnv } from './shared/config/env.validation';
 
 function resolveBullRedisHost() {
   const configuredHost = process.env.REDIS_HOST?.trim();
@@ -31,21 +36,26 @@ function resolveEnvFilePaths() {
 
 @Module({
   imports: [
-    ConfigModule.forRoot({ isGlobal: true, envFilePath: resolveEnvFilePaths() }),
+    ConfigModule.forRoot({ isGlobal: true, envFilePath: resolveEnvFilePaths(), validate: validateEnv }),
     BullModule.forRoot({
       connection: {
         host: resolveBullRedisHost(),
         port: parseInt(process.env.REDIS_PORT || '6379', 10),
+        password: process.env.REDIS_PASSWORD || undefined,
       },
     }),
     DatabaseModule,
     HealthModule,
-    AuditModule,
-    LeadsModule,
-    KeywordsModule,
-    ContentModule,
+    PromptModule,
+    AuthModule,
+    OrganizationsModule,
+    CreditsModule,
+    WorkspacesModule,
+    ProjectsModule,
     IntegrationsModule,
-    WebhooksModule,
+    AgentsModule,
+    WorkflowsModule,
+    KeywordsModule,
   ],
 })
 export class AppModule {}

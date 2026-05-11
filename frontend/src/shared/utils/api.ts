@@ -1,6 +1,17 @@
 const LOCAL_DEV_API_URL = 'http://localhost:3002';
 const LEGACY_LOCAL_DEV_API_URL_PATTERN = /^http:\/\/(localhost|127\.0\.0\.1):3005$/i;
 
+// Module-level token store — set by AuthProvider on mount
+let _authToken: string | null = null;
+
+export function setAuthToken(token: string | null): void {
+  _authToken = token;
+}
+
+export function getAuthToken(): string | null {
+  return _authToken;
+}
+
 function normalizeApiUrl(value: string | undefined): string | null {
   const trimmedValue = value?.trim();
   return trimmedValue ? trimmedValue.replace(/\/$/, '') : null;
@@ -23,10 +34,18 @@ function resolveApiUrl(): string {
 const API_URL = resolveApiUrl();
 
 export async function apiFetch<T>(path: string, init?: RequestInit): Promise<T> {
+  const headers: Record<string, string> = {
+    'Content-Type': 'application/json',
+  };
+
+  if (_authToken) {
+    headers['Authorization'] = `Bearer ${_authToken}`;
+  }
+
   const res = await fetch(`${API_URL}${path}`, {
     ...init,
     headers: {
-      'Content-Type': 'application/json',
+      ...headers,
       ...init?.headers,
     },
   });

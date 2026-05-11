@@ -1,105 +1,71 @@
-import { drizzle } from 'drizzle-orm/node-postgres';
-import { Pool } from 'pg';
-import * as schema from './schema';
+import { db } from './index';
+import { organizations, orgMembers, workspaces, projects } from './schema';
 
 async function seed() {
-  console.log('🌱 Seeding database...');
+  console.log('🌱 Seeding Pulse OS v2 database...');
 
-  const pool = new Pool({
-    connectionString: process.env.DATABASE_URL || 'postgresql://calibrate:calibrate@localhost:5432/calibrate_commerce',
-  });
-  const db = drizzle(pool, { schema });
-
-  // Create a demo user
-  const [user] = await db
-    .insert(schema.users)
+  // Create a demo organization
+  const [org] = await db
+    .insert(organizations)
     .values({
-      clerkId: 'demo_clerk_id',
-      email: 'demo@calibratecommerce.com',
+      clerkOrgId: 'org_demo',
+      name: 'Demo Agency',
+      slug: 'demo-agency',
+      plan: 'pro',
+      creditsBalance: 5000,
     })
-    .onConflictDoNothing()
     .returning();
 
-  if (user) {
-    console.log(`Created user: ${user.email}`);
+  console.log(`  ✓ Organization: ${org.name} (${org.id})`);
 
-    // Create a sample audit
-    const [audit] = await db
-      .insert(schema.audits)
-      .values({
-        websiteUrl: 'https://example.com',
-        status: 'COMPLETE',
-        seoScore: 62,
-        geoScore: 45,
-        aeoScore: 38,
-        contentGapCount: 47,
-        estimatedTrafficLoss: 3500,
-        seedKeywords: ['seo agency', 'digital marketing', 'content strategy'],
-        userId: user.id,
-      })
-      .returning();
+  // Create a demo member
+  const [member] = await db
+    .insert(orgMembers)
+    .values({
+      organizationId: org.id,
+      clerkUserId: 'user_demo',
+      role: 'owner',
+      email: 'demo@pulse.dev',
+      name: 'Demo User',
+    })
+    .returning();
 
-    // Create a sample lead
-    await db.insert(schema.leads).values({
-      email: 'lead@example.com',
-      name: 'Jane Smith',
-      websiteUrl: 'https://example.com',
-      businessDetails: {
-        description: 'Digital marketing agency focused on B2B SaaS',
-        industry: 'Marketing',
-      },
-      auditId: audit.id,
-      score: 72,
-      status: 'NEW',
-    });
+  console.log(`  ✓ Member: ${member.email}`);
 
-    // Create a sample keyword project
-    const [project] = await db
-      .insert(schema.keywordProjects)
-      .values({
-        userId: user.id,
-        name: 'Example.com SEO Campaign',
-        websiteUrl: 'https://example.com',
-        seedKeywords: ['seo agency', 'digital marketing', 'content strategy'],
-      })
-      .returning();
+  // Create a demo workspace
+  const [workspace] = await db
+    .insert(workspaces)
+    .values({
+      organizationId: org.id,
+      name: 'Acme Corp',
+      slug: 'acme-corp',
+      domain: 'acme.com',
+    })
+    .returning();
 
-    await db.insert(schema.keywords).values([
-      {
-        projectId: project.id,
-        keyword: 'best seo agency',
-        kd: 45,
-        searchVolume: 2400,
-        intent: 'COMMERCIAL',
-        funnel: 'BOFU',
-        status: 'DISCOVERED',
-      },
-      {
-        projectId: project.id,
-        keyword: 'what is seo',
-        kd: 78,
-        searchVolume: 74000,
-        intent: 'INFORMATIONAL',
-        funnel: 'TOFU',
-        status: 'DISCOVERED',
-      },
-      {
-        projectId: project.id,
-        keyword: 'seo content strategy guide',
-        kd: 32,
-        searchVolume: 1900,
-        intent: 'INFORMATIONAL',
-        funnel: 'MOFU',
-        status: 'DISCOVERED',
-      },
-    ]);
-  }
+  console.log(`  ✓ Workspace: ${workspace.name}`);
 
-  console.log('✅ Seed complete');
-  await pool.end();
+  // Create a demo project
+  const [project] = await db
+    .insert(projects)
+    .values({
+      workspaceId: workspace.id,
+      organizationId: org.id,
+      name: 'Acme SEO',
+      domain: 'acme.com',
+      country: 'US',
+      language: 'en',
+      industry: 'saas',
+    })
+    .returning();
+
+  console.log(`  ✓ Project: ${project.name}`);
+
+  console.log('\n✅ Seed complete!');
+  process.exit(0);
 }
 
-seed().catch((e) => {
-  console.error(e);
+seed().catch((err) => {
+  console.error('Seed failed:', err);
   process.exit(1);
 });

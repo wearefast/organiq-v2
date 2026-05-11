@@ -9,7 +9,7 @@ argument-hint: 'Your rough prompt, idea, or intent to enhance'
 ## Purpose
 
 Transform a rough, vague, or abbreviated prompt into a precise, complete engineering instruction that reflects:
-- The PerformR v2 project conventions and 7-step workflow
+- The Pulse project conventions
 - The correct documentation references for the domain being touched
 - The user's true intent (not just what they said)
 - Explicit scope, file references, and success criteria
@@ -19,7 +19,7 @@ Transform a rough, vague, or abbreviated prompt into a precise, complete enginee
 - You know what you want but can't fully articulate it
 - Your prompt is too short and risks being misunderstood
 - You want to embed context (docs, files, schema, flows) before Copilot acts
-- You want to enforce the mandatory 7-step workflow in the prompt itself
+- You want to enforce the mandatory workflow in the prompt itself
 - You're about to ask something complex (multi-file change, schema migration, new feature) and want the output to be right on the first attempt
 
 ## Procedure
@@ -50,12 +50,12 @@ Based on the domain from Step 1, identify which docs sections are relevant:
 
 Do NOT load all docs — load only the narrow section relevant to the task.
 
-### Step 3 — Apply PerformR Writing Conventions
+### Step 3 — Apply Pulse Writing Conventions
 
 The user writes prompts that are:
 - **Concise and direct** — no preamble, no filler
 - **Action-first** — starts with a verb or a precise noun phrase
-- **File-specific** — references actual paths (`lib/schema.ts`, `app/api/outreach/route.ts`)
+- **File-specific** — references actual paths
 - **Intent over implementation** — states what should happen, not necessarily how
 - **Minimal scope** — never asks for more than 3 files to change; never asks for refactors alongside bug fixes
 

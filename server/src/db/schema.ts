@@ -3,421 +3,487 @@ import {
   text,
   timestamp,
   integer,
-  bigint,
+  decimal,
+  boolean,
   jsonb,
   pgEnum,
   uniqueIndex,
+  index,
+  uuid,
 } from 'drizzle-orm/pg-core';
 import { relations } from 'drizzle-orm';
 
 // ─── Enums ───────────────────────────────────────────────────
 
-export const auditStatusEnum = pgEnum('audit_status', [
-  'PENDING',
-  'PROCESSING',
-  'COMPLETE',
-  'FAILED',
+export const orgPlanEnum = pgEnum('org_plan', [
+  'starter',
+  'pro',
+  'agency',
+  'enterprise',
 ]);
 
-export const leadStatusEnum = pgEnum('lead_status', [
-  'NEW',
-  'CONTACTED',
-  'QUALIFIED',
-  'CONVERTED',
-  'LOST',
+export const orgRoleEnum = pgEnum('org_role', ['owner', 'admin', 'member']);
+
+export const creditTypeEnum = pgEnum('credit_type', [
+  'purchase',
+  'usage',
+  'refund',
+  'bonus',
+]);
+
+export const workflowRunStatusEnum = pgEnum('workflow_run_status', [
+  'draft',
+  'running',
+  'paused',
+  'completed',
+  'failed',
+]);
+
+export const stepStatusEnum = pgEnum('step_status', [
+  'pending',
+  'running',
+  'completed',
+  'awaiting_approval',
+  'approved',
+  'revision_requested',
+  'rejected',
+  'failed',
+  'skipped',
+]);
+
+export const approvalDecisionEnum = pgEnum('approval_decision', [
+  'approved',
+  'revision_requested',
+  'rejected',
 ]);
 
 export const keywordIntentEnum = pgEnum('keyword_intent', [
-  'TRANSACTIONAL',
-  'COMMERCIAL',
-  'INFORMATIONAL',
-  'NAVIGATIONAL',
+  'transactional',
+  'commercial',
+  'informational',
+  'navigational',
 ]);
 
-export const funnelStageEnum = pgEnum('funnel_stage', ['TOFU', 'MOFU', 'BOFU']);
+export const funnelStageEnum = pgEnum('funnel_stage', ['tofu', 'mofu', 'bofu']);
 
 export const keywordStatusEnum = pgEnum('keyword_status', [
-  'DISCOVERED',
-  'APPROVED',
-  'BRIEF_READY',
-  'WRITTEN',
-  'PUBLISHED',
+  'discovered',
+  'approved',
+  'brief_ready',
+  'written',
+  'published',
 ]);
+
+export const contentTypeEnum = pgEnum('content_type', ['brief', 'article']);
 
 export const contentStatusEnum = pgEnum('content_status', [
-  'BRIEF',
-  'DRAFT',
-  'REVIEW',
-  'APPROVED',
-  'PUBLISHED',
+  'draft',
+  'review',
+  'approved',
+  'published',
 ]);
 
-export const workflowStatusEnum = pgEnum('workflow_status', [
-  'DRAFT',
-  'RUNNING',
-  'AWAITING_APPROVAL',
-  'REVISION_REQUESTED',
-  'APPROVED',
-  'COMPLETED',
-  'FAILED',
-  'ARCHIVED',
+export const reportTypeEnum = pgEnum('report_type', [
+  'full_strategy',
+  'ai_visibility',
+  'keyword_research',
+  'content_plan',
 ]);
 
-export const workflowArtifactStatusEnum = pgEnum('workflow_artifact_status', [
-  'DRAFT',
-  'AWAITING_APPROVAL',
-  'APPROVED',
-  'REVISION_REQUESTED',
-  'REJECTED',
-  'SUPERSEDED',
-]);
+// ─── Organizations ───────────────────────────────────────────
 
-export const workflowDecisionEnum = pgEnum('workflow_decision', [
-  'APPROVED',
-  'REVISION_REQUESTED',
-  'REJECTED',
-]);
-
-export const competitorBucketEnum = pgEnum('competitor_bucket', [
-  'DIRECT',
-  'ORGANIC',
-  'UNCLASSIFIED',
-]);
-
-export const competitorStatusEnum = pgEnum('competitor_status', [
-  'CANDIDATE',
-  'APPROVED',
-  'REJECTED',
-]);
-
-export const keywordDedupeStatusEnum = pgEnum('keyword_dedupe_status', [
-  'KEPT',
-  'DUPLICATE_EXISTING',
-  'DUPLICATE_CROSS_METHOD',
-  'IRRELEVANT',
-  'REJECTED',
-]);
-
-export const keywordApprovalStatusEnum = pgEnum('keyword_approval_status', [
-  'CANDIDATE',
-  'APPROVED',
-  'REJECTED',
-]);
-
-export const workflowJobStatusEnum = pgEnum('workflow_job_status', [
-  'PENDING',
-  'PROCESSING',
-  'COMPLETED',
-  'FAILED',
-]);
-
-// ─── Users ───────────────────────────────────────────────────
-
-export const users = pgTable(
-  'users',
+export const organizations = pgTable(
+  'organizations',
   {
-    id: text('id').primaryKey().$defaultFn(() => crypto.randomUUID()),
-    clerkId: text('clerk_id').notNull(),
-    email: text('email').notNull(),
-    orgId: text('org_id'),
+    id: uuid('id').primaryKey().defaultRandom(),
+    clerkOrgId: text('clerk_org_id').notNull(),
+    name: text('name').notNull(),
+    slug: text('slug').notNull(),
+    plan: orgPlanEnum('plan').default('starter').notNull(),
+    creditsBalance: integer('credits_balance').default(0).notNull(),
     createdAt: timestamp('created_at').defaultNow().notNull(),
+    updatedAt: timestamp('updated_at').defaultNow().notNull(),
   },
   (table) => ({
-    clerkIdIdx: uniqueIndex('users_clerk_id_idx').on(table.clerkId),
-    emailIdx: uniqueIndex('users_email_idx').on(table.email),
+    clerkOrgIdIdx: uniqueIndex('organizations_clerk_org_id_idx').on(table.clerkOrgId),
+    slugIdx: uniqueIndex('organizations_slug_idx').on(table.slug),
   }),
 );
 
-// ─── Leads ───────────────────────────────────────────────────
+// ─── Org Members ─────────────────────────────────────────────
 
-export const leads = pgTable('leads', {
-  id: text('id').primaryKey().$defaultFn(() => crypto.randomUUID()),
-  email: text('email').notNull(),
-  name: text('name').notNull(),
-  websiteUrl: text('website_url').notNull(),
-  businessDetails: jsonb('business_details').notNull(),
-  auditId: text('audit_id').unique(),
-  score: integer('score'),
-  status: leadStatusEnum('status').default('NEW').notNull(),
-  createdAt: timestamp('created_at').defaultNow().notNull(),
-});
-
-// ─── Audits ──────────────────────────────────────────────────
-
-export const audits = pgTable('audits', {
-  id: text('id').primaryKey().$defaultFn(() => crypto.randomUUID()),
-  websiteUrl: text('website_url').notNull(),
-  status: auditStatusEnum('status').default('PENDING').notNull(),
-  businessProfile: jsonb('business_profile'),
-  seoScore: integer('seo_score'),
-  geoScore: integer('geo_score'),
-  aeoScore: integer('aeo_score'),
-  contentGapCount: integer('content_gap_count'),
-  estimatedTrafficLoss: integer('estimated_traffic_loss'),
-  competitors: jsonb('competitors'),
-  seedKeywords: jsonb('seed_keywords').$type<string[]>().default([]),
-  countries: jsonb('countries').$type<string[]>().default([]),
-  reportUrl: text('report_url'),
-  rawData: jsonb('raw_data'),
-  userId: text('user_id'),
-  createdAt: timestamp('created_at').defaultNow().notNull(),
-  updatedAt: timestamp('updated_at').defaultNow().notNull(),
-});
-
-// ─── Keyword Projects ────────────────────────────────────────
-
-export const keywordProjects = pgTable('keyword_projects', {
-  id: text('id').primaryKey().$defaultFn(() => crypto.randomUUID()),
-  userId: text('user_id').notNull(),
-  name: text('name').notNull(),
-  websiteUrl: text('website_url').notNull(),
-  seedKeywords: jsonb('seed_keywords').$type<string[]>().default([]),
-  competitors: jsonb('competitors'),
-  createdAt: timestamp('created_at').defaultNow().notNull(),
-});
-
-// ─── Keyword Workflow Runs ──────────────────────────────────
-
-export const keywordWorkflowRuns = pgTable('keyword_workflow_runs', {
-  id: text('id').primaryKey().$defaultFn(() => crypto.randomUUID()),
-  projectId: text('project_id').notNull(),
-  language: text('language').default('en').notNull(),
-  country: text('country').notNull(),
-  status: workflowStatusEnum('status').default('DRAFT').notNull(),
-  currentStep: text('current_step'),
-  currentCheckpoint: text('current_checkpoint'),
-  startedAt: timestamp('started_at'),
-  completedAt: timestamp('completed_at'),
-  createdBy: text('created_by'),
-  createdAt: timestamp('created_at').defaultNow().notNull(),
-  updatedAt: timestamp('updated_at').defaultNow().notNull(),
-});
-
-// ─── Keyword Workflow Artifacts ─────────────────────────────
-
-export const keywordWorkflowArtifacts = pgTable(
-  'keyword_workflow_artifacts',
+export const orgMembers = pgTable(
+  'org_members',
   {
-    id: text('id').primaryKey().$defaultFn(() => crypto.randomUUID()),
-    workflowRunId: text('workflow_run_id').notNull(),
-    stepKey: text('step_key').notNull(),
-    status: workflowArtifactStatusEnum('status').default('DRAFT').notNull(),
-    summary: jsonb('summary'),
-    payload: jsonb('payload').notNull(),
-    createdBy: text('created_by'),
+    id: uuid('id').primaryKey().defaultRandom(),
+    organizationId: uuid('organization_id').notNull().references(() => organizations.id, { onDelete: 'cascade' }),
+    clerkUserId: text('clerk_user_id').notNull(),
+    role: orgRoleEnum('role').default('member').notNull(),
+    email: text('email').notNull(),
+    name: text('name'),
     createdAt: timestamp('created_at').defaultNow().notNull(),
   },
-  () => ({}),
+  (table) => ({
+    orgUserIdx: uniqueIndex('org_members_org_user_idx').on(table.organizationId, table.clerkUserId),
+  }),
 );
 
-// ─── Keyword Workflow Approvals ─────────────────────────────
+// ─── Credit Ledger ───────────────────────────────────────────
 
-export const keywordWorkflowApprovals = pgTable('keyword_workflow_approvals', {
-  id: text('id').primaryKey().$defaultFn(() => crypto.randomUUID()),
-  artifactId: text('artifact_id').notNull(),
-  decision: workflowDecisionEnum('decision').notNull(),
+export const creditLedger = pgTable(
+  'credit_ledger',
+  {
+    id: uuid('id').primaryKey().defaultRandom(),
+    organizationId: uuid('organization_id').notNull().references(() => organizations.id, { onDelete: 'cascade' }),
+    amount: integer('amount').notNull(),
+    balanceAfter: integer('balance_after').notNull(),
+    type: creditTypeEnum('type').notNull(),
+    description: text('description').notNull(),
+    workflowRunId: uuid('workflow_run_id'),
+    stepKey: text('step_key'),
+    createdAt: timestamp('created_at').defaultNow().notNull(),
+  },
+  (table) => ({
+    orgCreatedIdx: index('credit_ledger_org_created_idx').on(table.organizationId, table.createdAt),
+  }),
+);
+
+// ─── Workspaces ──────────────────────────────────────────────
+
+export const workspaces = pgTable(
+  'workspaces',
+  {
+    id: uuid('id').primaryKey().defaultRandom(),
+    organizationId: uuid('organization_id').notNull().references(() => organizations.id, { onDelete: 'cascade' }),
+    name: text('name').notNull(),
+    slug: text('slug').notNull(),
+    domain: text('domain'),
+    createdAt: timestamp('created_at').defaultNow().notNull(),
+    updatedAt: timestamp('updated_at').defaultNow().notNull(),
+  },
+  (table) => ({
+    orgSlugIdx: uniqueIndex('workspaces_org_slug_idx').on(table.organizationId, table.slug),
+  }),
+);
+
+// ─── Projects ────────────────────────────────────────────────
+
+export const projects = pgTable(
+  'projects',
+  {
+    id: uuid('id').primaryKey().defaultRandom(),
+    workspaceId: uuid('workspace_id').notNull().references(() => workspaces.id, { onDelete: 'cascade' }),
+    organizationId: uuid('organization_id').notNull().references(() => organizations.id, { onDelete: 'cascade' }),
+    name: text('name').notNull(),
+    domain: text('domain').notNull(),
+    country: text('country').default('US').notNull(),
+    language: text('language').default('en').notNull(),
+    industry: text('industry'),
+    createdAt: timestamp('created_at').defaultNow().notNull(),
+    updatedAt: timestamp('updated_at').defaultNow().notNull(),
+  },
+  (table) => ({
+    workspaceIdx: index('projects_workspace_idx').on(table.workspaceId),
+    orgIdx: index('projects_org_idx').on(table.organizationId),
+  }),
+);
+
+// ─── Workflow Runs ───────────────────────────────────────────
+
+export const workflowRuns = pgTable(
+  'workflow_runs',
+  {
+    id: uuid('id').primaryKey().defaultRandom(),
+    projectId: uuid('project_id').notNull().references(() => projects.id, { onDelete: 'cascade' }),
+    organizationId: uuid('organization_id').notNull().references(() => organizations.id, { onDelete: 'cascade' }),
+    status: workflowRunStatusEnum('status').default('draft').notNull(),
+    currentStep: text('current_step'),
+    creditsUsed: integer('credits_used').default(0).notNull(),
+    startedAt: timestamp('started_at'),
+    completedAt: timestamp('completed_at'),
+    createdAt: timestamp('created_at').defaultNow().notNull(),
+    updatedAt: timestamp('updated_at').defaultNow().notNull(),
+  },
+  (table) => ({
+    projectIdx: index('workflow_runs_project_idx').on(table.projectId),
+    orgIdx: index('workflow_runs_org_idx').on(table.organizationId),
+  }),
+);
+
+// ─── Workflow Steps ──────────────────────────────────────────
+
+export const workflowSteps = pgTable(
+  'workflow_steps',
+  {
+    id: uuid('id').primaryKey().defaultRandom(),
+    workflowRunId: uuid('workflow_run_id').notNull().references(() => workflowRuns.id, { onDelete: 'cascade' }),
+    stepKey: text('step_key').notNull(),
+    stepNumber: integer('step_number').notNull(),
+    phase: integer('phase').notNull(),
+    status: stepStatusEnum('status').default('pending').notNull(),
+    startedAt: timestamp('started_at'),
+    completedAt: timestamp('completed_at'),
+    creditsUsed: integer('credits_used').default(0).notNull(),
+    iterations: integer('iterations').default(0).notNull(),
+    error: text('error'),
+    createdAt: timestamp('created_at').defaultNow().notNull(),
+    updatedAt: timestamp('updated_at').defaultNow().notNull(),
+  },
+  (table) => ({
+    runStepIdx: uniqueIndex('workflow_steps_run_step_idx').on(table.workflowRunId, table.stepKey),
+  }),
+);
+
+// ─── Step Artifacts ──────────────────────────────────────────
+
+export const stepArtifacts = pgTable(
+  'step_artifacts',
+  {
+    id: uuid('id').primaryKey().defaultRandom(),
+    workflowStepId: uuid('workflow_step_id').notNull().references(() => workflowSteps.id, { onDelete: 'cascade' }),
+    workflowRunId: uuid('workflow_run_id').notNull().references(() => workflowRuns.id, { onDelete: 'cascade' }),
+    stepKey: text('step_key').notNull(),
+    version: integer('version').default(1).notNull(),
+    data: jsonb('data').notNull(),
+    reasoning: text('reasoning'),
+    createdAt: timestamp('created_at').defaultNow().notNull(),
+  },
+  (table) => ({
+    runStepVersionIdx: index('step_artifacts_run_step_version_idx').on(
+      table.workflowRunId,
+      table.stepKey,
+      table.version,
+    ),
+  }),
+);
+
+// ─── Step Approvals ──────────────────────────────────────────
+
+export const stepApprovals = pgTable(
+  'step_approvals',
+  {
+    id: uuid('id').primaryKey().defaultRandom(),
+    workflowStepId: uuid('workflow_step_id').notNull().references(() => workflowSteps.id, { onDelete: 'cascade' }),
+    artifactId: uuid('artifact_id').notNull().references(() => stepArtifacts.id, { onDelete: 'cascade' }),
+  decision: approvalDecisionEnum('decision').notNull(),
   notes: text('notes'),
-  reviewedBy: text('reviewed_by'),
-  reviewedAt: timestamp('reviewed_at').defaultNow().notNull(),
-});
+    reviewerId: text('reviewer_id').notNull(),
+    createdAt: timestamp('created_at').defaultNow().notNull(),
+  },
+  (table) => ({
+    stepIdx: index('step_approvals_step_idx').on(table.workflowStepId),
+  }),
+);
 
-// ─── Content Gap Imports ───────────────────────────────────
+// ─── Step Tool Calls ─────────────────────────────────────────
 
-export const contentGapImports = pgTable('content_gap_imports', {
-  id: text('id').primaryKey().$defaultFn(() => crypto.randomUUID()),
-  workflowRunId: text('workflow_run_id').notNull(),
-  format: text('format').notNull(),
-  headers: jsonb('headers').$type<string[]>().default([]).notNull(),
-  rows: jsonb('rows').$type<Record<string, string>[]>().default([]).notNull(),
-  rowCount: integer('row_count').default(0).notNull(),
-  notes: text('notes'),
-  createdBy: text('created_by'),
-  createdAt: timestamp('created_at').defaultNow().notNull(),
-});
+export const stepToolCalls = pgTable(
+  'step_tool_calls',
+  {
+    id: uuid('id').primaryKey().defaultRandom(),
+    workflowStepId: uuid('workflow_step_id').notNull().references(() => workflowSteps.id, { onDelete: 'cascade' }),
+    toolName: text('tool_name').notNull(),
+    input: jsonb('input').notNull(),
+    output: jsonb('output'),
+    durationMs: integer('duration_ms'),
+    error: text('error'),
+    createdAt: timestamp('created_at').defaultNow().notNull(),
+  },
+  (table) => ({
+    stepIdx: index('step_tool_calls_step_idx').on(table.workflowStepId),
+  }),
+);
 
-// ─── Project Competitors ───────────────────────────────────
+// ─── Workflow Context ────────────────────────────────────────
 
-export const projectCompetitors = pgTable('project_competitors', {
-  id: text('id').primaryKey().$defaultFn(() => crypto.randomUUID()),
-  projectId: text('project_id').notNull(),
-  workflowRunId: text('workflow_run_id').notNull(),
-  domain: text('domain').notNull(),
-  bucket: competitorBucketEnum('bucket').default('UNCLASSIFIED').notNull(),
-  status: competitorStatusEnum('status').default('CANDIDATE').notNull(),
-  rationale: text('rationale'),
-  notes: text('notes'),
-  createdBy: text('created_by'),
-  createdAt: timestamp('created_at').defaultNow().notNull(),
-  updatedAt: timestamp('updated_at').defaultNow().notNull(),
-});
-
-// ─── Project Competitor Metrics ────────────────────────────
-
-export const projectCompetitorMetrics = pgTable('project_competitor_metrics', {
-  id: text('id').primaryKey().$defaultFn(() => crypto.randomUUID()),
-  competitorId: text('competitor_id').notNull().unique(),
-  domainRating: integer('domain_rating'),
-  organicTraffic: bigint('organic_traffic', { mode: 'number' }),
-  organicKeywords: bigint('organic_keywords', { mode: 'number' }),
-  referringDomains: bigint('referring_domains', { mode: 'number' }),
-  backlinks: bigint('backlinks', { mode: 'number' }),
-  topPages: jsonb('top_pages').$type<Record<string, unknown>[]>().default([]).notNull(),
-  capturedAt: timestamp('captured_at').defaultNow().notNull(),
-  createdAt: timestamp('created_at').defaultNow().notNull(),
-  updatedAt: timestamp('updated_at').defaultNow().notNull(),
-});
-
-// ─── Topical Maps ────────────────────────────────────────────
-
-export const topicalMaps = pgTable('topical_maps', {
-  id: text('id').primaryKey().$defaultFn(() => crypto.randomUUID()),
-  projectId: text('project_id').notNull(),
-  workflowRunId: text('workflow_run_id'),
-  name: text('name').notNull(),
-  language: text('language').default('en').notNull(),
-  country: text('country'),
-  structure: jsonb('structure').notNull(),
-  createdAt: timestamp('created_at').defaultNow().notNull(),
-  updatedAt: timestamp('updated_at').defaultNow().notNull(),
-});
+export const workflowContext = pgTable(
+  'workflow_context',
+  {
+    id: uuid('id').primaryKey().defaultRandom(),
+    workflowRunId: uuid('workflow_run_id').notNull().references(() => workflowRuns.id, { onDelete: 'cascade' }),
+    key: text('key').notNull(),
+    value: jsonb('value').notNull(),
+    updatedAt: timestamp('updated_at').defaultNow().notNull(),
+  },
+  (table) => ({
+    runKeyIdx: uniqueIndex('workflow_context_run_key_idx').on(table.workflowRunId, table.key),
+  }),
+);
 
 // ─── Keywords ────────────────────────────────────────────────
 
-export const keywords = pgTable('keywords', {
-  id: text('id').primaryKey().$defaultFn(() => crypto.randomUUID()),
-  projectId: text('project_id').notNull(),
-  workflowRunId: text('workflow_run_id'),
-  keyword: text('keyword').notNull(),
-  kd: integer('kd'),
-  searchVolume: integer('search_volume'),
-  intent: keywordIntentEnum('intent').notNull(),
-  funnel: funnelStageEnum('funnel').notNull(),
-  targetUrl: text('target_url'),
-  language: text('language').default('en').notNull(),
-  country: text('country'),
-  parentTopic: text('parent_topic'),
-  sourceMethods: jsonb('source_methods').$type<string[]>().default([]),
-  sourceArtifactIds: jsonb('source_artifact_ids').$type<string[]>().default([]),
-  approvalStatus: keywordApprovalStatusEnum('approval_status').default('CANDIDATE').notNull(),
-  dedupeStatus: keywordDedupeStatusEnum('dedupe_status').default('KEPT').notNull(),
-  existingCoverageUrl: text('existing_coverage_url'),
-  contentType: text('content_type'),
-  notes: text('notes'),
-  lsiKeywords: jsonb('lsi_keywords'),
-  status: keywordStatusEnum('status').default('DISCOVERED').notNull(),
-  createdAt: timestamp('created_at').defaultNow().notNull(),
-});
+export const keywords = pgTable(
+  'keywords',
+  {
+    id: uuid('id').primaryKey().defaultRandom(),
+    projectId: uuid('project_id').notNull().references(() => projects.id, { onDelete: 'cascade' }),
+    workflowRunId: uuid('workflow_run_id').references(() => workflowRuns.id, { onDelete: 'set null' }),
+    keyword: text('keyword').notNull(),
+    volume: integer('volume'),
+    difficulty: integer('difficulty'),
+    cpc: decimal('cpc', { precision: 10, scale: 2 }),
+    intent: keywordIntentEnum('intent'),
+    funnelStage: funnelStageEnum('funnel_stage'),
+    status: keywordStatusEnum('status').default('discovered').notNull(),
+    sourceStep: text('source_step'),
+    parentTopic: text('parent_topic'),
+    serpFeatures: jsonb('serp_features'),
+    createdAt: timestamp('created_at').defaultNow().notNull(),
+    updatedAt: timestamp('updated_at').defaultNow().notNull(),
+  },
+  (table) => ({
+    projectStatusIdx: index('keywords_project_status_idx').on(table.projectId, table.status),
+    projectKeywordIdx: uniqueIndex('keywords_project_keyword_idx').on(table.projectId, table.keyword),
+  }),
+);
 
-// ─── Keyword Workflow Jobs ───────────────────────────────────
+// ─── Topical Maps ────────────────────────────────────────────
 
-export const keywordWorkflowJobs = pgTable('keyword_workflow_jobs', {
-  id: text('id').primaryKey().$defaultFn(() => crypto.randomUUID()),
-  workflowRunId: text('workflow_run_id').notNull(),
-  stepKey: text('step_key').notNull(),
-  jobType: text('job_type').notNull(),
-  status: workflowJobStatusEnum('status').default('PENDING').notNull(),
-  progress: integer('progress').default(0).notNull(),
-  error: text('error'),
-  resultArtifactId: text('result_artifact_id'),
-  inputPayload: jsonb('input_payload').notNull(),
-  startedAt: timestamp('started_at'),
-  completedAt: timestamp('completed_at'),
-  createdAt: timestamp('created_at').defaultNow().notNull(),
-});
+export const topicalMaps = pgTable(
+  'topical_maps',
+  {
+    id: uuid('id').primaryKey().defaultRandom(),
+    projectId: uuid('project_id').notNull().references(() => projects.id, { onDelete: 'cascade' }),
+    workflowRunId: uuid('workflow_run_id').references(() => workflowRuns.id, { onDelete: 'set null' }),
+    name: text('name').notNull(),
+    pillars: jsonb('pillars').notNull(),
+    calendar: jsonb('calendar'),
+    createdAt: timestamp('created_at').defaultNow().notNull(),
+    updatedAt: timestamp('updated_at').defaultNow().notNull(),
+  },
+  (table) => ({
+    projectIdx: index('topical_maps_project_idx').on(table.projectId),
+  }),
+);
 
 // ─── Content Pieces ──────────────────────────────────────────
 
-export const contentPieces = pgTable('content_pieces', {
-  id: text('id').primaryKey().$defaultFn(() => crypto.randomUUID()),
-  keywordId: text('keyword_id').notNull().unique(),
-  workflowRunId: text('workflow_run_id'),
-  title: text('title').notNull(),
-  brief: jsonb('brief'),
-  body: text('body'),
-  language: text('language').default('en').notNull(),
-  country: text('country'),
-  reviewNotes: jsonb('review_notes'),
-  status: contentStatusEnum('status').default('BRIEF').notNull(),
-  publishedUrl: text('published_url'),
-  publishedAt: timestamp('published_at'),
-  createdAt: timestamp('created_at').defaultNow().notNull(),
-});
+export const contentPieces = pgTable(
+  'content_pieces',
+  {
+    id: uuid('id').primaryKey().defaultRandom(),
+    projectId: uuid('project_id').notNull().references(() => projects.id, { onDelete: 'cascade' }),
+    keywordId: uuid('keyword_id').references(() => keywords.id, { onDelete: 'set null' }),
+    workflowRunId: uuid('workflow_run_id').references(() => workflowRuns.id, { onDelete: 'set null' }),
+    type: contentTypeEnum('type').notNull(),
+    status: contentStatusEnum('status').default('draft').notNull(),
+    title: text('title').notNull(),
+    briefData: jsonb('brief_data'),
+    articleData: jsonb('article_data'),
+    scores: jsonb('scores'),
+    wordCount: integer('word_count'),
+    createdAt: timestamp('created_at').defaultNow().notNull(),
+    updatedAt: timestamp('updated_at').defaultNow().notNull(),
+  },
+  (table) => ({
+    projectIdx: index('content_pieces_project_idx').on(table.projectId),
+    statusIdx: index('content_pieces_status_idx').on(table.projectId, table.status),
+  }),
+);
+
+// ─── Reports ─────────────────────────────────────────────────
+
+export const reports = pgTable(
+  'reports',
+  {
+    id: uuid('id').primaryKey().defaultRandom(),
+    projectId: uuid('project_id').notNull().references(() => projects.id, { onDelete: 'cascade' }),
+    workflowRunId: uuid('workflow_run_id').references(() => workflowRuns.id, { onDelete: 'set null' }),
+    type: reportTypeEnum('type').notNull(),
+    title: text('title').notNull(),
+    filePath: text('file_path'),
+    generatedAt: timestamp('generated_at'),
+    createdAt: timestamp('created_at').defaultNow().notNull(),
+  },
+  (table) => ({
+    projectIdx: index('reports_project_idx').on(table.projectId),
+    typeIdx: index('reports_type_idx').on(table.type),
+  }),
+);
 
 // ─── Relations ───────────────────────────────────────────────
 
-export const usersRelations = relations(users, ({ many }) => ({
-  audits: many(audits),
-  keywordProjects: many(keywordProjects),
+export const organizationsRelations = relations(organizations, ({ many }) => ({
+  members: many(orgMembers),
+  creditLedger: many(creditLedger),
+  workspaces: many(workspaces),
+  workflowRuns: many(workflowRuns),
 }));
 
-export const leadsRelations = relations(leads, ({ one }) => ({
-  audit: one(audits, { fields: [leads.auditId], references: [audits.id] }),
+export const orgMembersRelations = relations(orgMembers, ({ one }) => ({
+  organization: one(organizations, { fields: [orgMembers.organizationId], references: [organizations.id] }),
 }));
 
-export const auditsRelations = relations(audits, ({ one }) => ({
-  user: one(users, { fields: [audits.userId], references: [users.id] }),
-  lead: one(leads, { fields: [audits.id], references: [leads.auditId] }),
+export const creditLedgerRelations = relations(creditLedger, ({ one }) => ({
+  organization: one(organizations, { fields: [creditLedger.organizationId], references: [organizations.id] }),
 }));
 
-export const keywordProjectsRelations = relations(keywordProjects, ({ one, many }) => ({
-  user: one(users, { fields: [keywordProjects.userId], references: [users.id] }),
-  workflowRuns: many(keywordWorkflowRuns),
-  competitors: many(projectCompetitors),
-  topicalMaps: many(topicalMaps),
+export const workspacesRelations = relations(workspaces, ({ one, many }) => ({
+  organization: one(organizations, { fields: [workspaces.organizationId], references: [organizations.id] }),
+  projects: many(projects),
+}));
+
+export const projectsRelations = relations(projects, ({ one, many }) => ({
+  workspace: one(workspaces, { fields: [projects.workspaceId], references: [workspaces.id] }),
+  organization: one(organizations, { fields: [projects.organizationId], references: [organizations.id] }),
+  workflowRuns: many(workflowRuns),
   keywords: many(keywords),
-}));
-
-export const keywordWorkflowRunsRelations = relations(keywordWorkflowRuns, ({ one, many }) => ({
-  project: one(keywordProjects, { fields: [keywordWorkflowRuns.projectId], references: [keywordProjects.id] }),
-  artifacts: many(keywordWorkflowArtifacts),
-  jobs: many(keywordWorkflowJobs),
-  contentGapImports: many(contentGapImports),
-  competitors: many(projectCompetitors),
   topicalMaps: many(topicalMaps),
-  keywords: many(keywords),
   contentPieces: many(contentPieces),
+  reports: many(reports),
 }));
 
-export const keywordWorkflowJobsRelations = relations(keywordWorkflowJobs, ({ one }) => ({
-  workflowRun: one(keywordWorkflowRuns, { fields: [keywordWorkflowJobs.workflowRunId], references: [keywordWorkflowRuns.id] }),
-  resultArtifact: one(keywordWorkflowArtifacts, { fields: [keywordWorkflowJobs.resultArtifactId], references: [keywordWorkflowArtifacts.id] }),
+export const workflowRunsRelations = relations(workflowRuns, ({ one, many }) => ({
+  project: one(projects, { fields: [workflowRuns.projectId], references: [projects.id] }),
+  organization: one(organizations, { fields: [workflowRuns.organizationId], references: [organizations.id] }),
+  steps: many(workflowSteps),
+  artifacts: many(stepArtifacts),
+  context: many(workflowContext),
 }));
 
-export const keywordWorkflowArtifactsRelations = relations(keywordWorkflowArtifacts, ({ one, many }) => ({
-  workflowRun: one(keywordWorkflowRuns, { fields: [keywordWorkflowArtifacts.workflowRunId], references: [keywordWorkflowRuns.id] }),
-  approvals: many(keywordWorkflowApprovals),
+export const workflowStepsRelations = relations(workflowSteps, ({ one, many }) => ({
+  workflowRun: one(workflowRuns, { fields: [workflowSteps.workflowRunId], references: [workflowRuns.id] }),
+  artifacts: many(stepArtifacts),
+  approvals: many(stepApprovals),
+  toolCalls: many(stepToolCalls),
 }));
 
-export const keywordWorkflowApprovalsRelations = relations(keywordWorkflowApprovals, ({ one }) => ({
-  artifact: one(keywordWorkflowArtifacts, { fields: [keywordWorkflowApprovals.artifactId], references: [keywordWorkflowArtifacts.id] }),
+export const stepArtifactsRelations = relations(stepArtifacts, ({ one, many }) => ({
+  workflowStep: one(workflowSteps, { fields: [stepArtifacts.workflowStepId], references: [workflowSteps.id] }),
+  workflowRun: one(workflowRuns, { fields: [stepArtifacts.workflowRunId], references: [workflowRuns.id] }),
+  approvals: many(stepApprovals),
 }));
 
-export const contentGapImportsRelations = relations(contentGapImports, ({ one }) => ({
-  workflowRun: one(keywordWorkflowRuns, { fields: [contentGapImports.workflowRunId], references: [keywordWorkflowRuns.id] }),
+export const stepApprovalsRelations = relations(stepApprovals, ({ one }) => ({
+  workflowStep: one(workflowSteps, { fields: [stepApprovals.workflowStepId], references: [workflowSteps.id] }),
+  artifact: one(stepArtifacts, { fields: [stepApprovals.artifactId], references: [stepArtifacts.id] }),
 }));
 
-export const projectCompetitorsRelations = relations(projectCompetitors, ({ one }) => ({
-  project: one(keywordProjects, { fields: [projectCompetitors.projectId], references: [keywordProjects.id] }),
-  workflowRun: one(keywordWorkflowRuns, { fields: [projectCompetitors.workflowRunId], references: [keywordWorkflowRuns.id] }),
-  metrics: one(projectCompetitorMetrics, { fields: [projectCompetitors.id], references: [projectCompetitorMetrics.competitorId] }),
+export const stepToolCallsRelations = relations(stepToolCalls, ({ one }) => ({
+  workflowStep: one(workflowSteps, { fields: [stepToolCalls.workflowStepId], references: [workflowSteps.id] }),
 }));
 
-export const projectCompetitorMetricsRelations = relations(projectCompetitorMetrics, ({ one }) => ({
-  competitor: one(projectCompetitors, { fields: [projectCompetitorMetrics.competitorId], references: [projectCompetitors.id] }),
-}));
-
-export const topicalMapsRelations = relations(topicalMaps, ({ one }) => ({
-  project: one(keywordProjects, { fields: [topicalMaps.projectId], references: [keywordProjects.id] }),
-  workflowRun: one(keywordWorkflowRuns, { fields: [topicalMaps.workflowRunId], references: [keywordWorkflowRuns.id] }),
+export const workflowContextRelations = relations(workflowContext, ({ one }) => ({
+  workflowRun: one(workflowRuns, { fields: [workflowContext.workflowRunId], references: [workflowRuns.id] }),
 }));
 
 export const keywordsRelations = relations(keywords, ({ one }) => ({
-  project: one(keywordProjects, { fields: [keywords.projectId], references: [keywordProjects.id] }),
-  workflowRun: one(keywordWorkflowRuns, { fields: [keywords.workflowRunId], references: [keywordWorkflowRuns.id] }),
-  contentPiece: one(contentPieces, { fields: [keywords.id], references: [contentPieces.keywordId] }),
+  project: one(projects, { fields: [keywords.projectId], references: [projects.id] }),
+  workflowRun: one(workflowRuns, { fields: [keywords.workflowRunId], references: [workflowRuns.id] }),
+}));
+
+export const topicalMapsRelations = relations(topicalMaps, ({ one }) => ({
+  project: one(projects, { fields: [topicalMaps.projectId], references: [projects.id] }),
+  workflowRun: one(workflowRuns, { fields: [topicalMaps.workflowRunId], references: [workflowRuns.id] }),
 }));
 
 export const contentPiecesRelations = relations(contentPieces, ({ one }) => ({
+  project: one(projects, { fields: [contentPieces.projectId], references: [projects.id] }),
   keyword: one(keywords, { fields: [contentPieces.keywordId], references: [keywords.id] }),
-  workflowRun: one(keywordWorkflowRuns, { fields: [contentPieces.workflowRunId], references: [keywordWorkflowRuns.id] }),
+  workflowRun: one(workflowRuns, { fields: [contentPieces.workflowRunId], references: [workflowRuns.id] }),
+}));
+
+export const reportsRelations = relations(reports, ({ one }) => ({
+  project: one(projects, { fields: [reports.projectId], references: [projects.id] }),
+  workflowRun: one(workflowRuns, { fields: [reports.workflowRunId], references: [workflowRuns.id] }),
 }));

@@ -6,8 +6,12 @@ import { AppModule } from './app.module';
 async function bootstrap() {
   const app = await NestFactory.create(AppModule);
 
-  const allowedOrigins = [process.env.WEB_URL, 'http://localhost:3000', 'http://localhost:3001']
-    .filter((origin): origin is string => Boolean(origin));
+  app.enableShutdownHooks();
+
+  const allowedOrigins = [
+    process.env.FRONTEND_URL,
+    'http://localhost:3001',
+  ].filter((origin): origin is string => Boolean(origin));
 
   app.enableCors({
     origin: (origin, callback) => {
@@ -29,19 +33,26 @@ async function bootstrap() {
     }),
   );
 
-  const config = new DocumentBuilder()
-    .setTitle('Calibrate Commerce API')
-    .setDescription('Organic Visibility Engine — API')
-    .setVersion('1.0')
-    .addBearerAuth()
-    .build();
-  const document = SwaggerModule.createDocument(app, config);
-  SwaggerModule.setup('docs', app, document);
+  if (process.env.NODE_ENV !== 'production') {
+    const config = new DocumentBuilder()
+      .setTitle('Pulse OS API')
+      .setDescription('Agent-led SEO/GEO/AEO Strategy OS')
+      .setVersion('2.0')
+      .addBearerAuth()
+      .build();
+    const document = SwaggerModule.createDocument(app, config);
+    SwaggerModule.setup('docs', app, document);
+  }
 
-  const port = process.env.PORT || 3001;
+  const port = process.env.PORT || 3002;
   await app.listen(port);
-  console.log(`🚀 API running on http://localhost:${port}`);
-  console.log(`📖 Swagger docs at http://localhost:${port}/docs`);
+  console.log(`🚀 Pulse OS API running on http://localhost:${port}`);
+  if (process.env.NODE_ENV !== 'production') {
+    console.log(`📖 Swagger docs at http://localhost:${port}/docs`);
+  }
 }
 
-bootstrap();
+bootstrap().catch((err) => {
+  console.error('Failed to bootstrap app:', err);
+  process.exit(1);
+});
