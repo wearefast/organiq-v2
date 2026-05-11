@@ -32,4 +32,22 @@ Lead capture from the public audit form. Each lead submission creates a Lead rec
 
 | Area | Implemented |
 |------|-------------|
-| Dashboard lead drawer | The dashboard leads table now opens a right-side drawer with lead profile context, linked audit status, editable local status selection, notes, and a save action |
+| Dashboard lead drawer | The dashboard leads table now opens a right-side drawer with lead profile context, linked audit status, editable local status selection, business description, internal notes, and a save action |
+| Lead persistence route | The server now exposes `PATCH /leads/:id` so the dashboard drawer can persist strategist status changes and internal notes back into the lead record |
+| Save-state feedback | The drawer disables the save button while the mutation is in flight and shows an inline error message if the update fails |
+
+## Dashboard Lead Update Contract
+
+**PATCH /leads/:id** body:
+```json
+{
+	"status": "qualified",
+	"notes": "Prioritized for strategist follow-up after audit review."
+}
+```
+
+Server behavior:
+
+- normalizes the incoming status to the allowed lead-status enum
+- rejects unknown lead IDs and invalid status values
+- merges the new notes into `businessDetails.internalNotes` so dashboard edits stay on the lead record

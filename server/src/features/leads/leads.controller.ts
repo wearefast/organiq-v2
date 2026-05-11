@@ -1,4 +1,4 @@
-import { Controller, Post, Get, Param, Query, Body } from '@nestjs/common';
+import { Controller, Post, Get, Patch, Param, Query, Body } from '@nestjs/common';
 import { ApiTags, ApiOperation } from '@nestjs/swagger';
 import { LeadsService } from './leads.service';
 import { CreateLeadDto } from './dto/create-lead.dto';
@@ -27,5 +27,14 @@ export class LeadsController {
   @ApiOperation({ summary: 'Get lead by ID' })
   async findOne(@Param('id') id: string) {
     return this.leadsService.findOne(id);
+  }
+
+  @Patch(':id')
+  @ApiOperation({ summary: 'Update lead status and internal notes' })
+  async update(
+    @Param('id') id: string,
+    @Body() body: { status?: string; notes?: string },
+  ) {
+    return this.leadsService.update(id, body);
   }
 }

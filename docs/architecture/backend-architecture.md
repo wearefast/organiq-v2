@@ -44,6 +44,7 @@ Base URL: `http://localhost:3001` (dev) | Swagger: `/docs`
 | POST | `/leads` | No | Submit audit request (lead magnet) |
 | GET | `/leads` | Yes | List all leads |
 | GET | `/leads/:id` | Yes | Get lead by ID |
+| PATCH | `/leads/:id` | Yes | Update lead status and internal notes |
 
 **POST /leads** body:
 ```json
@@ -54,6 +55,16 @@ Base URL: `http://localhost:3001` (dev) | Swagger: `/docs`
   "businessDescription": "Digital marketing agency focused on B2B SaaS"
 }
 ```
+
+**PATCH /leads/:id** body:
+```json
+{
+  "status": "qualified",
+  "notes": "Prioritized for strategist follow-up after audit review."
+}
+```
+
+`PATCH /leads/:id` normalizes the status to the server enum and stores dashboard notes under `businessDetails.internalNotes` on the lead record.
 
 ### Audits
 
@@ -79,7 +90,7 @@ Base URL: `http://localhost:3001` (dev) | Swagger: `/docs`
 | Method | Path | Auth | Description |
 |--------|------|------|-------------|
 | GET | `/content` | Yes | List content pieces |
-| GET | `/content/:id` | Yes | Get content piece |
+| GET | `/content/:id` | Yes | Get content piece with persisted brief, article input, and draft-body data |
 | POST | `/content/generate-brief/:keywordId` | Yes | Generate content brief |
 | POST | `/content/generate-article/:keywordId` | Yes | Generate full article |
 | PATCH | `/content/:id/status` | Yes | Update content status |

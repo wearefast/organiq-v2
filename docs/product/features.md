@@ -7,8 +7,8 @@
 | Audit | `frontend/src/features/audit/` | `server/src/features/audit/` | Public audit form, progress polling, score display |
 | Dashboard | `frontend/src/features/dashboard/` | — | Stats overview cards |
 | Keywords | `frontend/src/features/keywords/` | `server/src/features/keywords/` | Project management, discovery, gap analysis |
-| Content | `frontend/src/features/content/` | `server/src/features/content/` | Brief generation, article generation, status management |
-| Leads | — | `server/src/features/leads/` | Lead capture, audit creation, queue enqueue |
+| Content | `frontend/src/features/content/` | `server/src/features/content/` | Workflow-aware brief/article handoff, persisted dashboard previews, status management |
+| Leads | `frontend/src/features/leads/` | `server/src/features/leads/` | Lead capture, dashboard lead management, audit creation, queue enqueue |
 | Integrations | — | `server/src/features/integrations/` | Ahrefs, SerpAPI, OpenAI, PageSpeed, Scraper |
 | Webhooks | — | `server/src/features/webhooks/` | Clerk auth webhook |
 

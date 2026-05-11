@@ -1,10 +1,12 @@
-import { Injectable } from '@nestjs/common';
+import { BadRequestException, Injectable, NotFoundException } from '@nestjs/common';
 import { InjectQueue } from '@nestjs/bullmq';
 import { Queue } from 'bullmq';
 import { eq, desc } from 'drizzle-orm';
 import { DatabaseService } from '../../shared/database/database.service';
 import { leads, audits } from '../../db/schema';
 import { CreateLeadDto } from './dto/create-lead.dto';
+
+const LEAD_STATUS_VALUES = new Set(['NEW', 'CONTACTED', 'QUALIFIED', 'CONVERTED', 'LOST']);
 
 @Injectable()
 export class LeadsService {
@@ -73,5 +75,41 @@ export class LeadsService {
       .from(leads)
       .where(eq(leads.id, id));
     return lead;
+  }
+
+  async update(id: string, body: { status?: string; notes?: string }) {
+    const [existingLead] = await this.database.db
+      .select()
+      .from(leads)
+      .where(eq(leads.id, id));
+
+    if (!existingLead) {
+      throw new NotFoundException('Lead not found');
+    }
+
+    const nextStatus = typeof body.status === 'string' ? body.status.trim().toUpperCase() : existingLead.status;
+    if (!LEAD_STATUS_VALUES.has(nextStatus)) {
+      throw new BadRequestException('Invalid lead status');
+    }
+
+    const existingBusinessDetails =
+      existingLead.businessDetails && typeof existingLead.businessDetails === 'object'
+        ? (existingLead.businessDetails as Record<string, unknown>)
+        : {};
+    const nextNotes = typeof body.notes === 'string' ? body.notes.trim() : '';
+
+    const [updatedLead] = await this.database.db
+      .update(leads)
+      .set({
+        status: nextStatus as 'NEW' | 'CONTACTED' | 'QUALIFIED' | 'CONVERTED' | 'LOST',
+        businessDetails: {
+          ...existingBusinessDetails,
+          internalNotes: nextNotes,
+        },
+      })
+      .where(eq(leads.id, id))
+      .returning();
+
+    return updatedLead;
   }
 }

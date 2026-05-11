@@ -10,6 +10,7 @@ Multi-tenant SaaS product for automated SEO/GEO/AEO auditing and organic visibil
 
 | Category | Document | Description |
 |----------|----------|-------------|
+| Product | [Project Handbook](docs/project-handbook.md) | Single-file deep dive into the full product, architecture, flows, and integrations |
 | Product | [Overview](docs/product/overview.md) | Product description, quick start |
 | Product | [Features](docs/product/features.md) | Feature modules & conventions |
 | Product | [User Flows](docs/product/user-flows.md) | End-to-end user journeys |

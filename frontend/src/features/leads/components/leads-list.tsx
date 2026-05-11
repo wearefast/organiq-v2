@@ -2,7 +2,7 @@
 
 import { useEffect, useState } from 'react';
 import Link from 'next/link';
-import { listLeads, type LeadSummary } from '../services/leads.service';
+import { listLeads, updateLead, type LeadSummary } from '../services/leads.service';
 import { StatusBadge } from '@/shared/components/status-badge';
 import { Avatar } from '@/shared/components/avatar';
 import { Button } from '@/shared/components/button';
@@ -12,6 +12,12 @@ const LEAD_STATUSES = ['new', 'contacted', 'qualified', 'converted', 'lost'] as 
 
 function leadDescription(lead: LeadSummary) {
   const domain = lead.websiteUrl.replace(/^https?:\/\//, '').replace(/\/$/, '');
+  const description = typeof lead.businessDetails?.description === 'string' ? lead.businessDetails.description.trim() : '';
+
+  if (description.length > 0) {
+    return description;
+  }
+
   return `${lead.name || 'This lead'} requested an audit for ${domain} and entered the strategist funnel through the public visibility audit flow.`;
 }
 
@@ -23,6 +29,8 @@ function LeadDrawer({
   onStatusChange,
   onNotesChange,
   onSave,
+  saving,
+  saveError,
 }: {
   lead: LeadSummary;
   status: string;
@@ -31,6 +39,8 @@ function LeadDrawer({
   onStatusChange: (value: string) => void;
   onNotesChange: (value: string) => void;
   onSave: () => void;
+  saving: boolean;
+  saveError: string | null;
 }) {
   return (
     <div className="fixed inset-0 z-40 flex justify-end bg-[#071932]/30 backdrop-blur-sm">
@@ -115,11 +125,17 @@ function LeadDrawer({
               className="mt-3 w-full rounded-[10px] border border-[var(--input-border)] bg-[var(--canvas)] px-3 py-2.5 text-sm text-[var(--text-primary)] transition-colors placeholder:text-[var(--text-muted)] focus:border-[var(--ring)] focus:outline-none focus:ring-1 focus:ring-[var(--ring)]"
             />
           </div>
+
+          {saveError ? (
+            <div className="rounded-2xl border border-[color:color-mix(in_srgb,var(--cc-red)_35%,white)] bg-[color:color-mix(in_srgb,var(--cc-red)_8%,white)] p-4 text-sm text-[var(--text-body)]">
+              {saveError}
+            </div>
+          ) : null}
         </div>
 
         <div className="border-t border-[var(--border)] px-6 py-4">
-          <Button type="button" className="w-full" onClick={onSave}>
-            Save changes
+          <Button type="button" className="w-full" onClick={onSave} disabled={saving}>
+            {saving ? 'Saving…' : 'Save changes'}
           </Button>
         </div>
       </aside>
@@ -133,6 +149,8 @@ export function LeadsList() {
   const [selectedLead, setSelectedLead] = useState<LeadSummary | null>(null);
   const [draftStatus, setDraftStatus] = useState<string>('new');
   const [draftNotes, setDraftNotes] = useState<string>('');
+  const [isSaving, setIsSaving] = useState(false);
+  const [saveError, setSaveError] = useState<string | null>(null);
 
   useEffect(() => {
     listLeads()
@@ -143,31 +161,29 @@ export function LeadsList() {
   function openLead(lead: LeadSummary) {
     setSelectedLead(lead);
     setDraftStatus(lead.status.toLowerCase());
-    setDraftNotes('');
+    setDraftNotes(typeof lead.businessDetails?.internalNotes === 'string' ? lead.businessDetails.internalNotes : '');
+    setSaveError(null);
   }
 
-  function saveLead() {
+  async function saveLead() {
     if (!selectedLead) return;
 
-    setLeads((current) =>
-      current.map((lead) =>
-        lead.id === selectedLead.id
-          ? {
-              ...lead,
-              status: draftStatus.toUpperCase(),
-            }
-          : lead,
-      ),
-    );
+    setIsSaving(true);
+    setSaveError(null);
 
-    setSelectedLead((current) =>
-      current
-        ? {
-            ...current,
-            status: draftStatus.toUpperCase(),
-          }
-        : null,
-    );
+    try {
+      const updatedLead = await updateLead(selectedLead.id, {
+        status: draftStatus,
+        notes: draftNotes,
+      });
+
+      setLeads((current) => current.map((lead) => (lead.id === updatedLead.id ? updatedLead : lead)));
+      setSelectedLead(updatedLead);
+    } catch {
+      setSaveError('The lead update could not be saved. Please try again.');
+    } finally {
+      setIsSaving(false);
+    }
   }
 
   if (loading) {
@@ -270,6 +286,8 @@ export function LeadsList() {
           onStatusChange={setDraftStatus}
           onNotesChange={setDraftNotes}
           onSave={saveLead}
+          saving={isSaving}
+          saveError={saveError}
         />
       ) : null}
     </div>
