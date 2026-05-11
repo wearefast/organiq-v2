@@ -144,6 +144,14 @@ During polling, analysis mode now replaces the landing-page shell instead of ove
 11. Client-side animation queue staggers multiple completions by 600ms to avoid skipping visual steps
 12. A polite live region announces the active phase and progress updates for accessibility
 
+### Control room refresh
+
+| Area | Implemented |
+|------|-------------|
+| Token-led shell | The dark control room now derives its shell, panel, accent, and state tones from shared design-system variables instead of a separate hardcoded palette |
+| Step emphasis | Pipeline rows keep the same live/pending/complete state model but now use clearer contrast, status markers, and panel hierarchy |
+| Telemetry hierarchy | Progress dial, telemetry cards, phase card, and process log now share the same control-room card system so the screen reads as one product surface |
+
 ### Pipeline steps visualized
 
 | # | Key | Label | Data shown on complete |

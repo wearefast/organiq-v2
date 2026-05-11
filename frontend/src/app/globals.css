@@ -32,6 +32,16 @@
     --border: #E8EAF0;
     --input-border: #D7DCE5;
     --ring: #DA304F;
+
+    /* Status tones */
+    --status-live: #12B76A;
+    --status-pending: #D97706;
+    --status-strategy: #7C3AED;
+    --status-review: #AE213E;
+    --status-progress: #2563EB;
+    --status-complete: #0891B2;
+    --status-overdue: #B42318;
+    --status-neutral: #667085;
   }
 }
 
@@ -98,20 +108,70 @@
   .table-header-cell {
     @apply text-[11px] font-semibold uppercase tracking-widest text-[#9CA3AF];
   }
-  .status-live {
-    @apply inline-flex items-center rounded-pill bg-green-50 px-2.5 py-0.5 text-xs font-medium text-green-700;
+  .status-live,
+  .status-pending,
+  .status-strategy,
+  .status-review,
+  .status-progress,
+  .status-complete,
+  .status-overdue,
+  .status-neutral,
+  .status-new,
+  .status-qualified,
+  .status-converted,
+  .status-contacted,
+  .status-lost,
+  .status-draft,
+  .status-brief,
+  .status-approved,
+  .status-published,
+  .status-failed {
+    @apply inline-flex items-center rounded-pill px-3 py-1 text-xs font-medium;
   }
-  .status-pending {
-    @apply inline-flex items-center rounded-pill bg-amber-50 px-2.5 py-0.5 text-xs font-medium text-amber-700;
+  .status-live {
+    background-color: color-mix(in srgb, var(--status-live) 14%, white);
+    color: var(--status-live);
+  }
+  .status-pending,
+  .status-contacted,
+  .status-draft {
+    background-color: color-mix(in srgb, var(--status-pending) 14%, white);
+    color: var(--status-pending);
+  }
+  .status-strategy,
+  .status-qualified {
+    background-color: color-mix(in srgb, var(--status-strategy) 14%, white);
+    color: var(--status-strategy);
   }
   .status-review {
-    @apply inline-flex items-center rounded-pill bg-red-50 px-2.5 py-0.5 text-xs font-medium text-red-700;
+    background-color: color-mix(in srgb, var(--status-review) 14%, white);
+    color: var(--status-review);
   }
-  .status-progress {
-    @apply inline-flex items-center rounded-pill bg-blue-50 px-2.5 py-0.5 text-xs font-medium text-blue-700;
+  .status-progress,
+  .status-new,
+  .status-brief {
+    background-color: color-mix(in srgb, var(--status-progress) 14%, white);
+    color: var(--status-progress);
   }
-  .status-complete {
-    @apply inline-flex items-center rounded-pill bg-teal-50 px-2.5 py-0.5 text-xs font-medium text-teal-700;
+  .status-complete,
+  .status-published {
+    background-color: color-mix(in srgb, var(--status-complete) 14%, white);
+    color: var(--status-complete);
+  }
+  .status-approved,
+  .status-converted {
+    background-color: color-mix(in srgb, var(--status-live) 14%, white);
+    color: var(--status-live);
+  }
+  .status-overdue,
+  .status-failed {
+    background-color: color-mix(in srgb, var(--status-overdue) 14%, white);
+    color: var(--status-overdue);
+  }
+  .status-neutral,
+  .status-lost {
+    background-color: color-mix(in srgb, var(--status-neutral) 12%, white);
+    color: var(--status-neutral);
   }
 }
 

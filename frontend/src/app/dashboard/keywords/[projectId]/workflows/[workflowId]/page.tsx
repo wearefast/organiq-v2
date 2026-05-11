@@ -4,6 +4,7 @@ import Link from 'next/link';
 import { revalidatePath } from 'next/cache';
 import { redirect } from 'next/navigation';
 import { join } from 'path';
+import { ArrowLeft } from 'lucide-react';
 import {
   approveKeywordWorkflowCheckpoint,
   createKeywordWorkflowArtifact,
@@ -30,6 +31,7 @@ import { SerpCandidatesView } from '@/features/keywords/components/serp-candidat
 import { CompetitorMetricsView } from '@/features/keywords/components/competitor-metrics-view';
 import { BusinessProfileKeyFindings } from '@/features/keywords/components/business-profile-key-findings';
 import { Method01PagesView } from '@/features/keywords/components/method01-pages-view';
+import { StatusBadge } from '@/shared/components/status-badge';
 
 const WORKFLOW_STEPS = [
   'business-profile',
@@ -46,6 +48,15 @@ const WORKFLOW_STEPS = [
   'content-brief',
   'content-article',
 ] as const;
+
+function formatLanguageLabel(language: string) {
+  const normalized = language.trim().toLowerCase();
+
+  if (normalized === 'en') return 'English';
+  if (normalized === 'ar') return 'Arabic';
+
+  return normalized.charAt(0).toUpperCase() + normalized.slice(1);
+}
 
 type Method02SourceKeyword = {
   keyword: string;
@@ -2587,6 +2598,7 @@ export default async function KeywordWorkflowPage({
   const activeArtifact = currentStepKey ? latestArtifactsByStep.get(currentStepKey) ?? null : latestArtifacts[0] ?? null;
   const secondaryCheckpointArtifacts = latestArtifacts.filter((artifact) => artifact.id !== activeArtifact?.id);
   const artifactHistory = getArtifactHistory(workflow.artifacts);
+  const currentStepVersions = artifactHistory.find(([stepKey]) => stepKey === currentStepKey)?.[1] ?? [];
   const approvedDirectCompetitors = (workflow.competitors ?? []).filter(
     (competitor) => competitor.bucket === 'DIRECT' && competitor.status === 'APPROVED',
   );
@@ -2663,6 +2675,7 @@ export default async function KeywordWorkflowPage({
         )
     : [];
   const PHASE_GROUPS: Record<number, string> = { 0: 'Discovery', 5: 'Research', 9: 'Synthesis', 11: 'Content' };
+  const estimatedAiCost = ((completedStepCount * 0.65) + Math.max(0, (workflow.artifacts?.length ?? 0) - completedStepCount) * 0.2 + 1.1).toFixed(1);
 
   const workflowWizard = (
     <section className="w-full rounded-xl border border-[#E8EAF0] bg-white p-5 shadow-sm">
@@ -2730,11 +2743,98 @@ export default async function KeywordWorkflowPage({
     </section>
   );
   const collapsedWorkflowWizard = <CollapsedWorkflowRail steps={wizardSteps} projectId={projectId} workflowId={workflowId} />;
+  const currentEditableStepLabel = formatWorkflowStepLabel(editableStepKey);
+  const workflowContextRail = (
+    <div className="space-y-4">
+      <section className="rounded-2xl border border-[#E8EAF0] bg-white p-5 shadow-sm">
+        <p className="text-[11px] font-semibold uppercase tracking-widest text-[#9CA3AF]">Workflow context</p>
+        <div className="mt-4 space-y-4 text-sm">
+          <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-1">
+            <div>
+              <p className="text-[11px] font-semibold uppercase tracking-widest text-[#9CA3AF]">Market</p>
+              <p className="mt-1 text-[#111827]">{workflow.country.toUpperCase()} · {formatLanguageLabel(workflow.language)}</p>
+            </div>
+            <div>
+              <p className="text-[11px] font-semibold uppercase tracking-widest text-[#9CA3AF]">Selected step</p>
+              <p className="mt-1 text-[#111827]">{formatWorkflowStepLabel(currentStepKey)}</p>
+            </div>
+            <div>
+              <p className="text-[11px] font-semibold uppercase tracking-widest text-[#9CA3AF]">Editable step</p>
+              <p className="mt-1 text-[#111827]">{currentEditableStepLabel}</p>
+            </div>
+            <div>
+              <p className="text-[11px] font-semibold uppercase tracking-widest text-[#9CA3AF]">Run status</p>
+              <div className="mt-2">
+                <StatusBadge status={workflow.status} />
+              </div>
+            </div>
+          </div>
+        </div>
+      </section>
+
+      <section className="rounded-2xl border border-[#E8EAF0] bg-white p-5 shadow-sm">
+        <p className="text-[11px] font-semibold uppercase tracking-widest text-[#9CA3AF]">Prompt parameters</p>
+        <dl className="mt-4 space-y-3 text-sm">
+          <div className="flex items-start justify-between gap-3">
+            <dt className="text-[#667085]">Project domain</dt>
+            <dd className="text-right font-medium text-[#111827]">{project.websiteUrl.replace(/^https?:\/\//, '').replace(/\/$/, '')}</dd>
+          </div>
+          <div className="flex items-start justify-between gap-3">
+            <dt className="text-[#667085]">Seed keywords</dt>
+            <dd className="text-right font-medium text-[#111827]">{project.seedKeywords.length}</dd>
+          </div>
+          <div className="flex items-start justify-between gap-3">
+            <dt className="text-[#667085]">Approved competitors</dt>
+            <dd className="text-right font-medium text-[#111827]">{approvedDirectCompetitors.length}</dd>
+          </div>
+          <div className="flex items-start justify-between gap-3">
+            <dt className="text-[#667085]">Checkpoint records</dt>
+            <dd className="text-right font-medium text-[#111827]">{workflow.artifacts?.length ?? 0}</dd>
+          </div>
+          <div className="flex items-start justify-between gap-3">
+            <dt className="text-[#667085]">Estimated AI cost</dt>
+            <dd className="text-right font-medium text-[#111827]">${estimatedAiCost}</dd>
+          </div>
+        </dl>
+      </section>
+
+      <section className="rounded-2xl border border-[#E8EAF0] bg-white p-5 shadow-sm">
+        <div className="flex items-center justify-between gap-3">
+          <div>
+            <p className="text-[11px] font-semibold uppercase tracking-widest text-[#9CA3AF]">Version history</p>
+            <p className="mt-1 text-sm text-[#667085]">Latest records for the selected step.</p>
+          </div>
+          <span className="rounded-full bg-[#F4F6FA] px-3 py-1 text-xs font-medium text-[#344054]">
+            {currentStepVersions.length} {currentStepVersions.length === 1 ? 'entry' : 'entries'}
+          </span>
+        </div>
+
+        {currentStepVersions.length > 0 ? (
+          <div className="mt-4 space-y-3">
+            {currentStepVersions.slice(0, 3).map((artifact, index) => (
+              <div key={artifact.id} className="rounded-xl border border-[#E4E7EC] bg-[#FCFCFD] p-4">
+                <div className="flex items-start justify-between gap-3">
+                  <div>
+                    <p className="text-sm font-medium text-[#111827]">
+                      v{currentStepVersions.length - index} {index === 0 ? '· Current' : index === currentStepVersions.length - 1 ? '· Initial' : '· Previous'}
+                    </p>
+                    <p className="mt-1 text-xs text-[#9CA3AF]">{new Date(artifact.createdAt).toLocaleString()}</p>
+                  </div>
+                  <StatusBadge status={artifact.status} />
+                </div>
+              </div>
+            ))}
+          </div>
+        ) : (
+          <p className="mt-4 text-sm text-[#9CA3AF]">No history yet for the selected step.</p>
+        )}
+      </section>
+    </div>
+  );
 
   const currentStepWorkspaceTitle = currentStepKey
     ? `${formatWorkflowStepLabel(currentStepKey)} workspace`
     : 'Current step workspace';
-  const currentEditableStepLabel = formatWorkflowStepLabel(editableStepKey);
   const businessProfileGenerateFormId = 'business-profile-generate-form';
   const seedKeywordsGenerateFormId = 'seed-keywords-generate-form';
   const showBusinessProfileWorkspace = currentStepKey === 'business-profile';
@@ -2960,11 +3060,17 @@ export default async function KeywordWorkflowPage({
           ) : null}
 
           {!isReadOnlyStepView && (!usesArtifactFormApprovalFlow || isGenericEditableView) ? (
-            <form action={reviewCheckpointAction} className="mt-4 grid gap-3 rounded-lg border border-[#E4E7EC] bg-white p-4">
+            <form action={reviewCheckpointAction} className="mt-4 overflow-hidden rounded-2xl border border-[#E4E7EC] bg-white shadow-sm">
               <input type="hidden" name="projectId" value={projectId} />
               <input type="hidden" name="workflowId" value={workflowId} />
               <input type="hidden" name="stepKey" value={activeArtifact.stepKey} />
 
+              <div className="border-b border-[#F3F4F6] px-5 py-4">
+                <p className="text-[11px] font-semibold uppercase tracking-widest text-[#9CA3AF]">Approval gate</p>
+                <p className="mt-1 text-sm text-[#667085]">Approve to advance the workflow, request revision with guidance, or reject the current checkpoint.</p>
+              </div>
+
+              <div className="grid gap-4 px-5 py-4">
               <div>
                 <label
                   className="block text-xs font-medium uppercase tracking-[0.08em] text-[#667085]"
@@ -2977,7 +3083,7 @@ export default async function KeywordWorkflowPage({
                   name="notes"
                   rows={3}
                   placeholder="Optional checkpoint note"
-                  className="mt-2 w-full rounded-lg border border-[#D0D5DD] bg-white px-3 py-2 text-sm text-[#111827]"
+                  className="mt-2 w-full rounded-[10px] border border-[#D0D5DD] bg-white px-3 py-2.5 text-sm text-[#111827]"
                 />
               </div>
 
@@ -2985,27 +3091,28 @@ export default async function KeywordWorkflowPage({
                 <button
                   type="submit"
                   name="decision"
-                  value="APPROVED"
-                  className="rounded-lg bg-[#101828] px-4 py-2 text-sm font-medium text-white transition hover:bg-[#1D2939]"
+                  value="REJECTED"
+                  className="inline-flex h-11 items-center justify-center rounded-pill border border-[#F04438] bg-white px-4 text-sm font-semibold text-[#B42318] transition hover:bg-[#FFF5F5]"
                 >
-                  Approve
+                  Reject
                 </button>
                 <button
                   type="submit"
                   name="decision"
                   value="REVISION_REQUESTED"
-                  className="rounded-lg border border-[#D0D5DD] bg-white px-4 py-2 text-sm font-medium text-[#344054] transition hover:bg-[#F9FAFB]"
+                  className="btn-secondary px-4"
                 >
                   Request revision
                 </button>
                 <button
                   type="submit"
                   name="decision"
-                  value="REJECTED"
-                  className="rounded-lg border border-[#F04438] bg-white px-4 py-2 text-sm font-medium text-[#B42318] transition hover:bg-[#FFF5F5]"
+                  value="APPROVED"
+                  className="btn-primary px-4"
                 >
-                  Reject
+                  Approve & continue
                 </button>
+              </div>
               </div>
             </form>
           ) : null}
@@ -4217,29 +4324,27 @@ export default async function KeywordWorkflowPage({
     <div className="space-y-6">
       <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
         <div>
-          <Link href="/dashboard/keywords" className="text-sm font-medium text-[#475467] hover:text-[#111827]">
-            Back to projects
+          <Link href={`/dashboard/keywords/${projectId}`} className="inline-flex items-center gap-1.5 text-sm font-medium text-[#9CA3AF] transition-colors hover:text-[#111827]">
+            <ArrowLeft className="h-3.5 w-3.5" />
+            Back to project
           </Link>
-          <h1 className="mt-2 text-[32px] font-bold text-[#111827]">Workflow shell</h1>
-          <p className="mt-1 text-sm text-[#667085]">
-            Review the current workflow run, add internal checkpoints manually, and record checkpoint decisions.
+          <h1 className="mt-2 text-[28px] font-bold tracking-tight text-[#111827]">{project.name}</h1>
+          <p className="mt-1 text-sm text-[#6B7280]">
+            {workflow.country.toUpperCase()} · {formatLanguageLabel(workflow.language)} workflow
           </p>
         </div>
 
-        <div className="flex flex-wrap gap-2">
-          <span className="rounded-full bg-[#F4F6FA] px-3 py-1 text-xs font-medium text-[#344054]">
-            {workflow.language.toUpperCase()}
-          </span>
-          <span className="rounded-full bg-[#F4F6FA] px-3 py-1 text-xs font-medium text-[#344054]">
-            {workflow.country.toUpperCase()}
-          </span>
-          <span className="rounded-full bg-[#EEF4FF] px-3 py-1 text-xs font-medium text-[#3538CD]">
-            {workflow.status.replaceAll('_', ' ')}
-          </span>
+        <div className="flex flex-wrap items-center gap-2">
+          <StatusBadge status={
+            workflow.status === 'COMPLETED' ? 'complete' :
+            workflow.status === 'AWAITING_APPROVAL' ? 'awaiting_approval' :
+            workflow.status === 'RUNNING' ? 'running' :
+            workflow.status.toLowerCase() as 'new'
+          } />
         </div>
       </div>
 
-      <WorkflowShellLayout rail={workflowWizard} collapsedRail={collapsedWorkflowWizard}>
+      <WorkflowShellLayout rail={workflowWizard} collapsedRail={collapsedWorkflowWizard} contextRail={workflowContextRail}>
         {activeWorkspace}
         {/*
 
@@ -5645,7 +5750,7 @@ export default async function KeywordWorkflowPage({
                         type="submit"
                         name="decision"
                         value="APPROVED"
-                        className="rounded-lg bg-[#101828] px-4 py-2 text-sm font-medium text-white transition hover:bg-[#1D2939]"
+                        className="rounded-lg bg-[#111827] px-4 py-2 text-sm font-medium text-white transition hover:bg-[#1F2937]"
                       >
                         Approve
                       </button>

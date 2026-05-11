@@ -18,6 +18,7 @@ import type {
 
 interface Props {
   audit: AuditDetailResponse;
+  variant?: 'public' | 'dashboard';
 }
 
 type TabKey = 'overview' | 'keywords' | 'competitors' | 'content-gap' | 'performance';
@@ -26,7 +27,7 @@ type TabKey = 'overview' | 'keywords' | 'competitors' | 'content-gap' | 'perform
    Root
    ═══════════════════════════════════════════════════════════ */
 
-export function AuditResults({ audit }: Props) {
+export function AuditResults({ audit, variant = 'public' }: Props) {
   const { pipeline } = audit;
   const [tab, setTab] = useState<TabKey>('overview');
 
@@ -40,8 +41,8 @@ export function AuditResults({ audit }: Props) {
 
   return (
     <div className="space-y-6">
-      {/* ── Hero Header ──────────────────────────────── */}
-      <HeroHeader audit={audit} />
+      {/* ── Header ──────────────────────────────────── */}
+      {variant === 'dashboard' ? <DashboardHeader audit={audit} /> : <HeroHeader audit={audit} />}
 
       {/* ── Quick Stats ──────────────────────────────── */}
       <QuickStats audit={audit} />
@@ -185,6 +186,107 @@ function HeroHeader({ audit }: Props) {
       </div>
     </div>
   );
+}
+
+/* ═══════════════════════════════════════════════════════════
+   Dashboard Header (restrained, no gradient)
+   ═══════════════════════════════════════════════════════════ */
+
+function DashboardHeader({ audit }: Props) {
+  const [pdfGenerating, setPdfGenerating] = useState(false);
+  const domain = (() => { try { return new URL(audit.websiteUrl).hostname; } catch { return audit.websiteUrl; } })();
+
+  const scores = [
+    { label: 'OVERALL', value: audit.scores.seoScore, color: scoreColor(audit.scores.seoScore) },
+    { label: 'TECHNICAL', value: audit.scores.seoScore, color: scoreColor(audit.scores.seoScore) },
+    { label: 'CONTENT', value: audit.scores.contentGapCount !== null ? Math.min(100, Math.max(0, 100 - (audit.scores.contentGapCount ?? 0))) : null, color: scoreColor(audit.scores.contentGapCount !== null ? Math.min(100, Math.max(0, 100 - (audit.scores.contentGapCount ?? 0))) : null) },
+    { label: 'AUTHORITY', value: audit.scores.geoScore, color: scoreColor(audit.scores.geoScore) },
+    { label: 'AEO/GEO', value: audit.scores.aeoScore, color: scoreColor(audit.scores.aeoScore) },
+  ];
+
+  return (
+    <div className="rounded-xl border border-[#E8EAF0] bg-white p-6 shadow-sm">
+      <div className="flex items-start justify-between gap-4">
+        <div className="flex items-center gap-4">
+          {audit.favicon && (
+            <img
+              src={audit.favicon}
+              alt=""
+              className="h-10 w-10 shrink-0 rounded-lg border border-[#E8EAF0] bg-[#F8F9FC] object-contain p-1"
+              onError={(e) => { (e.target as HTMLImageElement).style.display = 'none'; }}
+            />
+          )}
+          <div>
+            <div className="flex items-center gap-3">
+              <h1 className="text-[24px] font-bold text-[#111827]">
+                {audit.siteName || domain}
+              </h1>
+              <span className={`inline-flex items-center rounded-full px-3 py-1 text-xs font-medium ${
+                audit.status === 'COMPLETE' ? 'bg-teal-50 text-teal-700' :
+                audit.status === 'PROCESSING' ? 'bg-blue-50 text-blue-700' :
+                audit.status === 'FAILED' ? 'bg-red-50 text-red-700' :
+                'bg-amber-50 text-amber-700'
+              }`}>
+                {audit.status.charAt(0) + audit.status.slice(1).toLowerCase()}
+              </span>
+            </div>
+            <p className="mt-0.5 text-sm text-[#9CA3AF]">
+              {domain} · {new Date(audit.createdAt).toLocaleString()}
+            </p>
+          </div>
+        </div>
+        <div className="flex items-center gap-2">
+          <a
+            href={`/dashboard/audits/${audit.id}/pipeline`}
+            className="inline-flex items-center gap-1.5 rounded-lg border border-[#E8EAF0] bg-white px-3 py-2 text-xs font-medium text-[#4B5563] transition-colors hover:bg-[#F8F9FC]"
+          >
+            Pipeline
+          </a>
+          <button
+            onClick={() => { /* TODO: re-run */ }}
+            className="inline-flex items-center gap-1.5 rounded-lg border border-[#E8EAF0] bg-white px-3 py-2 text-xs font-medium text-[#4B5563] transition-colors hover:bg-[#F8F9FC]"
+          >
+            Re-run
+          </button>
+          <button
+            onClick={() => { /* TODO: email */ }}
+            className="inline-flex items-center gap-1.5 rounded-lg border border-[#E8EAF0] bg-white px-3 py-2 text-xs font-medium text-[#4B5563] transition-colors hover:bg-[#F8F9FC]"
+          >
+            Email
+          </button>
+          <button
+            onClick={async () => {
+              setPdfGenerating(true);
+              try { await downloadAuditPdf(audit); } finally { setPdfGenerating(false); }
+            }}
+            disabled={pdfGenerating}
+            className="inline-flex items-center gap-1.5 rounded-lg bg-[#111827] px-3 py-2 text-xs font-medium text-white transition-colors hover:bg-[#1F2937] disabled:opacity-50"
+          >
+            {pdfGenerating ? 'Generating…' : 'Download PDF'}
+          </button>
+        </div>
+      </div>
+
+      {/* Score circles */}
+      <div className="mt-5 flex gap-6 border-t border-[#F3F4F6] pt-5">
+        {scores.map(({ label, value, color }) => (
+          <div key={label} className="text-center">
+            <div className={`mx-auto flex h-12 w-12 items-center justify-center rounded-full border-2 ${color}`}>
+              <span className="text-sm font-bold text-[#111827]">{value ?? '—'}</span>
+            </div>
+            <p className="mt-1.5 text-[10px] font-semibold uppercase tracking-widest text-[#9CA3AF]">{label}</p>
+          </div>
+        ))}
+      </div>
+    </div>
+  );
+}
+
+function scoreColor(value: number | null | undefined): string {
+  if (value == null) return 'border-[#E8EAF0]';
+  if (value >= 70) return 'border-teal-400';
+  if (value >= 40) return 'border-amber-400';
+  return 'border-red-400';
 }
 
 /* ═══════════════════════════════════════════════════════════

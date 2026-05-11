@@ -3,6 +3,7 @@
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
 import { useState } from 'react';
+import { ArrowLeft } from 'lucide-react';
 import { createKeywordProject } from '@/features/keywords/services/keywords.service';
 
 function parseSeedKeywords(rawValue: string) {
@@ -48,25 +49,26 @@ export default function NewKeywordProjectPage() {
     <div className="space-y-6">
       <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
         <div>
-          <h1 className="text-[32px] font-bold text-[#111827]">New keyword project</h1>
-          <p className="mt-1 text-sm text-[#9CA3AF]">
-            Create the project container first, then start the English workflow from the keyword dashboard.
+          <h1 className="text-[32px] font-bold leading-tight text-[var(--text-primary)]">New keyword project</h1>
+          <p className="mt-1 text-sm text-[var(--text-body)]">
+            Create the project container first, then start the English workflow from the project workspace.
           </p>
         </div>
 
         <Link
           href="/dashboard/keywords"
-          className="inline-flex items-center justify-center rounded-lg border border-[#D0D5DD] bg-white px-4 py-2 text-sm font-medium text-[#344054] transition hover:bg-[#F9FAFB]"
+          className="btn-secondary gap-2 px-4"
         >
+          <ArrowLeft className="h-4 w-4" />
           Back to projects
         </Link>
       </div>
 
-      <form onSubmit={handleSubmit} className="max-w-2xl rounded-xl border border-[#E8EAF0] bg-white p-8 shadow-sm">
+      <form onSubmit={handleSubmit} className="card-base max-w-2xl p-8">
         <div className="space-y-5">
           <div>
-            <label htmlFor="name" className="text-sm font-semibold text-[#111827]">
-              Project name
+            <label htmlFor="name" className="text-sm font-medium text-[#344054]">
+              Project name <span className="text-[#DA304F]">*</span>
             </label>
             <input
               id="name"
@@ -79,8 +81,8 @@ export default function NewKeywordProjectPage() {
           </div>
 
           <div>
-            <label htmlFor="websiteUrl" className="text-sm font-semibold text-[#111827]">
-              Website URL
+            <label htmlFor="websiteUrl" className="text-sm font-medium text-[#344054]">
+              Website URL <span className="text-[#DA304F]">*</span>
             </label>
             <input
               id="websiteUrl"
@@ -93,7 +95,7 @@ export default function NewKeywordProjectPage() {
           </div>
 
           <div>
-            <label htmlFor="seedKeywords" className="text-sm font-semibold text-[#111827]">
+            <label htmlFor="seedKeywords" className="text-sm font-medium text-[#344054]">
               Initial seed keywords
             </label>
             <p className="mt-0.5 text-xs text-[#9CA3AF]">
@@ -123,7 +125,7 @@ export default function NewKeywordProjectPage() {
           <button
             type="submit"
             disabled={submitting}
-            className="inline-flex h-11 items-center justify-center rounded-lg bg-[#111827] px-5 text-sm font-semibold text-white transition-opacity hover:opacity-90 disabled:opacity-50"
+            className="btn-primary px-5"
           >
             {submitting ? 'Creating project...' : 'Create project'}
           </button>

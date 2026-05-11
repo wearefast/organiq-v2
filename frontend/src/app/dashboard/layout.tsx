@@ -1,6 +1,8 @@
 'use client';
 
 import { useAuth } from '@/shared/hooks/use-auth';
+import { Breadcrumb } from '@/shared/components/breadcrumb';
+import { Button } from '@/shared/components/button';
 import { usePathname } from 'next/navigation';
 import { useEffect, useState } from 'react';
 import Link from 'next/link';
@@ -29,8 +31,8 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
 
   if (!isLoaded) {
     return (
-      <div className="flex min-h-screen items-center justify-center bg-[#F8F9FC]">
-        <div className="flex items-center gap-3 text-[#9CA3AF]">
+      <div className="flex min-h-screen items-center justify-center bg-[var(--background)]">
+        <div className="flex items-center gap-3 text-[var(--text-muted)]">
           <svg className="h-5 w-5 animate-spin" fill="none" viewBox="0 0 24 24">
             <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" />
             <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z" />
@@ -43,10 +45,10 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
 
   if (!user) {
     return (
-      <div className="flex min-h-screen items-center justify-center bg-[#F8F9FC] px-6">
-        <div className="text-center text-[#6B7280]">
+      <div className="flex min-h-screen items-center justify-center bg-[var(--background)] px-6">
+        <div className="text-center text-[var(--text-body)]">
           <p className="text-sm font-medium">Redirecting to sign in...</p>
-          <Link href="/login" className="mt-3 inline-block text-sm font-semibold text-[#DA304F] hover:opacity-80">
+          <Link href="/login" className="mt-3 inline-block text-sm font-semibold text-[var(--cc-red)] hover:opacity-80">
             Continue to login
           </Link>
         </div>
@@ -55,7 +57,7 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
   }
 
   return (
-    <div className="flex min-h-screen bg-[#F8F9FC]">
+    <div className="flex min-h-screen bg-[var(--background)]">
       {/* Sidebar */}
       <aside
         className={`fixed inset-y-0 left-0 z-40 flex flex-col bg-gradient-sidebar transition-all duration-200 ease-out ${
@@ -83,21 +85,15 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
         {/* Logo */}
         <div
           className={`flex h-16 shrink-0 items-center border-b border-white/10 ${
-            isSidebarCollapsed ? 'justify-center px-3' : 'px-5'
+            isSidebarCollapsed ? 'justify-center px-3' : 'gap-3 px-5'
           }`}
         >
-          <Link href="/dashboard" className="flex items-center">
-            {isSidebarCollapsed ? (
-              <span className="flex h-9 w-9 items-center justify-center rounded-full bg-white/10 text-xs font-bold tracking-[0.12em] text-white">
-                CC
-              </span>
-            ) : (
-              <img
-                src="/calibrate-commerce-logo.svg"
-                alt="Calibrate Commerce"
-                className="h-6 w-auto"
-                style={{ filter: 'brightness(0) invert(1)' }}
-              />
+          <Link href="/dashboard" className="flex items-center gap-3">
+            <span className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg bg-white/10 text-xs font-bold text-white">
+              C
+            </span>
+            {!isSidebarCollapsed && (
+              <span className="text-sm font-semibold text-white">Calibrate Commerce</span>
             )}
           </Link>
         </div>
@@ -121,16 +117,16 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
                   isSidebarCollapsed ? 'justify-center px-3 py-3' : 'gap-3 px-3 py-2'
                 } ${
                   isActive
-                    ? 'bg-[#DA304F]/20 text-white'
+                    ? 'bg-gradient-cta text-white shadow-sm'
                     : 'text-white/55 hover:bg-white/5 hover:text-white/85'
                 }`}
               >
-                <span className={`shrink-0 transition-colors ${isActive ? 'text-[#E98395]' : 'text-white/40 group-hover:text-white/60'}`}>
+                <span className={`shrink-0 transition-colors ${isActive ? 'text-white' : 'text-white/40 group-hover:text-white/60'}`}>
                   <Icon className="h-4 w-4" />
                 </span>
                 {isSidebarCollapsed ? <span className="sr-only">{label}</span> : <span className="flex-1">{label}</span>}
                 {!isSidebarCollapsed && isActive && (
-                  <span className="h-1.5 w-1.5 shrink-0 rounded-full bg-[#DA304F]" />
+                  <span className="h-1.5 w-1.5 shrink-0 rounded-full bg-white/80" />
                 )}
               </Link>
             );
@@ -143,7 +139,7 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
           {isSidebarCollapsed ? (
             <div className="flex flex-col items-center gap-3">
               <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-[#DA304F] text-xs font-bold text-white">
-                {user.email.charAt(0).toUpperCase()}
+                {user.email.split('@')[0].charAt(0).toUpperCase()}
               </div>
               <button
                 onClick={signOut}
@@ -157,11 +153,13 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
           ) : (
             <div className="flex items-center gap-3">
               <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-[#DA304F] text-xs font-bold text-white">
-                {user.email.charAt(0).toUpperCase()}
+                {user.email.split('@')[0].charAt(0).toUpperCase()}
               </div>
               <div className="min-w-0 flex-1">
-                <p className="truncate text-[12px] font-medium text-white/70">{user.email}</p>
-                <p className="text-[11px] text-white/30">Admin</p>
+                <p className="truncate text-[12px] font-medium text-white/80">
+                  {user.email.split('@')[0].replace(/[._]/g, ' ').replace(/\b\w/g, (c) => c.toUpperCase())}
+                </p>
+                <p className="text-[11px] text-white/35">Strategist</p>
               </div>
               <button
                 onClick={signOut}
@@ -182,20 +180,30 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
         }`}
       >
         {/* Top bar */}
-        <header className="sticky top-0 z-30 border-b border-[#E8EAF0] bg-white/80 backdrop-blur-sm">
+        <header className="sticky top-0 z-30 border-b border-[var(--border)] bg-[color:color-mix(in_srgb,var(--canvas)_88%,transparent)] backdrop-blur-sm">
           <div className="mx-auto flex h-14 w-full max-w-[1280px] items-center justify-between px-4 sm:px-6 lg:px-8">
-            <div className="text-sm font-medium text-[#9CA3AF]">
-              {activeNavItem.label}
+            <Breadcrumb />
+            <div className="flex items-center gap-3">
+              <Button
+                type="button"
+                variant="secondary"
+                size="sm"
+                className="h-9 gap-2 rounded-pill px-3 text-xs text-[var(--text-muted)]"
+              >
+                <SearchBarIcon className="h-3.5 w-3.5" />
+                <span>Search</span>
+              </Button>
+              <Button
+                type="button"
+                variant="outline"
+                size="icon"
+                className="h-9 w-9 rounded-pill"
+                aria-label="Notifications"
+                title="Notifications"
+              >
+                <BellIcon className="h-4 w-4" />
+              </Button>
             </div>
-            <Link
-              href="/dashboard/audits/new"
-              className="inline-flex items-center gap-1.5 rounded-pill bg-gradient-cta px-4 py-1.5 text-xs font-semibold text-white shadow-xs transition-opacity hover:opacity-90"
-            >
-              <svg className="h-3 w-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 4v16m8-8H4" />
-              </svg>
-              New audit
-            </Link>
           </div>
         </header>
 
@@ -257,6 +265,28 @@ function LogOutIcon({ className }: { className?: string }) {
   return (
     <svg className={className} fill="none" stroke="currentColor" viewBox="0 0 24 24">
       <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M17 16l4-4m0 0l-4-4m4 4H7m6 4v1a3 3 0 01-3 3H6a3 3 0 01-3-3V7a3 3 0 013-3h4a3 3 0 013 3v1" />
+    </svg>
+  );
+}
+
+function SearchBarIcon({ className }: { className?: string }) {
+  return (
+    <svg className={className} fill="none" stroke="currentColor" viewBox="0 0 24 24">
+      <circle cx="11" cy="11" r="8" strokeWidth={1.5} />
+      <path strokeLinecap="round" strokeWidth={1.5} d="m21 21-4.35-4.35" />
+    </svg>
+  );
+}
+
+function BellIcon({ className }: { className?: string }) {
+  return (
+    <svg className={className} fill="none" stroke="currentColor" viewBox="0 0 24 24">
+      <path
+        strokeLinecap="round"
+        strokeLinejoin="round"
+        strokeWidth={1.5}
+        d="M14.857 17H18a1 1 0 00.8-1.6A7 7 0 0017 11.5V9a5 5 0 10-10 0v2.5a7 7 0 00-1.8 3.9A1 1 0 006 17h3.143m5.714 0a3 3 0 01-5.714 0m5.714 0H9.143"
+      />
     </svg>
   );
 }

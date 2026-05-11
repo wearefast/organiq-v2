@@ -28,9 +28,43 @@ interface TelemetryMetric {
   tone?: 'brand' | 'signal' | 'success';
 }
 
-const ICON_CLASS = 'h-3.5 w-3.5 text-[#DA304F]';
+const ICON_CLASS = 'h-3.5 w-3.5 text-[var(--cc-red)]';
 const KW_STEP_KEYS = new Set(['KW_AHREFS', 'KW_STEP_31', 'KW_STEP_32', 'KW_STEP_33', 'KW_STEP_34', 'KW_STEP_35']);
 const MAX_VISIBLE_STAGES = 5;
+const CONTROL_THEME = {
+  accent: 'var(--cc-red)',
+  signal: 'color-mix(in srgb, var(--ring) 76%, white)',
+  success: 'color-mix(in srgb, var(--status-complete) 82%, white)',
+  shell: 'linear-gradient(180deg, color-mix(in srgb, var(--canvas) 18%, #06101c) 0%, #040913 100%)',
+  panel: 'color-mix(in srgb, var(--surface) 14%, #07111f)',
+  panelStrong: 'color-mix(in srgb, var(--section-tint) 18%, #050d18)',
+  panelMuted: 'color-mix(in srgb, var(--canvas) 22%, #08111d)',
+  line: 'color-mix(in srgb, var(--border) 68%, rgba(123, 195, 255, 0.22))',
+  ink: 'color-mix(in srgb, white 94%, var(--canvas))',
+  muted: 'color-mix(in srgb, white 74%, var(--canvas))',
+  subtle: 'color-mix(in srgb, white 56%, var(--canvas))',
+};
+
+const SHELL_STYLE = {
+  background: CONTROL_THEME.shell,
+  borderColor: CONTROL_THEME.line,
+  boxShadow: '0 40px 120px rgba(3,10,20,0.45)',
+};
+
+const PANEL_STYLE = {
+  background: CONTROL_THEME.panel,
+  borderColor: CONTROL_THEME.line,
+};
+
+const PANEL_STRONG_STYLE = {
+  background: CONTROL_THEME.panelStrong,
+  borderColor: CONTROL_THEME.line,
+};
+
+const PANEL_MUTED_STYLE = {
+  background: CONTROL_THEME.panelMuted,
+  borderColor: CONTROL_THEME.line,
+};
 
 function GlobeIcon() {
   return (
@@ -151,31 +185,31 @@ const STEP_DEFS: StepDef[] = [
     key: 'SERP_COMPLETE',
     label: 'Searching Google for competitors',
     icon: <GlobeIcon />,
-    messages: ['Querying SERPs…', 'Aggregating domains…', 'Ranking candidates…'],
+    messages: ['Expanding keyword probes…', 'Collecting ranking domains…', 'Scoring SERP candidate overlap…'],
   },
   {
     key: 'COMPETITORS_COMPLETE',
     label: 'Classifying competitors',
-    icon: <SparklesIcon />,
-    messages: ['Analyzing domain overlap…', 'Classifying direct vs organic…', 'Scoring relevance…'],
+    icon: <BrainIcon />,
+    messages: ['Separating direct competitors…', 'Separating organic competitors…', 'Writing competitor rationale…'],
   },
   {
     key: 'COMPETITOR_METRICS_COMPLETE',
-    label: 'Pulling competitor metrics from Ahrefs',
+    label: 'Pulling direct competitor metrics',
     icon: <DatabaseIcon />,
-    messages: ['Fetching domain ratings…', 'Pulling top pages…', 'Measuring traffic baselines…'],
+    messages: ['Fetching domain overviews…', 'Pulling top pages…', 'Comparing authority signals…'],
   },
   {
     key: 'ORGANIC_COMPETITORS_COMPLETE',
-    label: 'Analyzing organic competitors by keyword overlap',
+    label: 'Measuring organic overlap',
     icon: <DatabaseIcon />,
-    messages: ['Finding keyword overlap…', 'Enriching organic competitors…', 'Identifying content publishers…'],
+    messages: ['Calculating overlap share…', 'Benchmarking coverage…', 'Ranking usable competitors…'],
   },
   {
     key: 'CONTENT_GAP_COMPLETE',
-    label: 'Identifying content gap opportunities',
+    label: 'Uncovering missed content opportunities',
     icon: <SparklesIcon />,
-    messages: ['Comparing keyword portfolios…', 'Scoring opportunity gaps…', 'Classifying content types…'],
+    messages: ['Comparing competitor keywords…', 'Scoring missed topics…', 'Assembling the content gap…'],
   },
 ];
 
@@ -201,11 +235,8 @@ const RUNNING_MAP: Record<string, string> = {
   COMPETITORS_RUNNING: 'SERP_COMPLETE',
   SERP_COMPLETE: 'SERP_COMPLETE',
   COMPETITORS_COMPLETE: 'COMPETITORS_COMPLETE',
-  COMPETITOR_METRICS_RUNNING: 'COMPETITOR_METRICS_COMPLETE',
   COMPETITOR_METRICS_COMPLETE: 'COMPETITOR_METRICS_COMPLETE',
-  ORGANIC_COMPETITORS_RUNNING: 'ORGANIC_COMPETITORS_COMPLETE',
   ORGANIC_COMPETITORS_COMPLETE: 'ORGANIC_COMPETITORS_COMPLETE',
-  CONTENT_GAP_RUNNING: 'CONTENT_GAP_COMPLETE',
   CONTENT_GAP_COMPLETE: 'CONTENT_GAP_COMPLETE',
 };
 
@@ -261,29 +292,29 @@ const STAGE_COPY: Record<string, { eyebrow: string; left: string[]; right: strin
     right: ['core topics', 'deduped themes', 'final structure'],
   },
   SERP_COMPLETE: {
-    eyebrow: 'Discovering who ranks for your keywords',
-    left: ['seed keywords', 'money keywords', 'country scope'],
-    right: ['candidate domains', 'position data', 'occurrence map'],
+    eyebrow: 'Expanding SERP competitor discovery',
+    left: ['seed probes', 'money terms', 'Google rankings'],
+    right: ['candidate domains', 'overlap signals', 'SERP evidence'],
   },
   COMPETITORS_COMPLETE: {
-    eyebrow: 'Classifying competitive landscape',
-    left: ['SERP candidates', 'business profile', 'deep-read context'],
-    right: ['direct competitors', 'organic competitors', 'relevance scores'],
+    eyebrow: 'Separating direct and organic rivals',
+    left: ['candidate pool', 'business context', 'market fit'],
+    right: ['direct competitors', 'organic competitors', 'classification notes'],
   },
   COMPETITOR_METRICS_COMPLETE: {
-    eyebrow: 'Benchmarking competitor authority',
-    left: ['competitor domains', 'Ahrefs API', 'country filter'],
-    right: ['domain ratings', 'traffic baselines', 'top pages'],
+    eyebrow: 'Benchmarking direct competitors',
+    left: ['approved direct rivals', 'Ahrefs metrics', 'top pages'],
+    right: ['authority gaps', 'traffic signals', 'page leaders'],
   },
   ORGANIC_COMPETITORS_COMPLETE: {
-    eyebrow: 'Mapping organic keyword competition',
-    left: ['keyword overlap', 'Ahrefs organic', 'GPT fallback'],
-    right: ['content competitors', 'overlap %', 'top content pages'],
+    eyebrow: 'Measuring overlap depth',
+    left: ['organic competitor set', 'share metrics', 'content footprint'],
+    right: ['overlap scores', 'priority targets', 'usable benchmarks'],
   },
   CONTENT_GAP_COMPLETE: {
-    eyebrow: 'Uncovering missed content opportunities',
-    left: ['target keywords', 'competitor keywords', 'position data'],
-    right: ['gap keywords', 'topic clusters', 'opportunity scores'],
+    eyebrow: 'Assembling missed content opportunities',
+    left: ['keyword pool', 'competitor overlap', 'coverage map'],
+    right: ['gap keywords', 'missed traffic', 'topic groups'],
   },
 };
 
@@ -387,25 +418,34 @@ function buildLogEntries(
 
 function EngineBadge({ label }: { label: string }) {
   return (
-    <span className="inline-flex items-center gap-2 rounded-pill border border-[#21385a] bg-[rgba(9,20,39,0.8)] px-3 py-1 text-[11px] font-semibold uppercase tracking-[0.24em] text-[#9FB6D8]">
-      <span className="h-2 w-2 rounded-full bg-[#DA304F] shadow-[0_0_12px_rgba(218,48,79,0.7)]" />
+    <span
+      className="inline-flex items-center gap-2 rounded-pill border px-3 py-1 text-[11px] font-semibold uppercase tracking-[0.24em]"
+      style={{ ...PANEL_STRONG_STYLE, color: CONTROL_THEME.muted }}
+    >
+      <span
+        className="h-2 w-2 rounded-full"
+        style={{
+          backgroundColor: CONTROL_THEME.accent,
+          boxShadow: '0 0 12px color-mix(in srgb, var(--cc-red) 70%, transparent)',
+        }}
+      />
       {label}
     </span>
   );
 }
 
 function TelemetryCard({ metric }: { metric: TelemetryMetric }) {
-  const toneClass =
+  const toneColor =
     metric.tone === 'signal'
-      ? 'text-[#7BC3FF]'
+      ? CONTROL_THEME.signal
       : metric.tone === 'success'
-        ? 'text-[#74E2C0]'
-        : 'text-[#F6A6B4]';
+        ? CONTROL_THEME.success
+        : CONTROL_THEME.accent;
 
   return (
-    <div className="rounded-[22px] border border-[#1A314F] bg-[rgba(5,16,32,0.82)] px-4 py-4 backdrop-blur-sm">
-      <p className="text-[11px] font-semibold uppercase tracking-[0.24em] text-[#6E89AD]">{metric.label}</p>
-      <p className={`mt-2 text-[24px] font-semibold ${toneClass}`}>{metric.value}</p>
+    <div className="rounded-[22px] border px-4 py-4 backdrop-blur-sm" style={PANEL_STRONG_STYLE}>
+      <p className="text-[11px] font-semibold uppercase tracking-[0.24em]" style={{ color: CONTROL_THEME.subtle }}>{metric.label}</p>
+      <p className="mt-2 text-[24px] font-semibold" style={{ color: toneColor }}>{metric.value}</p>
     </div>
   );
 }
@@ -415,12 +455,12 @@ function ProgressDial({ progress }: { progress: number }) {
     <div
       className="relative flex h-28 w-28 items-center justify-center rounded-full"
       style={{
-        background: `conic-gradient(#DA304F 0deg ${progress * 3.6}deg, rgba(24, 44, 72, 0.95) ${progress * 3.6}deg 360deg)`,
+        background: `conic-gradient(${CONTROL_THEME.accent} 0deg ${progress * 3.6}deg, color-mix(in srgb, var(--border) 50%, #08111d) ${progress * 3.6}deg 360deg)`,
       }}
     >
-      <div className="flex h-20 w-20 flex-col items-center justify-center rounded-full border border-[#203652] bg-[#071221] text-center">
-        <span className="text-[22px] font-semibold text-white">{progress}%</span>
-        <span className="text-[10px] font-semibold uppercase tracking-[0.22em] text-[#6E89AD]">Complete</span>
+      <div className="flex h-20 w-20 flex-col items-center justify-center rounded-full border text-center" style={PANEL_STRONG_STYLE}>
+        <span className="text-[22px] font-semibold" style={{ color: CONTROL_THEME.ink }}>{progress}%</span>
+        <span className="text-[10px] font-semibold uppercase tracking-[0.22em]" style={{ color: CONTROL_THEME.subtle }}>Complete</span>
       </div>
     </div>
   );
@@ -438,19 +478,19 @@ function PhaseCard({
   completedCount: number;
 }) {
   return (
-    <section className="min-h-0 rounded-[24px] border border-[#163150] bg-[rgba(7,18,33,0.86)] p-4">
-      <p className="text-[11px] font-semibold uppercase tracking-[0.22em] text-[#6E89AD]">Current phase</p>
-      <p className="mt-3 text-[16px] font-semibold text-white">{activeLabel}</p>
-      <p className="mt-1.5 text-[12px] leading-5 text-[#9FB6D8]">{currentMessage}</p>
+    <section className="min-h-0 rounded-[24px] border p-4" style={PANEL_STYLE}>
+      <p className="text-[11px] font-semibold uppercase tracking-[0.22em]" style={{ color: CONTROL_THEME.subtle }}>Current phase</p>
+      <p className="mt-3 text-[16px] font-semibold" style={{ color: CONTROL_THEME.ink }}>{activeLabel}</p>
+      <p className="mt-1.5 text-[12px] leading-5" style={{ color: CONTROL_THEME.muted }}>{currentMessage}</p>
 
       <div className="mt-4 space-y-2">
-        <div className="rounded-[18px] border border-[#1A314F] bg-[rgba(5,16,32,0.82)] px-3 py-3">
-          <p className="text-[10px] font-semibold uppercase tracking-[0.18em] text-[#6E89AD]">Next output</p>
-          <p className="mt-1 text-[13px] font-medium text-[#DDE8F5]">{nextOutput}</p>
+        <div className="rounded-[18px] border px-3 py-3" style={PANEL_STRONG_STYLE}>
+          <p className="text-[10px] font-semibold uppercase tracking-[0.18em]" style={{ color: CONTROL_THEME.subtle }}>Next output</p>
+          <p className="mt-1 text-[13px] font-medium" style={{ color: CONTROL_THEME.ink }}>{nextOutput}</p>
         </div>
-        <div className="rounded-[18px] border border-[#1A314F] bg-[rgba(5,16,32,0.82)] px-3 py-3">
-          <p className="text-[10px] font-semibold uppercase tracking-[0.18em] text-[#6E89AD]">Completed stages</p>
-          <p className="mt-1 text-[13px] font-medium text-[#DDE8F5]">{completedCount} of {STEP_DEFS.length}</p>
+        <div className="rounded-[18px] border px-3 py-3" style={PANEL_STRONG_STYLE}>
+          <p className="text-[10px] font-semibold uppercase tracking-[0.18em]" style={{ color: CONTROL_THEME.subtle }}>Completed stages</p>
+          <p className="mt-1 text-[13px] font-medium" style={{ color: CONTROL_THEME.ink }}>{completedCount} of {STEP_DEFS.length}</p>
         </div>
       </div>
     </section>
@@ -459,13 +499,14 @@ function PhaseCard({
 
 function SignalPanel({ label, items }: { label: string; items: string[] }) {
   return (
-    <div className="w-full rounded-[22px] border border-[#19304A] bg-[rgba(8,19,37,0.88)] p-3">
-      <p className="text-[10px] font-semibold uppercase tracking-[0.2em] text-[#6E89AD]">{label}</p>
+    <div className="w-full rounded-[22px] border p-3" style={PANEL_STYLE}>
+      <p className="text-[10px] font-semibold uppercase tracking-[0.2em]" style={{ color: CONTROL_THEME.subtle }}>{label}</p>
       <div className="mt-2 space-y-2">
         {items.map((item) => (
           <div
             key={item}
-            className="pipeline-signal-card rounded-[16px] border border-[#19304A] bg-[rgba(11,25,45,0.82)] px-3 py-2 text-[13px] text-[#D7E2F0]"
+            className="pipeline-signal-card rounded-[16px] border px-3 py-2 text-[13px]"
+            style={{ ...PANEL_MUTED_STYLE, color: CONTROL_THEME.ink }}
           >
             {item}
           </div>
@@ -479,13 +520,20 @@ function CenterStage({ activeDefKey, progress, message }: { activeDefKey: string
   const stage = STAGE_COPY[activeDefKey || 'SCRAPE'] || STAGE_COPY.SCRAPE;
 
   return (
-    <section className="relative overflow-hidden rounded-[30px] border border-[#173154] bg-[radial-gradient(circle_at_top,rgba(225,89,114,0.18),transparent_30%),linear-gradient(180deg,#071221_0%,#040c18_100%)] px-5 py-6 sm:px-6">
+    <section
+      className="relative overflow-hidden rounded-[30px] border px-5 py-6 sm:px-6"
+      style={{
+        ...PANEL_STRONG_STYLE,
+        background:
+          'radial-gradient(circle at top, color-mix(in srgb, var(--cc-red) 20%, transparent) 0%, transparent 30%), linear-gradient(180deg, color-mix(in srgb, var(--surface) 12%, #08111f) 0%, #040c18 100%)',
+      }}
+    >
       <div className="absolute inset-0 pipeline-grid opacity-30" />
       <div className="relative z-10">
         <div className="flex flex-wrap items-center justify-between gap-3">
           <div>
-            <p className="text-[11px] font-semibold uppercase tracking-[0.28em] text-[#7F96B8]">{stage.eyebrow}</p>
-            <h3 className="mt-2 text-[24px] font-bold text-white">Live analysis engine</h3>
+            <p className="text-[11px] font-semibold uppercase tracking-[0.28em]" style={{ color: CONTROL_THEME.subtle }}>{stage.eyebrow}</p>
+            <h3 className="mt-2 text-[24px] font-bold" style={{ color: CONTROL_THEME.ink }}>Live analysis engine</h3>
           </div>
           <EngineBadge label="AI session active" />
         </div>
@@ -493,22 +541,36 @@ function CenterStage({ activeDefKey, progress, message }: { activeDefKey: string
         <div className="mx-auto mt-6 flex w-full max-w-[312px] flex-col items-center gap-4">
           <SignalPanel label="Inputs" items={stage.left.slice(0, 2)} />
 
-          <div className="relative flex h-[220px] w-full items-center justify-center overflow-hidden rounded-[28px] border border-[#173154] bg-[radial-gradient(circle_at_top,rgba(225,89,114,0.16),transparent_34%),linear-gradient(180deg,rgba(7,18,33,0.86),rgba(4,12,24,0.96))]">
-            <div className="absolute inset-x-1/2 top-0 h-full w-px -translate-x-1/2 bg-[linear-gradient(180deg,rgba(123,195,255,0.22)_0%,rgba(123,195,255,0.7)_24%,rgba(218,48,79,0.9)_50%,rgba(123,195,255,0.7)_76%,rgba(123,195,255,0.1)_100%)]" />
-            <div className="absolute top-6 h-3 w-3 rounded-full bg-[#7BC3FF] shadow-[0_0_14px_rgba(123,195,255,0.75)]" />
-            <div className="absolute bottom-6 h-3 w-3 rounded-full bg-[#74E2C0] shadow-[0_0_14px_rgba(116,226,192,0.75)]" />
-            <div className="pipeline-core-ring pipeline-core-ring-outer absolute h-[172px] w-[172px] rounded-full border border-[#1B3457]" />
-            <div className="pipeline-core-ring pipeline-core-ring-mid absolute h-[136px] w-[136px] rounded-full border border-[#29466E]" />
-            <div className="pipeline-core-ring pipeline-core-ring-inner absolute h-[102px] w-[102px] rounded-full border border-[#3E6296]" />
-            <div className="pipeline-core-grid absolute h-[84px] w-[84px] rounded-[24px] border border-[#34527D] bg-[radial-gradient(circle_at_30%_30%,rgba(255,255,255,0.18),transparent_35%),radial-gradient(circle_at_70%_70%,rgba(123,195,255,0.18),transparent_30%),linear-gradient(180deg,rgba(15,28,51,0.98),rgba(6,16,30,0.96))] shadow-[0_0_64px_rgba(218,48,79,0.22)]" />
-            <div className="pipeline-core-pulse absolute h-[64px] w-[64px] rounded-full bg-[radial-gradient(circle,rgba(233,131,149,0.9),rgba(218,48,79,0.55)_42%,rgba(7,25,50,0)_72%)]" />
+          <div
+            className="relative flex h-[220px] w-full items-center justify-center overflow-hidden rounded-[28px] border"
+            style={{
+              ...PANEL_MUTED_STYLE,
+              background:
+                'radial-gradient(circle at top, color-mix(in srgb, var(--cc-red) 18%, transparent) 0%, transparent 34%), linear-gradient(180deg, color-mix(in srgb, var(--surface) 12%, #071221) 0%, #040c18 100%)',
+            }}
+          >
+            <div className="absolute inset-x-1/2 top-0 h-full w-px -translate-x-1/2" style={{ background: 'linear-gradient(180deg, color-mix(in srgb, var(--ring) 24%, transparent) 0%, color-mix(in srgb, var(--ring) 76%, transparent) 24%, color-mix(in srgb, var(--cc-red) 88%, transparent) 50%, color-mix(in srgb, var(--ring) 76%, transparent) 76%, color-mix(in srgb, var(--ring) 12%, transparent) 100%)' }} />
+            <div className="absolute top-6 h-3 w-3 rounded-full" style={{ backgroundColor: CONTROL_THEME.signal, boxShadow: '0 0 14px color-mix(in srgb, var(--ring) 70%, transparent)' }} />
+            <div className="absolute bottom-6 h-3 w-3 rounded-full" style={{ backgroundColor: CONTROL_THEME.success, boxShadow: '0 0 14px color-mix(in srgb, var(--status-complete) 70%, transparent)' }} />
+            <div className="pipeline-core-ring pipeline-core-ring-outer absolute h-[172px] w-[172px] rounded-full border" style={{ borderColor: CONTROL_THEME.line }} />
+            <div className="pipeline-core-ring pipeline-core-ring-mid absolute h-[136px] w-[136px] rounded-full border" style={{ borderColor: 'color-mix(in srgb, var(--ring) 32%, var(--border))' }} />
+            <div className="pipeline-core-ring pipeline-core-ring-inner absolute h-[102px] w-[102px] rounded-full border" style={{ borderColor: 'color-mix(in srgb, var(--cc-red) 24%, var(--border))' }} />
+            <div
+              className="pipeline-core-grid absolute h-[84px] w-[84px] rounded-[24px] border shadow-[0_0_64px_rgba(218,48,79,0.22)]"
+              style={{
+                borderColor: CONTROL_THEME.line,
+                background:
+                  'radial-gradient(circle at 30% 30%, rgba(255,255,255,0.18), transparent 35%), radial-gradient(circle at 70% 70%, color-mix(in srgb, var(--ring) 18%, transparent), transparent 30%), linear-gradient(180deg, color-mix(in srgb, var(--surface) 20%, #0f1c33), #06101e)',
+              }}
+            />
+            <div className="pipeline-core-pulse absolute h-[64px] w-[64px] rounded-full" style={{ background: 'radial-gradient(circle, color-mix(in srgb, var(--cc-red) 82%, white), color-mix(in srgb, var(--cc-red) 55%, transparent) 42%, rgba(7,25,50,0) 72%)' }} />
             <div className="relative z-10 flex max-w-[210px] flex-col items-center text-center">
-              <span className="rounded-pill border border-[#284360] bg-[rgba(7,18,33,0.84)] px-3 py-1 text-[10px] font-semibold uppercase tracking-[0.24em] text-[#9FB6D8]">
+              <span className="rounded-pill border px-3 py-1 text-[10px] font-semibold uppercase tracking-[0.24em]" style={{ ...PANEL_STYLE, color: CONTROL_THEME.muted }}>
                 Processing
               </span>
-              <p className="mt-4 text-[14px] font-medium leading-6 text-white">{message}</p>
-              <div className="mt-5 h-2 w-40 overflow-hidden rounded-pill bg-[#132843]">
-                <div className="h-full rounded-pill bg-[linear-gradient(90deg,#AE213E_0%,#DA304F_52%,#7BC3FF_100%)] transition-all duration-700 ease-out" style={{ width: `${progress}%` }} />
+              <p className="mt-4 text-[14px] font-medium leading-6" style={{ color: CONTROL_THEME.ink }}>{message}</p>
+              <div className="mt-5 h-2 w-40 overflow-hidden rounded-pill" style={{ backgroundColor: 'color-mix(in srgb, var(--border) 45%, #08111d)' }}>
+                <div className="h-full rounded-pill transition-all duration-700 ease-out" style={{ width: `${progress}%`, background: `linear-gradient(90deg, color-mix(in srgb, var(--cc-red) 72%, black) 0%, ${CONTROL_THEME.accent} 52%, ${CONTROL_THEME.signal} 100%)` }} />
               </div>
             </div>
           </div>
@@ -522,13 +584,13 @@ function CenterStage({ activeDefKey, progress, message }: { activeDefKey: string
 
 function ProcessLog({ entries }: { entries: Array<{ tone: 'complete' | 'active'; label: string; detail: string }> }) {
   return (
-    <section className="relative grid h-full min-h-0 grid-rows-[auto_minmax(0,1fr)] overflow-hidden rounded-[28px] border border-[#16304F] bg-[rgba(5,16,32,0.92)] px-5 py-5">
+    <section className="relative grid h-full min-h-0 grid-rows-[auto_minmax(0,1fr)] overflow-hidden rounded-[28px] border px-5 py-5" style={PANEL_STRONG_STYLE}>
       <div className="absolute inset-0 pipeline-scan-lines opacity-30" />
       <div className="relative z-10">
         <div className="mb-4 flex items-center justify-between gap-3">
           <div>
-            <p className="text-[11px] font-semibold uppercase tracking-[0.28em] text-[#6E89AD]">Process log</p>
-            <p className="mt-1 text-sm text-[#9FB6D8]">Recent engine events only</p>
+            <p className="text-[11px] font-semibold uppercase tracking-[0.28em]" style={{ color: CONTROL_THEME.subtle }}>Process log</p>
+            <p className="mt-1 text-sm" style={{ color: CONTROL_THEME.muted }}>Recent engine events only</p>
           </div>
           <EngineBadge label="Telemetry stream" />
         </div>
@@ -536,21 +598,21 @@ function ProcessLog({ entries }: { entries: Array<{ tone: 'complete' | 'active';
           {entries.map((entry, index) => (
             <div
               key={`${entry.label}-${index}`}
-              className={[
-                'flex flex-col gap-1 rounded-[18px] border px-4 py-3 sm:flex-row sm:items-start sm:justify-between',
-                entry.tone === 'active'
-                  ? 'border-[#31527D] bg-[rgba(10,24,45,0.94)] text-white'
-                  : 'border-[#17304D] bg-[rgba(8,18,35,0.8)] text-[#D6E0EC]',
-              ].join(' ')}
+              className="flex flex-col gap-1 rounded-[18px] border px-4 py-3 sm:flex-row sm:items-start sm:justify-between"
+              style={entry.tone === 'active'
+                ? { ...PANEL_STYLE, borderColor: 'color-mix(in srgb, var(--ring) 32%, var(--border))', color: CONTROL_THEME.ink }
+                : { ...PANEL_MUTED_STYLE, color: CONTROL_THEME.ink }}
             >
               <div className="flex items-center gap-3">
-                <span className={[
-                  'mt-0.5 h-2 w-2 rounded-full',
-                  entry.tone === 'active' ? 'bg-[#7BC3FF] shadow-[0_0_10px_rgba(123,195,255,0.8)]' : 'bg-[#74E2C0]',
-                ].join(' ')} />
+                <span
+                  className="mt-0.5 h-2 w-2 rounded-full"
+                  style={entry.tone === 'active'
+                    ? { backgroundColor: CONTROL_THEME.signal, boxShadow: '0 0 10px color-mix(in srgb, var(--ring) 76%, transparent)' }
+                    : { backgroundColor: CONTROL_THEME.success }}
+                />
                 <span className="font-semibold">{entry.label}</span>
               </div>
-              <span className="text-[#8EA6C8] sm:max-w-[70%]">{entry.detail}</span>
+              <span className="sm:max-w-[70%]" style={{ color: CONTROL_THEME.muted }}>{entry.detail}</span>
             </div>
           ))}
         </div>
@@ -558,7 +620,6 @@ function ProcessLog({ entries }: { entries: Array<{ tone: 'complete' | 'active';
     </section>
   );
 }
-
 /* ─── Main Component ──────────────────────────────────────── */
 
 export function AuditPipeline({ currentStep, progress, message, completedSteps }: AuditPipelineProps) {
@@ -569,7 +630,12 @@ export function AuditPipeline({ currentStep, progress, message, completedSteps }
     return map;
   }, [completedSteps]);
 
-  const activeDefKey = RUNNING_MAP[currentStep] || completedSteps[completedSteps.length - 1]?.key || 'SCRAPE';
+  const latestCompletedStepKey = [...completedSteps]
+    .reverse()
+    .find((step) => STEP_DEFS.some((def) => def.key === step.key))?.key;
+  const activeDefKey = progress >= 100
+    ? latestCompletedStepKey || RUNNING_MAP[currentStep] || 'SCRAPE'
+    : RUNNING_MAP[currentStep] || latestCompletedStepKey || 'SCRAPE';
   const activeStep = STEP_DEFS.find((step) => step.key === activeDefKey) || STEP_DEFS[0];
   const activeStepIndex = STEP_DEFS.findIndex((step) => step.key === activeStep.key);
   const activeStage = STAGE_COPY[activeDefKey] || STAGE_COPY.SCRAPE;
@@ -644,51 +710,52 @@ export function AuditPipeline({ currentStep, progress, message, completedSteps }
 
   return (
     <div
-      className="relative h-full min-h-0 overflow-hidden rounded-[30px] border border-[#183353] bg-[linear-gradient(180deg,#06101f_0%,#040b16_100%)] p-3 text-white shadow-[0_40px_120px_rgba(3,10,20,0.45)] sm:p-4 lg:p-5"
+      className="relative h-full min-h-0 overflow-hidden rounded-[30px] border p-3 text-white sm:p-4 lg:p-5"
+      style={SHELL_STYLE}
       aria-busy={progress < 100}
     >
-      <div className="absolute inset-0 bg-[radial-gradient(circle_at_top_right,rgba(225,89,114,0.18),transparent_28%),radial-gradient(circle_at_bottom_left,rgba(123,195,255,0.12),transparent_24%)]" />
+      <div className="absolute inset-0" style={{ background: 'radial-gradient(circle at top right, color-mix(in srgb, var(--cc-red) 18%, transparent) 0%, transparent 28%), radial-gradient(circle at bottom left, color-mix(in srgb, var(--ring) 14%, transparent) 0%, transparent 24%)' }} />
       <div className="absolute inset-0 pipeline-noise opacity-40" />
       <div className="relative z-10 grid h-full min-h-0 grid-rows-[auto_minmax(0,1fr)_minmax(0,160px)] gap-3">
         <div className="sr-only" aria-live="polite">
           {`${activeStep.label}. ${message}. ${progress}% complete.`}
         </div>
-        <header className="flex flex-col gap-3 border-b border-[#163150] pb-3 lg:flex-row lg:items-end lg:justify-between">
+        <header className="flex flex-col gap-3 border-b pb-3 lg:flex-row lg:items-end lg:justify-between" style={{ borderColor: CONTROL_THEME.line }}>
           <div>
             <EngineBadge label="Organic visibility engine" />
-            <h2 className="mt-3 text-[22px] font-bold text-white sm:text-[26px]">Analysing your website live</h2>
-            <p className="mt-1.5 max-w-2xl text-[12px] leading-5 text-[#9FB6D8] sm:text-[13px]">
+            <h2 className="mt-3 text-[22px] font-bold sm:text-[26px]" style={{ color: CONTROL_THEME.ink }}>Analysing your website live</h2>
+            <p className="mt-1.5 max-w-2xl text-[12px] leading-5 sm:text-[13px]" style={{ color: CONTROL_THEME.muted }}>
               Real services are running in sequence: crawl, interpret, benchmark, classify, and assemble your visibility model.
             </p>
           </div>
           <div className="flex flex-wrap items-center gap-3">
-            <div className="rounded-[16px] border border-[#1A3558] bg-[rgba(8,18,35,0.84)] px-3 py-2 text-right">
-              <p className="text-[11px] font-semibold uppercase tracking-[0.24em] text-[#6E89AD]">Completed</p>
-              <p className="mt-1 text-[13px] font-medium text-white">{completedSteps.length} of {STEP_DEFS.length} stages</p>
+            <div className="rounded-[16px] border px-3 py-2 text-right" style={PANEL_STYLE}>
+              <p className="text-[11px] font-semibold uppercase tracking-[0.24em]" style={{ color: CONTROL_THEME.subtle }}>Completed</p>
+              <p className="mt-1 text-[13px] font-medium" style={{ color: CONTROL_THEME.ink }}>{completedSteps.length} of {STEP_DEFS.length} stages</p>
             </div>
             <ProgressDial progress={progress} />
           </div>
         </header>
 
         <div className="grid min-h-0 gap-3 lg:grid-cols-[minmax(0,3.1fr)_minmax(280px,1.1fr)_220px] xl:grid-cols-[minmax(0,3.35fr)_minmax(300px,1.15fr)_228px]">
-          <aside className="flex min-h-0 flex-col overflow-hidden rounded-[24px] border border-[#163150] bg-[rgba(7,18,33,0.86)] p-3">
+          <aside className="flex min-h-0 flex-col overflow-hidden rounded-[24px] border p-3" style={PANEL_STYLE}>
             <div className="mb-3 flex items-end justify-between gap-3">
               <div>
-                <p className="text-[11px] font-semibold uppercase tracking-[0.28em] text-[#6E89AD]">Analysis pipeline</p>
-                <p className="mt-1 text-[12px] text-[#9FB6D8]">Focused five-stage viewport with live handoff into the engine</p>
+                <p className="text-[11px] font-semibold uppercase tracking-[0.28em]" style={{ color: CONTROL_THEME.subtle }}>Analysis pipeline</p>
+                <p className="mt-1 text-[12px]" style={{ color: CONTROL_THEME.muted }}>Focused five-stage viewport with live handoff into the engine</p>
               </div>
-              <span className="rounded-pill border border-[#234066] bg-[rgba(10,21,40,0.82)] px-3 py-1 text-[10px] font-semibold uppercase tracking-[0.24em] text-[#7BC3FF]">
+              <span className="rounded-pill border px-3 py-1 text-[10px] font-semibold uppercase tracking-[0.24em]" style={{ ...PANEL_MUTED_STYLE, color: CONTROL_THEME.signal }}>
                 {completedSteps.length}/{STEP_DEFS.length}
               </span>
             </div>
 
-            <div className="relative min-h-0 flex-1 overflow-hidden rounded-[22px] border border-[#122A45] bg-[rgba(4,14,27,0.58)] px-4 py-3">
+            <div className="relative min-h-0 flex-1 overflow-hidden rounded-[22px] border px-4 py-3" style={PANEL_MUTED_STYLE}>
               <div className="pointer-events-none absolute inset-x-0 top-0 z-20 h-14 bg-[linear-gradient(180deg,rgba(4,14,27,0.98)_0%,rgba(4,14,27,0.8)_55%,rgba(4,14,27,0)_100%)]" />
               <div className="pointer-events-none absolute inset-x-0 bottom-0 z-20 h-14 bg-[linear-gradient(0deg,rgba(4,14,27,0.98)_0%,rgba(4,14,27,0.8)_55%,rgba(4,14,27,0)_100%)]" />
               {hiddenAboveCount > 0 && (
-                <div className="mb-3 flex items-center justify-between gap-2 rounded-pill border border-[#17304D] bg-[rgba(7,18,33,0.82)] px-3 py-1.5 text-[10px] font-semibold uppercase tracking-[0.18em] text-[#6E89AD]">
+                <div className="mb-3 flex items-center justify-between gap-2 rounded-pill border px-3 py-1.5 text-[10px] font-semibold uppercase tracking-[0.18em]" style={{ ...PANEL_STYLE, color: CONTROL_THEME.subtle }}>
                   <span>{hiddenAboveCount} earlier stages moved above</span>
-                  <span className="text-[#74E2C0]">Faded</span>
+                  <span style={{ color: CONTROL_THEME.success }}>Faded</span>
                 </div>
               )}
 
@@ -697,7 +764,7 @@ export function AuditPipeline({ currentStep, progress, message, completedSteps }
                 {visibleStageRows}
 
               {hiddenBelowCount > 0 && (
-                <div className="mt-3 flex items-center justify-end text-[10px] font-semibold uppercase tracking-[0.18em] text-[#6E89AD]">
+                <div className="mt-3 flex items-center justify-end text-[10px] font-semibold uppercase tracking-[0.18em]" style={{ color: CONTROL_THEME.subtle }}>
                   {hiddenBelowCount} upcoming stages below
                 </div>
               )}
@@ -708,8 +775,8 @@ export function AuditPipeline({ currentStep, progress, message, completedSteps }
           <CenterStage activeDefKey={activeDefKey} progress={progress} message={message} />
 
           <aside className="grid min-h-0 gap-3 grid-rows-[auto_minmax(0,1fr)]">
-            <section className="rounded-[24px] border border-[#163150] bg-[rgba(7,18,33,0.86)] p-3">
-              <p className="text-[11px] font-semibold uppercase tracking-[0.28em] text-[#6E89AD]">Live telemetry</p>
+            <section className="rounded-[24px] border p-3" style={PANEL_STYLE}>
+              <p className="text-[11px] font-semibold uppercase tracking-[0.28em]" style={{ color: CONTROL_THEME.subtle }}>Live telemetry</p>
               <div className="mt-3 grid grid-cols-2 gap-2 lg:grid-cols-1">
                 {telemetry.map((metric) => (
                   <TelemetryCard key={metric.label} metric={metric} />

@@ -68,6 +68,7 @@ The current content module is a structural shell:
 | Approval gating | Content brief generation stays blocked until a topical-map artifact is approved, and article generation stays blocked until a `content-brief` artifact is approved |
 | Content persistence | Approving `content-brief` now upserts a workflow-linked `content_pieces` row with the approved brief payload, and approving `content-article` enriches that same row with the approved article input metadata and draft status |
 | Workflow content review | The keyword workflow shell now renders persisted `content_pieces` rows so strategists can confirm that approved brief/article checkpoints have materialized into the content pipeline |
+| Dashboard content preview | The dashboard content table now opens an in-place modal that shows brief-style previews for `brief` rows and article-style previews for all later statuses |
 
 Updated near-term gaps:
 

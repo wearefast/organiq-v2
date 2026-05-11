@@ -36,6 +36,19 @@ const STEP_CODES: Record<string, string> = {
   KW_STEP_35: '03.5',
 };
 
+const STEP_THEME = {
+  accent: 'var(--cc-red)',
+  signal: 'color-mix(in srgb, var(--ring) 76%, white)',
+  success: 'color-mix(in srgb, var(--status-complete) 82%, white)',
+  line: 'color-mix(in srgb, var(--border) 68%, rgba(123, 195, 255, 0.2))',
+  lineStrong: 'color-mix(in srgb, var(--ring) 26%, var(--border))',
+  panel: 'color-mix(in srgb, var(--surface) 14%, #07111f)',
+  panelMuted: 'color-mix(in srgb, var(--canvas) 20%, #08111d)',
+  ink: 'color-mix(in srgb, white 94%, var(--canvas))',
+  muted: 'color-mix(in srgb, white 74%, var(--canvas))',
+  subtle: 'color-mix(in srgb, white 54%, var(--canvas))',
+};
+
 /* ─── Rotating Messages Hook ──────────────────────────────── */
 
 function useRotatingMessage(messages: string[], active: boolean): string {
@@ -79,7 +92,7 @@ function StepSummary({ data }: { data: Record<string, unknown> }) {
   const summary = summarizeEntries(data);
   if (!summary) return null;
 
-  return <p className="mt-1.5 truncate text-[11px] text-[#AFC3DE]">{summary}</p>;
+  return <p className="mt-1.5 truncate text-[11px]" style={{ color: STEP_THEME.muted }}>{summary}</p>;
 }
 
 /* ─── Typing Indicator ────────────────────────────────────── */
@@ -87,9 +100,9 @@ function StepSummary({ data }: { data: Record<string, unknown> }) {
 function TypingDots() {
   return (
     <span className="ml-1.5 inline-flex gap-0.5">
-      <span className="pipeline-typing-dot inline-block h-1 w-1 rounded-full bg-[#DA304F]" />
-      <span className="pipeline-typing-dot inline-block h-1 w-1 rounded-full bg-[#DA304F]" />
-      <span className="pipeline-typing-dot inline-block h-1 w-1 rounded-full bg-[#DA304F]" />
+      <span className="pipeline-typing-dot inline-block h-1 w-1 rounded-full" style={{ backgroundColor: STEP_THEME.accent }} />
+      <span className="pipeline-typing-dot inline-block h-1 w-1 rounded-full" style={{ backgroundColor: STEP_THEME.accent }} />
+      <span className="pipeline-typing-dot inline-block h-1 w-1 rounded-full" style={{ backgroundColor: STEP_THEME.accent }} />
     </span>
   );
 }
@@ -98,7 +111,7 @@ function TypingDots() {
 
 function CheckIcon() {
   return (
-    <svg className="h-3.5 w-3.5 text-teal-600" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2.5}>
+    <svg className="h-3.5 w-3.5" style={{ color: STEP_THEME.success }} fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2.5}>
       <path strokeLinecap="round" strokeLinejoin="round" d="M5 13l4 4L19 7" />
     </svg>
   );
@@ -120,6 +133,58 @@ export function PipelineStep({
   const code = STEP_CODES[stepKey] || stepKey;
 
   const isRunning = status === 'running';
+  const markerStyle = isRunning
+    ? {
+        borderColor: 'color-mix(in srgb, var(--cc-red) 42%, white)',
+        backgroundColor: STEP_THEME.accent,
+        boxShadow: '0 0 14px color-mix(in srgb, var(--cc-red) 72%, transparent)',
+      }
+    : status === 'complete'
+      ? {
+          borderColor: 'color-mix(in srgb, var(--status-complete) 36%, white)',
+          backgroundColor: STEP_THEME.success,
+          boxShadow: '0 0 12px color-mix(in srgb, var(--status-complete) 62%, transparent)',
+        }
+      : {
+          borderColor: STEP_THEME.line,
+          backgroundColor: 'color-mix(in srgb, var(--canvas) 18%, #08182e)',
+        };
+  const cardStyle = isRunning
+    ? {
+        borderColor: STEP_THEME.lineStrong,
+        background: 'linear-gradient(180deg, color-mix(in srgb, var(--surface) 16%, #0a192d), color-mix(in srgb, var(--canvas) 18%, #060f1c))',
+      }
+    : status === 'complete'
+      ? {
+          borderColor: STEP_THEME.line,
+          background: 'linear-gradient(180deg, color-mix(in srgb, var(--surface) 12%, #081426), color-mix(in srgb, var(--canvas) 16%, #060f1c))',
+        }
+      : {
+          borderColor: STEP_THEME.line,
+          background: STEP_THEME.panelMuted,
+        };
+  const accentBarStyle = isRunning
+    ? { background: `linear-gradient(180deg, color-mix(in srgb, var(--cc-red) 48%, white) 0%, ${STEP_THEME.accent} 60%, ${STEP_THEME.signal} 100%)` }
+    : status === 'complete'
+      ? { background: `linear-gradient(180deg, ${STEP_THEME.success} 0%, ${STEP_THEME.signal} 100%)` }
+      : { backgroundColor: 'color-mix(in srgb, var(--border) 42%, #112540)' };
+  const iconShellStyle = isRunning
+    ? {
+        borderColor: STEP_THEME.lineStrong,
+        background: 'radial-gradient(circle at top, color-mix(in srgb, var(--cc-red) 18%, white), color-mix(in srgb, var(--surface) 12%, #0b1a2e))',
+        color: 'color-mix(in srgb, var(--cc-red) 32%, white)',
+      }
+    : status === 'complete'
+      ? {
+          borderColor: STEP_THEME.line,
+          background: 'radial-gradient(circle at top, color-mix(in srgb, var(--status-complete) 16%, white), color-mix(in srgb, var(--surface) 10%, #081424))',
+          color: STEP_THEME.success,
+        }
+      : {
+          borderColor: STEP_THEME.line,
+          background: STEP_THEME.panel,
+          color: STEP_THEME.subtle,
+        };
 
   return (
     <div
@@ -130,46 +195,31 @@ export function PipelineStep({
         className={[
           'absolute left-[9px] z-10 -translate-x-1/2 rounded-full border-2 transition-all duration-500',
           isRunning ? 'top-7 h-3.5 w-3.5' : 'top-6 h-3 w-3',
-          isRunning
-            ? 'border-[#F6A6B4] bg-[#DA304F] shadow-[0_0_14px_rgba(218,48,79,0.8)]'
-            : status === 'complete'
-              ? 'border-[#A7F3D0] bg-[#74E2C0] shadow-[0_0_12px_rgba(116,226,192,0.65)]'
-              : 'border-[#2C4668] bg-[#08182E]',
         ].join(' ')}
+        style={markerStyle}
       />
       <div
         className={[
           'relative overflow-hidden rounded-[22px] border transition-all duration-500',
           isRunning ? 'px-5 py-4' : compact ? 'px-3.5 py-2.5' : 'px-4 py-3',
-          isRunning
-            ? 'animate-pipeline-glow border-[#2D507E] bg-[linear-gradient(180deg,rgba(10,25,45,0.98),rgba(6,15,28,0.98))]'
-            : status === 'complete'
-              ? 'border-[#244566] bg-[linear-gradient(180deg,rgba(8,20,38,0.98),rgba(6,15,28,0.96))]'
-              : 'border-[#17304D] bg-[rgba(7,18,33,0.78)]',
+          isRunning ? 'animate-pipeline-glow' : '',
         ].join(' ')}
+        style={cardStyle}
       >
         <div
           className={[
             'absolute inset-y-0 left-0 transition-all duration-500',
             isRunning ? 'w-1.5' : 'w-1',
-            isRunning
-              ? 'bg-[linear-gradient(180deg,#F6A6B4_0%,#DA304F_60%,#7BC3FF_100%)]'
-              : status === 'complete'
-                ? 'bg-[linear-gradient(180deg,#74E2C0_0%,#7BC3FF_100%)]'
-                : 'bg-[#112540]',
           ].join(' ')}
+          style={accentBarStyle}
         />
         <div className="flex items-center gap-3">
           <div
             className={[
               'flex shrink-0 items-center justify-center rounded-[16px] border transition-all duration-500',
               isRunning ? 'h-11 w-11' : compact ? 'h-7.5 w-7.5' : 'h-9 w-9',
-              isRunning
-                ? 'border-[#345A88] bg-[radial-gradient(circle_at_top,rgba(246,166,180,0.2),rgba(11,26,46,0.95))] text-[#F6A6B4]'
-                : status === 'complete'
-                  ? 'border-[#2A4A6A] bg-[radial-gradient(circle_at_top,rgba(116,226,192,0.16),rgba(8,20,36,0.95))] text-[#74E2C0]'
-                  : 'border-[#1C3552] bg-[rgba(8,19,36,0.95)] text-[#6E89AD]',
             ].join(' ')}
+            style={iconShellStyle}
           >
             {status === 'complete' ? (
               <CheckIcon />
@@ -182,27 +232,27 @@ export function PipelineStep({
 
           <div className="min-w-0 flex-1">
             <div className="flex flex-wrap items-center gap-2">
-              <span className="rounded-pill border border-[#1F3959] bg-[rgba(7,18,33,0.9)] px-2 py-0.5 font-mono text-[9px] font-semibold uppercase tracking-[0.16em] text-[#7BC3FF]">
+              <span className="rounded-pill border px-2 py-0.5 font-mono text-[9px] font-semibold uppercase tracking-[0.16em]" style={{ borderColor: STEP_THEME.line, background: STEP_THEME.panel, color: STEP_THEME.signal }}>
                 {code}
               </span>
               <span
                 className={[
                   'font-semibold transition-all duration-500',
                   isRunning ? 'text-[14px]' : compact ? 'text-[11px]' : 'text-[12px]',
-                  status === 'pending' ? 'text-[#8096B7]' : 'text-white',
                 ].join(' ')}
+                style={{ color: status === 'pending' ? STEP_THEME.subtle : STEP_THEME.ink }}
               >
                 {label}
               </span>
               {isRunning && <TypingDots />}
             </div>
             {isRunning && rotatingMsg && (
-              <p className="mt-1 text-[12px] text-[#AFC3DE] transition-all duration-300">
+              <p className="mt-1 text-[12px] transition-all duration-300" style={{ color: STEP_THEME.muted }}>
                 {rotatingMsg}
               </p>
             )}
             {status === 'pending' && (
-              <p className="mt-0.5 text-[10px] text-[#5E7598]">Queued in sequence</p>
+              <p className="mt-0.5 text-[10px]" style={{ color: STEP_THEME.subtle }}>Queued in sequence</p>
             )}
             {status === 'complete' && summary && Object.keys(summary).length > 0 && (
               <StepSummary data={summary} />
@@ -210,12 +260,12 @@ export function PipelineStep({
           </div>
 
           {status === 'complete' && (
-            <span className="shrink-0 rounded-pill border border-[#24556A] bg-[rgba(10,35,39,0.8)] px-2.5 py-1 text-[9px] font-semibold uppercase tracking-[0.18em] text-[#74E2C0]">
+            <span className="shrink-0 rounded-pill border px-2.5 py-1 text-[9px] font-semibold uppercase tracking-[0.18em]" style={{ borderColor: STEP_THEME.line, background: 'color-mix(in srgb, var(--status-complete) 12%, #0a2327)', color: STEP_THEME.success }}>
               Done
             </span>
           )}
           {isRunning && (
-            <span className="shrink-0 rounded-pill border border-[#4E3153] bg-[rgba(39,11,25,0.76)] px-3 py-1.5 text-[10px] font-semibold uppercase tracking-[0.18em] text-[#F6A6B4]">
+            <span className="shrink-0 rounded-pill border px-3 py-1.5 text-[10px] font-semibold uppercase tracking-[0.18em]" style={{ borderColor: 'color-mix(in srgb, var(--cc-red) 24%, var(--border))', background: 'color-mix(in srgb, var(--cc-red) 10%, #270b19)', color: 'color-mix(in srgb, var(--cc-red) 32%, white)' }}>
               Running
             </span>
           )}

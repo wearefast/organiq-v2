@@ -162,6 +162,9 @@ The next planned workflow step is now implemented:
 | Area | Implemented |
 |------|-------------|
 | Checkpoint history | Full checkpoint history is now rendered per step in the workflow shell, including prior saved records and their latest decisions |
+| Workflow context rail | The workflow shell now exposes a dedicated right-side context panel for market, selected/editable step, prompt parameters, and a lightweight AI cost estimate |
+| Selected-step version panel | The shell now shows a compact version-history panel for the selected step so strategists can orient themselves before diving into full checkpoint history |
+| Approval gate hierarchy | The active-step review form now renders as a dedicated approval gate with clearer action hierarchy for reject, revision request, and approve-and-continue |
 | Active-step checkpoint mutation | Backend saves and worker regenerations now rewrite the current step artifact in place instead of appending a new active-step version, and the API rejects edit/generate attempts for approved or non-current steps |
 | Approval-triggered auto-generation | Approving a step now automatically queues the next step when that step already has a workflow generator mapping, so the workflow advances without a separate manual trigger for auto steps |
 | Inline generate actions | Auto-generated steps now place the generate button beside the active workspace title so the trigger stays in the header instead of occupying its own block below the intro copy |

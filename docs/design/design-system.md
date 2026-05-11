@@ -133,6 +133,10 @@ Buttons:
 - Primary = red gradient  
 - Subtle hover  
 
+Implementation:
+- Use the shared `Button` primitive for all primary, secondary, outline, ghost, and link CTA states
+- Do not restyle buttons page-by-page with raw hex values when a shared variant can express the state
+
 Inputs:
 - 44px height  
 - 10px radius  
@@ -146,6 +150,10 @@ Cards:
 - 12–20px radius  
 - Soft shadow  
 
+Status badges:
+- Use the shared `StatusBadge` primitive for audit, workflow, content, and lead statuses
+- Status tone must be mapped centrally, not redefined inline per page or table row
+
 ---
 
 ## 9. STATUS SYSTEM
@@ -158,6 +166,10 @@ Cards:
 - Complete → Teal  
 - Neutral → Grey  
 - Overdue → Dark Red  
+
+Implementation:
+- Expose status colors as semantic shared tokens/utilities, not ad hoc Tailwind palettes inside feature components
+- `StatusBadge` mappings should distinguish strategy, review, complete, progress, neutral, and overdue as separate tones
 
 ---
 

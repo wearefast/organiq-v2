@@ -27,3 +27,9 @@ Lead capture from the public audit form. Each lead submission creates a Lead rec
 - `server/src/features/leads/leads.controller.ts`
 - `server/src/features/leads/leads.service.ts`
 - `server/src/features/leads/dto/create-lead.dto.ts`
+
+## Frontend Slice
+
+| Area | Implemented |
+|------|-------------|
+| Dashboard lead drawer | The dashboard leads table now opens a right-side drawer with lead profile context, linked audit status, editable local status selection, notes, and a save action |

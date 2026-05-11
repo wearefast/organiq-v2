@@ -106,79 +106,80 @@ export function AuditForm() {
   }
 
   return (
-    <div className="flex flex-1 flex-col items-center bg-[#F8F9FC] px-4 py-16 sm:px-8">
-      <div className="w-full max-w-7xl">
-        <div className="mx-auto mb-8 max-w-lg text-center">
-          <span className="inline-flex items-center rounded-pill bg-[#FCF4F6] px-3 py-1 text-xs font-medium text-[#DA304F]">
-            Free · No login required
-          </span>
-          <h1 className="mt-4 text-[32px] font-bold leading-tight text-[#111827]">
-            Free SEO, GEO &amp; AEO Audit
+    <div className="flex flex-1 flex-col items-center px-4 py-12 sm:px-8">
+      <div className="mx-auto w-full max-w-md">
+        <div className="mb-8 text-center">
+          <h1 className="text-[28px] font-bold leading-tight text-[#111827]">
+            Get your free visibility audit
           </h1>
-          <p className="mt-3 text-sm leading-relaxed text-[#4B5563]">
-            Get a personalised report showing your organic visibility gaps, content opportunities, and competitor insights — powered by Ahrefs + AI.
+          <p className="mt-2 text-sm leading-relaxed text-[#4B5563]">
+            A personalised report covering technical SEO, content gaps, competitors, and AEO/GEO surfaces.
           </p>
         </div>
 
-        <form onSubmit={handleSubmit} className="mx-auto w-full max-w-lg rounded-xl border border-[#E8EAF0] bg-white p-8 shadow-sm">
-          <div className="space-y-5">
+        <form onSubmit={handleSubmit} className="rounded-2xl border border-[#E8EAF0] bg-white p-7 shadow-sm">
+          <div className="space-y-4">
             <div>
-              <label htmlFor="websiteUrl" className="text-sm font-semibold text-[#111827]">Website URL</label>
+              <label htmlFor="websiteUrl" className="text-sm font-medium text-[#344054]">Website URL<span className="text-[#DA304F]">*</span></label>
               <input
                 id="websiteUrl" name="websiteUrl" type="url" required placeholder="https://yourwebsite.com"
                 defaultValue="https://www.platformance.io/"
-                className="mt-1.5 h-11 w-full rounded-[10px] border border-[#D7DCE5] bg-white px-3 text-sm text-[#111827] transition-colors placeholder:text-[#9CA3AF] focus:border-[#DA304F] focus:outline-none focus:ring-1 focus:ring-[#DA304F]"
+                className="mt-1.5 h-11 w-full rounded-lg border border-[#D7DCE5] bg-white px-3.5 text-sm text-[#111827] transition-colors placeholder:text-[#9CA3AF] focus:border-[#111827] focus:outline-none focus:ring-1 focus:ring-[#111827]"
               />
             </div>
             <div>
-              <label htmlFor="name" className="text-sm font-semibold text-[#111827]">Your name</label>
+              <label htmlFor="name" className="text-sm font-medium text-[#344054]">Full name<span className="text-[#DA304F]">*</span></label>
               <input
                 id="name" name="name" type="text" required placeholder="Jane Smith"
                 defaultValue="Vaibhav"
-                className="mt-1.5 h-11 w-full rounded-[10px] border border-[#D7DCE5] bg-white px-3 text-sm text-[#111827] transition-colors placeholder:text-[#9CA3AF] focus:border-[#DA304F] focus:outline-none focus:ring-1 focus:ring-[#DA304F]"
+                className="mt-1.5 h-11 w-full rounded-lg border border-[#D7DCE5] bg-white px-3.5 text-sm text-[#111827] transition-colors placeholder:text-[#9CA3AF] focus:border-[#111827] focus:outline-none focus:ring-1 focus:ring-[#111827]"
               />
             </div>
             <div>
-              <label htmlFor="email" className="text-sm font-semibold text-[#111827]">Work email</label>
+              <label htmlFor="email" className="text-sm font-medium text-[#344054]">Work email<span className="text-[#DA304F]">*</span></label>
               <input
                 id="email" name="email" type="email" required placeholder="jane@company.com"
                 defaultValue="vaibhav@platformance.io"
-                className="mt-1.5 h-11 w-full rounded-[10px] border border-[#D7DCE5] bg-white px-3 text-sm text-[#111827] transition-colors placeholder:text-[#9CA3AF] focus:border-[#DA304F] focus:outline-none focus:ring-1 focus:ring-[#DA304F]"
+                className="mt-1.5 h-11 w-full rounded-lg border border-[#D7DCE5] bg-white px-3.5 text-sm text-[#111827] transition-colors placeholder:text-[#9CA3AF] focus:border-[#111827] focus:outline-none focus:ring-1 focus:ring-[#111827]"
               />
             </div>
             <div>
-              <label htmlFor="businessDescription" className="text-sm font-semibold text-[#111827]">What does your business do?</label>
-              <textarea
-                id="businessDescription" name="businessDescription" required rows={3}
-                placeholder="Briefly describe your products/services and target market"
-                defaultValue="Digital advertising, Performance marketing"
-                className="mt-1.5 w-full rounded-[10px] border border-[#D7DCE5] bg-white px-3 py-2.5 text-sm text-[#111827] transition-colors placeholder:text-[#9CA3AF] focus:border-[#DA304F] focus:outline-none focus:ring-1 focus:ring-[#DA304F] resize-none"
-              />
-            </div>
-            <div>
-              <label className="text-sm font-semibold text-[#111827]">Target countries</label>
-              <p className="mt-0.5 text-xs text-[#9CA3AF]">Select the countries for keyword &amp; competitor research</p>
+              <label className="text-sm font-medium text-[#344054]">Target country<span className="text-[#DA304F]">*</span></label>
               <div className="mt-1.5">
                 <CountrySelect selected={selectedCountries} onChange={setSelectedCountries} />
               </div>
             </div>
+            <div>
+              <label htmlFor="businessDescription" className="text-sm font-medium text-[#344054]">Tell us about your business</label>
+              <p className="mt-0.5 text-xs text-[#9CA3AF]">One or two sentences. Helps us tune the analysis.</p>
+              <textarea
+                id="businessDescription" name="businessDescription" required rows={3}
+                placeholder="We sell handmade ceramics online, targeting home-decor enthusiasts in the US and UK."
+                defaultValue="Digital advertising, Performance marketing"
+                className="mt-1.5 w-full rounded-lg border border-[#D7DCE5] bg-white px-3.5 py-2.5 text-sm text-[#111827] transition-colors placeholder:text-[#9CA3AF] focus:border-[#111827] focus:outline-none focus:ring-1 focus:ring-[#111827] resize-none"
+              />
+            </div>
           </div>
 
           {error && (
-            <div className="mt-5 rounded-lg border border-[#F8D6DC] bg-[#FCF4F6] p-3 text-sm text-[#AE213E]">{error}</div>
+            <div className="mt-4 rounded-lg border border-[#F3D0D0] bg-[#FFF6F6] p-3 text-sm text-[#B42318]">{error}</div>
           )}
 
           <button
             type="submit"
             disabled={formState === 'submitting'}
-            className="mt-6 inline-flex h-11 w-full items-center justify-center rounded-pill bg-gradient-cta text-sm font-semibold text-white shadow-sm transition-opacity hover:opacity-90 disabled:opacity-50"
+            className="mt-5 inline-flex h-11 w-full items-center justify-center rounded-lg bg-[#111827] text-sm font-semibold text-white shadow-sm transition-colors hover:bg-[#1F2937] disabled:opacity-50"
           >
-            {formState === 'submitting' ? 'Submitting...' : 'Get my free audit report'}
+            {formState === 'submitting' ? 'Submitting...' : 'Run my audit'}
           </button>
 
-          <p className="mt-3 text-center text-xs text-[#9CA3AF]">
-            No login required. Your personalised report will be ready within minutes.
-          </p>
+          <div className="mt-4 flex items-center justify-center gap-4 text-xs text-[#9CA3AF]">
+            <span>Free</span>
+            <span className="h-3 w-px bg-[#E8EAF0]" />
+            <span>No credit card</span>
+            <span className="h-3 w-px bg-[#E8EAF0]" />
+            <span>Results in 2 minutes</span>
+          </div>
         </form>
       </div>
     </div>

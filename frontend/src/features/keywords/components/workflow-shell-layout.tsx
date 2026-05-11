@@ -81,13 +81,14 @@ type WorkflowShellLayoutProps = {
   rail: ReactNode;
   collapsedRail: ReactNode;
   children: ReactNode;
+  contextRail?: ReactNode;
 };
 
-export function WorkflowShellLayout({ rail, collapsedRail, children }: WorkflowShellLayoutProps) {
+export function WorkflowShellLayout({ rail, collapsedRail, children, contextRail }: WorkflowShellLayoutProps) {
   const [isRailCollapsed, setIsRailCollapsed] = useState(false);
 
   return (
-    <div className="flex flex-col gap-6 lg:flex-row lg:items-start">
+    <div className="flex flex-col gap-6 xl:flex-row xl:items-start">
       <aside className={`lg:sticky lg:top-8 lg:self-start lg:shrink-0 ${isRailCollapsed ? 'lg:w-[112px]' : 'lg:w-[300px]'}`}>
         <div className="relative lg:max-h-[calc(100vh-4rem)] lg:overflow-x-visible lg:overflow-y-auto lg:pr-1">
           <div className={`pointer-events-none absolute top-3 z-10 flex ${isRailCollapsed ? 'left-1/2 -translate-x-1/2' : 'right-3'}`}>
@@ -111,6 +112,12 @@ export function WorkflowShellLayout({ rail, collapsedRail, children }: WorkflowS
       </aside>
 
       <div className="min-w-0 flex-1 space-y-6">{children}</div>
+
+      {contextRail ? (
+        <aside className="xl:sticky xl:top-8 xl:w-[320px] xl:shrink-0">
+          {contextRail}
+        </aside>
+      ) : null}
     </div>
   );
 }

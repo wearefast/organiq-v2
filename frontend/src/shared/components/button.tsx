@@ -3,23 +3,23 @@ import { cva, type VariantProps } from 'class-variance-authority';
 import { cn } from '@/shared/utils/cn';
 
 const buttonVariants = cva(
-  'inline-flex items-center justify-center whitespace-nowrap rounded-pill text-sm font-semibold transition-opacity focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#DA304F] focus-visible:ring-offset-1 disabled:pointer-events-none disabled:opacity-50',
+  'inline-flex items-center justify-center whitespace-nowrap rounded-pill text-sm font-semibold transition-[opacity,colors,box-shadow] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--ring)] focus-visible:ring-offset-2 focus-visible:ring-offset-[var(--canvas)] disabled:pointer-events-none disabled:opacity-50',
   {
     variants: {
       variant: {
-        default: 'bg-gradient-cta text-white shadow-xs hover:opacity-90',
-        navy: 'bg-gradient-secondary-cta text-white shadow-xs hover:opacity-90',
-        destructive: 'bg-[#DA304F] text-white shadow-xs hover:opacity-90',
-        outline: 'border border-[#E8EAF0] bg-white text-[#111827] shadow-xs hover:bg-[#F8F9FC]',
-        secondary: 'bg-[#F8F9FC] text-[#111827] border border-[#E8EAF0] hover:bg-[#F0F1F5]',
-        ghost: 'text-[#4B5563] hover:bg-[#F8F9FC] hover:text-[#111827]',
-        link: 'text-[#DA304F] underline-offset-4 hover:underline',
+        default: 'bg-gradient-cta text-white shadow-sm hover:opacity-90',
+        navy: 'bg-gradient-secondary-cta text-white shadow-sm hover:opacity-90',
+        destructive: 'bg-[var(--cc-red-dark)] text-white shadow-sm hover:opacity-90',
+        outline: 'border border-[var(--border)] bg-[var(--canvas)] text-[var(--text-primary)] shadow-sm hover:bg-[var(--surface)]',
+        secondary: 'border border-[var(--border)] bg-[var(--surface)] text-[var(--text-primary)] hover:bg-[var(--section-tint)]',
+        ghost: 'text-[var(--text-body)] hover:bg-[var(--surface)] hover:text-[var(--text-primary)]',
+        link: 'text-[var(--cc-red)] underline-offset-4 hover:underline',
       },
       size: {
-        default: 'h-10 px-5 py-2',
-        sm: 'h-8 px-3.5 text-xs',
+        default: 'h-11 px-5',
+        sm: 'h-9 px-4 text-xs',
         lg: 'h-11 px-7',
-        icon: 'h-9 w-9',
+        icon: 'h-10 w-10',
       },
     },
     defaultVariants: { variant: 'default', size: 'default' },
