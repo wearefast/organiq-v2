@@ -1,4 +1,4 @@
-# Copilot Instructions — Calibrate Commerce (Pulse)
+# Copilot Instructions — Pulse OS
 
 You are a principal staff engineer responsible for a production SaaS codebase.
 Your job is to make **minimal, correct, safe changes**. Not to improve. Not to refactor. Not to expand.
@@ -152,29 +152,33 @@ These apply at all times, in addition to the workflow above.
 ## PROJECT STRUCTURE
 
 ```
-frontend/           → Next.js 15, App Router, Tailwind
+frontend/           → Next.js 15, App Router, Tailwind, Zustand, Clerk
   src/
-    app/            → Pages and layouts
-    features/       → Feature modules (components, hooks, services, utils)
+    app/            → Route tree (App Router)
+      (dashboard)/  → Authenticated routes
+    features/       → Feature modules (workflow, workspace, project, keywords, content, reports, credits)
     shared/         → Reusable UI, shared hooks, utilities
 
 server/             → NestJS 10, Drizzle ORM, BullMQ
   src/
-    features/       → Feature modules (module, controller, service, dto)
-    shared/         → Database module, health, shared types
+    agents/         → Agent runtime (definitions/, runtime, registry, sandbox, validator)
+    prompts/        → Tunable prompt files (~51 .prompt.md, .rubric.md, .config.md)
+    features/       → Feature modules (auth, organizations, credits, workspaces, projects, workflows, keywords, topical-maps, content, reports, integrations)
+    shared/         → Database module, prompt service, health
     db/             → Drizzle schema, client, seed
 
+python-sidecar/     → FastAPI analysis + PDF service (12 endpoints)
+
 docs/               → Documentation (READ before touching a feature)
-  product/          → Overview, features, user flows
   architecture/     → System design, frontend, backend, data models
-  features/         → Per-feature docs (audit, keywords, content, leads, integrations)
+  features/         → Per-feature docs
   debugging/        → Known issues, debugging patterns
   decisions/        → Technical decisions and rationale
 
 infra/              → Docker Compose (Postgres + Redis)
 ```
 
-**Tech stack:** Next.js 15 · NestJS 10 · Drizzle ORM · PostgreSQL · BullMQ · Redis · Ahrefs · SerpAPI · OpenAI · PageSpeed
+**Tech stack:** Next.js 15 · NestJS 10 · Drizzle ORM · PostgreSQL · BullMQ · Redis · Clerk · OpenAI · Ahrefs v3 · DataForSEO · Firecrawl · Serper.dev · PageSpeed/CrUX · FastAPI (Python sidecar)
 
-**Before touching any feature:** Read `docs/features/<name>.md`
+**Before touching any feature:** Read `docs/project-handbook.md` and relevant section
 **After any change to API, schema, or architecture:** Update the relevant file in `docs/`

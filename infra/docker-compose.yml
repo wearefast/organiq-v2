@@ -2,25 +2,37 @@ version: '3.8'
 
 services:
   postgres:
+    container_name: pulse_v2_postgres
     image: postgres:16-alpine
     restart: unless-stopped
     environment:
-      POSTGRES_USER: calibrate
-      POSTGRES_PASSWORD: calibrate
-      POSTGRES_DB: calibrate_commerce
+      POSTGRES_USER: pulse
+      POSTGRES_PASSWORD: pulse
+      POSTGRES_DB: pulse_v2
     ports:
       - '5433:5432'
     volumes:
-      - postgres_data:/var/lib/postgresql/data
+      - pulse_v2_postgres_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ['CMD-SHELL', 'pg_isready -U pulse -d pulse_v2']
+      interval: 5s
+      timeout: 3s
+      retries: 5
 
   redis:
+    container_name: pulse_v2_redis
     image: redis:7-alpine
     restart: unless-stopped
     ports:
       - '6379:6379'
     volumes:
-      - redis_data:/data
+      - pulse_v2_redis_data:/data
+    healthcheck:
+      test: ['CMD', 'redis-cli', 'ping']
+      interval: 5s
+      timeout: 3s
+      retries: 5
 
 volumes:
-  postgres_data:
-  redis_data:
+  pulse_v2_postgres_data:
+  pulse_v2_redis_data:

@@ -1,58 +1,141 @@
-# Frontend Architecture
+# Frontend Architecture — Pulse OS
 
-## Framework
+## Overview
 
-Next.js 15 with App Router, demo-mode client auth, Tailwind CSS.
+Next.js 15 (App Router) with React 19, Tailwind CSS, Zustand for client state, and Clerk for authentication.
 
-## Directory Layout
+## Directory Structure
 
 ```
 frontend/src/
-├── app/                        # Next.js App Router
-│   ├── layout.tsx              # Root layout (AuthProvider)
-│   ├── page.tsx                # Landing page
-│   ├── login/page.tsx          # Demo sign-in page
-│   ├── audit/page.tsx          # Public audit form
-│   └── dashboard/
-│       ├── layout.tsx          # Dashboard shell + auth redirect gate
-│       ├── page.tsx            # Dashboard overview
-│       ├── audits/page.tsx     # Audit list
-│       ├── keywords/page.tsx   # Keyword projects
-│       ├── content/page.tsx    # Content pipeline
-│       └── leads/page.tsx      # Lead list
+├── app/
+│   ├── layout.tsx                  Root layout (Clerk provider, fonts, theme)
+│   ├── globals.css                 Tailwind + design tokens
+│   ├── (dashboard)/                Authenticated route group
+│   │   ├── layout.tsx              Dashboard shell (top bar, side rail)
+│   │   ├── page.tsx                Dashboard home
+│   │   ├── workspaces/
+│   │   │   ├── page.tsx            Workspace list
+│   │   │   └── [id]/
+│   │   │       ├── page.tsx        Workspace detail
+│   │   │       └── projects/
+│   │   │           ├── page.tsx    Project list
+│   │   │           └── [id]/
+│   │   │               ├── page.tsx        Project detail
+│   │   │               └── workflows/
+│   │   │                   ├── page.tsx    Workflow runs list
+│   │   │                   └── [runId]/
+│   │   │                       └── page.tsx  Workflow shell
+│   │   ├── keywords/               Keyword ledger
+│   │   ├── content/                Content management
+│   │   ├── reports/                Report generation
+│   │   ├── credits/                Credit management
+│   │   └── settings/               Org/workspace settings
+│   ├── sign-in/                    Clerk sign-in
+│   └── sign-up/                    Clerk sign-up
 ├── features/
-│   ├── audit/                  # Audit form, polling, score cards
-│   ├── dashboard/              # Stats overview
-│   ├── keywords/               # Keyword project services
-│   ├── content/                # Content pipeline services and persisted preview payload types
-│   └── leads/                  # Lead drawer components and dashboard mutation services
+│   ├── workflow/                   Main workflow feature
+│   │   ├── components/
+│   │   │   ├── workflow-shell.tsx  Shell layout
+│   │   │   ├── step-rail.tsx      Step navigation (17 steps, 4 phases)
+│   │   │   ├── artifact-panel.tsx Content display area
+│   │   │   ├── approval-bar.tsx   Approve/Revise/Reject controls
+│   │   │   ├── reasoning-panel.tsx Agent reasoning (expandable)
+│   │   │   ├── tool-call-trail.tsx Audit trail (expandable)
+│   │   │   ├── progress-bar.tsx   Step timing/progress
+│   │   │   └── start-run.tsx      Create new run flow
+│   │   ├── renderers/             17 artifact renderers (one per step)
+│   │   ├── hooks/
+│   │   │   ├── use-workflow.ts    Workflow state management
+│   │   │   └── use-workflow-ws.ts WebSocket connection
+│   │   └── services/
+│   │       └── workflow.service.ts API calls
+│   ├── workspace/                  Workspace management
+│   ├── project/                    Project management
+│   ├── keywords/                   Keyword ledger UI
+│   ├── content/                    Content editor + scoring
+│   ├── reports/                    Report generation UI
+│   └── credits/                    Credit display + purchase
 └── shared/
-    ├── components/             # Button, Card (cva + tailwind-merge)
-    └── utils/                  # cn(), apiFetch()
+    ├── components/                 Design system components
+    │   ├── command-palette.tsx     ⌘K palette
+    │   ├── top-bar.tsx            48px top bar
+    │   ├── side-nav.tsx           56px icon rail (expands to 240px)
+    │   ├── score-badge.tsx        Color-coded score display
+    │   ├── status-badge.tsx       Step/workflow status
+    │   ├── data-table.tsx         Reusable data table
+    │   └── ...
+    ├── hooks/
+    │   ├── use-keyboard-shortcuts.ts  Global shortcuts
+    │   ├── use-theme.ts              Dark/light mode
+    │   └── ...
+    └── utils/
+        ├── api.ts                 Typed fetch wrapper
+        └── ...
 ```
 
-## Routing
+## Design System
 
-| Route | Auth | Component |
-|-------|------|-----------|
-| `/` | No | Landing page |
-| `/login` | No | Demo sign-in |
-| `/audit` | No | Public audit form |
-| `/dashboard` | Yes (demo session) | Dashboard overview |
-| `/dashboard/audits` | Yes | Audit list |
-| `/dashboard/keywords` | Yes | Keyword projects |
-| `/dashboard/content` | Yes | Content pipeline |
-| `/dashboard/leads` | Yes | Lead list |
+### Color Tokens
 
-## Auth
+| Token | Value | Usage |
+|-------|-------|-------|
+| `--bg-shell` | `#0A0A0B` | Page background |
+| `--bg-sidebar` | `#111113` | Side rail |
+| `--bg-content` | `#18181B` | Content area |
+| `--bg-elevated` | `#1F1F23` | Cards, panels |
+| `--accent` | `#E11D48` (rose-600) | Primary actions |
+| `--phase-1` | violet | Intelligence phase |
+| `--phase-2` | blue | Research phase |
+| `--phase-3` | amber | Strategy phase |
+| `--phase-4` | emerald | Content phase |
 
-`src/shared/hooks/use-auth.tsx` provides demo-mode auth backed by `localStorage` (`pulse_auth`). `src/app/dashboard/layout.tsx` redirects unauthenticated users to `/login`. `src/middleware.ts` is currently a pass-through placeholder in demo mode. Public routes: `/`, `/login`, `/audit`.
+### Typography
+
+| Scale | Size | Usage |
+|-------|------|-------|
+| Page Title | 18px | Page headings |
+| Section | 14px | Section headers |
+| Body | 13px | Default text |
+| Table | 12px | Data tables, labels |
+| Header | 11px CAPS | Column headers |
+| Badge | 10px | Status badges |
+
+Fonts: Inter (primary), JetBrains Mono (scores, URLs, data).
+
+### Layout
+
+- **Top bar**: 48px fixed
+- **Side rail**: 56px icon-only, expands to 240px on hover
+- **Content**: Fluid, responsive
+- **Workflow view**: 280px step rail (left) + artifact panel (right)
+
+### Keyboard Shortcuts
+
+| Key | Action |
+|-----|--------|
+| ⌘K | Command palette |
+| J / K | Navigate steps |
+| A | Approve current step |
+| R | Request revision |
+| E | Edit artifact (if editable) |
+
+## State Management
+
+- **Zustand** for client-side state (workflow progress, UI preferences)
+- **Server state** via fetch + SWR-like patterns (no React Query — keep simple)
+- **WebSocket** for real-time step progress updates
+
+## Auth (Clerk)
+
+- `ClerkProvider` wraps root layout
+- `(dashboard)` route group uses Clerk middleware for auth gate
+- User/org data synced to backend via Clerk webhooks
+- Frontend reads user + org from Clerk hooks
 
 ## API Communication
 
-All API calls go through `shared/utils/api.ts` (`apiFetch()`) which resolves a base URL from `API_URL` or `INTERNAL_API_URL` first, then falls back to `NEXT_PUBLIC_API_URL`, and handles JSON serialization/error throwing. In local development, it falls back to `http://localhost:3002` and normalizes the older `localhost:3005` dev setting back to the active Nest API port so stale shell env does not break SSR or client fetches. Feature-specific services wrap `apiFetch` with typed interfaces.
-
-Latest dashboard API consumers:
-
-- `features/content/services/content.service.ts` now loads both `/content` and `/content/:id` so the dashboard modal can render persisted brief/article payloads instead of static placeholders
-- `features/leads/services/leads.service.ts` now calls `PATCH /leads/:id` so the dashboard drawer can persist strategist status updates and internal notes
+All calls through `shared/utils/api.ts`:
+- Base URL: `http://localhost:3002` (dev)
+- Auth: Clerk session token in Authorization header
+- Error handling: Throws on non-OK, parsed JSON responses

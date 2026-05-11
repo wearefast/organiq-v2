@@ -1,59 +1,74 @@
-# System Design
+# System Design — Pulse OS
 
-## Tech Stack
+## Overview
 
-| Layer | Technology |
-|-------|-----------|
-| Frontend | Next.js 15 (App Router), Tailwind CSS |
-| Auth | Clerk (JWT, webhooks, orgs) |
-| API | NestJS 10 (REST) |
-| ORM | Drizzle ORM + PostgreSQL |
-| Queue | BullMQ + Redis |
-| External | Ahrefs, SerpAPI, OpenAI, PageSpeed |
+Pulse OS is an agent-led SEO/GEO/AEO strategy operating system. It runs a 17-step guided workflow where AI agents execute research and analysis tasks, and human strategists approve outputs at every checkpoint before data flows downstream.
 
-## Repository Structure
+## Architecture Principles
+
+1. **Agent-led, human-approved** — AI does the work, humans validate
+2. **Deterministic orchestration** — BullMQ + NestJS handles step sequencing, not LLMs
+3. **No AI frameworks** — Custom ~200-line execution loop, no LangChain/AutoGen
+4. **Tool sandboxing** — Each agent only accesses its declared tools
+5. **Credit-metered** — Every operation has a cost; pre-check before execution
+6. **Multi-tenant** — Organization → Workspace → Project → Run hierarchy
+
+## Runtime Topology
 
 ```
-calibrate-commerce/
-├── frontend/           # Next.js 15 — App Router, Clerk, Tailwind
-│   └── src/
-│       ├── app/        # Next.js pages & layouts
-│       ├── features/   # Feature modules
-│       └── shared/     # Shared components, hooks, utils
-├── server/             # NestJS API + BullMQ workers
-│   └── src/
-│       ├── db/         # Drizzle schema, client, seed
-│       ├── features/   # Feature modules
-│       └── shared/     # Database module, health, types
-├── docs/               # All documentation
-├── infra/              # Docker Compose, local dev infra
-└── .github/            # Copilot instructions
+┌─────────────────────────────────────────────────────────┐
+│  Browser                                                 │
+│  Next.js 15 (App Router, Clerk, Zustand)                │
+└──────────────┬───────────────────────────┬──────────────┘
+               │ REST (fetch)              │ WebSocket
+               ▼                           ▼
+┌─────────────────────────────────────────────────────────┐
+│  NestJS 10 API                                           │
+│  ├── Controllers (REST)                                  │
+│  ├── WebSocket Gateway (real-time step progress)         │
+│  ├── Agent Runtime (execution loop)                      │
+│  ├── Workflow Service (orchestration)                     │
+│  └── BullMQ Worker (step processor)                      │
+└──────┬────────────┬────────────┬────────────────────────┘
+       │            │            │
+       ▼            ▼            ▼
+┌──────────┐ ┌──────────┐ ┌──────────────────────────────┐
+│PostgreSQL│ │  Redis   │ │  External Services            │
+│  16      │ │  7       │ │  ├── OpenAI (function calling)│
+│          │ │  (BullMQ)│ │  ├── Ahrefs v3 (3 APIs)      │
+│  pulse_v2│ │          │ │  ├── DataForSEO (9 modules)   │
+└──────────┘ └──────────┘ │  ├── Firecrawl               │
+                           │  ├── Serper.dev              │
+                           │  ├── PageSpeed / CrUX        │
+                           │  └── Python Sidecar (FastAPI) │
+                           └──────────────────────────────┘
 ```
 
-## Local Infrastructure
+## Service Ports
 
-```bash
-npm run infra:up       # Start Postgres + Redis
-npm run infra:down     # Stop
-```
+| Service | Port | Purpose |
+|---------|------|---------|
+| Frontend | 3001 | Next.js dev server |
+| Backend API | 3002 | NestJS REST + WebSocket |
+| Python Sidecar | 8000 | Analysis + PDF |
+| PostgreSQL | 5433 | Database |
+| Redis | 6379 | BullMQ queues |
 
-| Service | Port | Credentials |
-|---------|------|-------------|
-| PostgreSQL | 5432 | calibrate / calibrate / calibrate_commerce |
-| Redis | 6379 | No auth |
+## Infrastructure (Docker Compose)
 
-## Environment Variables
+| Container | Image | Volume |
+|-----------|-------|--------|
+| `pulse_v2_postgres` | postgres:16-alpine | `pulse_v2_postgres_data` |
+| `pulse_v2_redis` | redis:7-alpine | `pulse_v2_redis_data` |
 
-Copy `.env.example` → `.env` and fill in:
+## Key Design Decisions
 
-| Variable | Required | Notes |
-|----------|----------|-------|
-| `DATABASE_URL` | Yes | PostgreSQL connection string |
-| `REDIS_HOST` | Yes | Default: localhost |
-| `REDIS_PORT` | Yes | Default: 6379 |
-| `NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY` | Yes | From Clerk dashboard |
-| `CLERK_SECRET_KEY` | Yes | From Clerk dashboard |
-| `AHREFS_API_KEY` | Phase 1 | Ahrefs v3 API key |
-| `SERPAPI_KEY` | Phase 1 | SerpAPI key |
-| `OPENAI_API_KEY` | Phase 1 | OpenAI API key |
-| `PAGESPEED_API_KEY` | Phase 1 | Google PageSpeed key |
+| Decision | Rationale |
+|----------|-----------|
+| No LangChain | Too much abstraction; need full control over token usage and tool calls |
+| Drizzle over Prisma | Better TypeScript inference, no binary engine issues on Windows |
+| BullMQ for steps | Reliable retry, dead letter, priority; already battle-tested in v1 |
+| Clerk for auth | Handles MFA, org management, webhooks; reduces auth surface area |
+| Python sidecar | ReportLab + NLP libraries are Python-native; FastAPI is lightweight |
+| WebSocket for progress | Steps can take 30-60s; polling is wasteful |
+| Credit pre-check | Prevents runaway costs; agents cannot exceed budget |

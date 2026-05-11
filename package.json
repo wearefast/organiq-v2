@@ -1,5 +1,5 @@
 {
-  "name": "calibrate-commerce",
+  "name": "pulse-os",
   "private": true,
   "scripts": {
     "dev": "concurrently \"npm run dev:frontend\" \"npm run dev:server\"",
@@ -8,8 +8,15 @@
     "install:all": "npm install && cd frontend && npm install && cd ../server && npm install",
     "infra:up": "docker-compose -f infra/docker-compose.yml up -d",
     "infra:down": "docker-compose -f infra/docker-compose.yml down",
+    "infra:reset": "docker-compose -f infra/docker-compose.yml down -v && docker-compose -f infra/docker-compose.yml up -d",
     "db:push": "cd server && npx drizzle-kit push",
+    "db:generate": "cd server && npx drizzle-kit generate",
+    "db:migrate": "cd server && npx drizzle-kit migrate",
+    "db:studio": "cd server && npx drizzle-kit studio",
     "db:seed": "cd server && npx tsx src/db/seed.ts",
+    "typecheck": "concurrently \"npm run typecheck:frontend\" \"npm run typecheck:server\"",
+    "typecheck:frontend": "cd frontend && npx tsc --noEmit",
+    "typecheck:server": "cd server && npx tsc --noEmit",
     "format": "prettier --write \"**/*.{ts,tsx,js,jsx,json,md}\""
   },
   "devDependencies": {

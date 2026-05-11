@@ -1,110 +1,139 @@
-# Backend Architecture
+# Backend Architecture — Pulse OS
 
-## Framework
+## Overview
 
-NestJS 10 with feature-based module organisation.
+NestJS 10 application serving REST API, WebSocket gateway, agent runtime, and BullMQ workers.
 
-## Directory Layout
+## Module Structure
 
 ```
 server/src/
-├── main.ts                     # Bootstrap (CORS, ValidationPipe, Swagger)
-├── app.module.ts               # Root module
-├── db/
-│   ├── schema.ts               # Drizzle schema (tables, enums, relations)
-│   ├── index.ts                # Drizzle client instance
-│   └── seed.ts                 # Dev seed data
+├── main.ts                    Bootstrap, CORS, Swagger, ValidationPipe
+├── app.module.ts              Root module composition
+├── agents/                    Agent runtime engine
+│   ├── definitions/           17 .agent.md files (one per workflow step)
+│   ├── agent.runtime.ts       Execution loop (~200 LOC)
+│   ├── agent.registry.ts      Load/cache agent definitions
+│   ├── tool.registry.ts       Register ~40 tools from integration services
+│   ├── tool.sandbox.ts        Per-agent tool access control
+│   └── output.validator.ts    JSON Schema validation of agent output
+├── prompts/                   Tunable prompt files (~51 files)
+│   ├── discovery/             Steps 1-2
+│   ├── audit/                 Step 3
+│   ├── intelligence/          Steps 4, 8
+│   ├── competitors/           Steps 5-7
+│   ├── research/              Steps 9-13
+│   ├── strategy/              Step 14
+│   ├── topical-map/           Step 15
+│   ├── content/               Step 16
+│   ├── articles/              Step 17
+│   ├── reports/               PDF templates
+│   └── scoring/               Rubrics
+├── db/                        Drizzle schema + client
+│   ├── schema.ts              All table definitions
+│   ├── index.ts               DB client export
+│   └── seed.ts                Dev seed script
 ├── features/
-│   ├── leads/                  # Lead capture + audit kickoff
-│   ├── audit/                  # Audit status + progress
-│   ├── keywords/               # Keyword projects + discovery
-│   ├── content/                # Content briefs + articles
-│   ├── integrations/           # External API services
-│   └── webhooks/               # Clerk auth webhook
+│   ├── auth/                  Clerk webhook + ClerkGuard
+│   ├── organizations/         Org CRUD + membership
+│   ├── credits/               Balance, transactions, pre-check
+│   ├── workspaces/            Workspace CRUD
+│   ├── projects/              Project CRUD
+│   ├── workflows/             Orchestration engine
+│   │   ├── workflow.module.ts
+│   │   ├── workflow.controller.ts
+│   │   ├── workflow.service.ts
+│   │   ├── workflow.processor.ts   (BullMQ worker)
+│   │   └── workflow.gateway.ts     (WebSocket)
+│   ├── keywords/              Keyword ledger
+│   ├── topical-maps/          Topical map storage
+│   ├── content/               Content CRUD
+│   ├── reports/               Report generation
+│   └── integrations/          External API services
+│       ├── ahrefs/            Site Explorer + Keywords Explorer + Brand Radar
+│       ├── dataforseo/        9 module endpoints
+│       ├── firecrawl/         Web scraping
+│       ├── openai/            Chat completions + function calling
+│       ├── pagespeed/         PageSpeed + CrUX
+│       ├── serper/            SERP results
+│       └── gsc/               Google Search Console (via sidecar)
 └── shared/
-    ├── database/               # Global DatabaseModule (Drizzle)
-    ├── health/                 # GET /health
-    └── types/                  # Shared TypeScript types
+    ├── database/              DatabaseModule (Drizzle provider)
+    ├── prompt/                PromptService (file loader + cache)
+    ├── health/                HealthController
+    └── types/                 Shared TypeScript types
 ```
 
-## API Endpoints
+## Agent Runtime
 
-Base URL: `http://localhost:3001` (dev) | Swagger: `/docs`
+### Execution Flow
 
-### Health
-
-| Method | Path | Auth | Description |
-|--------|------|------|-------------|
-| GET | `/health` | No | Health check |
-
-### Leads (Public)
-
-| Method | Path | Auth | Description |
-|--------|------|------|-------------|
-| POST | `/leads` | No | Submit audit request (lead magnet) |
-| GET | `/leads` | Yes | List all leads |
-| GET | `/leads/:id` | Yes | Get lead by ID |
-| PATCH | `/leads/:id` | Yes | Update lead status and internal notes |
-
-**POST /leads** body:
-```json
-{
-  "websiteUrl": "https://example.com",
-  "name": "Jane Smith",
-  "email": "jane@company.com",
-  "businessDescription": "Digital marketing agency focused on B2B SaaS"
-}
+```
+1. BullMQ dequeues step job
+2. Credit pre-check (sufficient balance?)
+3. Load agent definition (.agent.md)
+4. Load system prompt (.prompt.md) + rubrics
+5. Hydrate context from previous step artifacts
+6. Execute loop:
+   a. Call OpenAI with function calling
+   b. If tool_call → validate against sandbox → execute → append result
+   c. If content → validate against output schema
+   d. Repeat until complete or max_iterations reached
+7. Persist artifact (versioned)
+8. Log all tool calls to step_tool_calls
+9. Debit credits
+10. Emit WebSocket event (step complete / awaiting approval)
 ```
 
-**PATCH /leads/:id** body:
-```json
-{
-  "status": "qualified",
-  "notes": "Prioritized for strategist follow-up after audit review."
-}
+### Agent Definition Format
+
+YAML frontmatter in `.agent.md`:
+```yaml
+---
+name: business-profile
+step_key: business-profile
+model: gpt-4o
+temperature: 0.3
+max_iterations: 3
+credit_cost: 50
+depends_on: []
+requires_approval: true
+tools:
+  - firecrawl.scrape
+  - serper.search
+  - openai.analyze
+---
 ```
 
-`PATCH /leads/:id` normalizes the status to the server enum and stores dashboard notes under `businessDetails.internalNotes` on the lead record.
+## Workflow Orchestration
 
-### Audits
+### Step States
 
-| Method | Path | Auth | Description |
-|--------|------|------|-------------|
-| GET | `/audits/:id/status` | No | Poll audit progress |
-| GET | `/audits` | Yes | List all audits |
-| GET | `/audits/:id` | Yes | Get audit by ID |
+```
+PENDING → RUNNING → COMPLETED → (downstream steps unlocked)
+                  → AWAITING_APPROVAL → APPROVED → (downstream)
+                                      → REVISION_REQUESTED → RUNNING (re-execute)
+                                      → REJECTED → FAILED
+                  → FAILED (retry available)
+```
 
-### Keywords
+### Dependency Resolution
 
-| Method | Path | Auth | Description |
-|--------|------|------|-------------|
-| POST | `/keywords/projects` | Yes | Create keyword project |
-| GET | `/keywords/projects` | Yes | List projects |
-| GET | `/keywords/projects/:id` | Yes | Get project with keywords |
-| GET | `/keywords/projects/:id/keywords` | Yes | Get keywords (filterable) |
-| POST | `/keywords/projects/:id/discover` | Yes | Trigger keyword discovery |
-| POST | `/keywords/projects/:id/gap-analysis` | Yes | Trigger content gap analysis |
+Steps only execute when ALL `depends_on` steps are in `APPROVED` or `COMPLETED` state. The workflow service resolves the dependency graph and enqueues ready steps to BullMQ.
 
-### Content
+## API Conventions
 
-| Method | Path | Auth | Description |
-|--------|------|------|-------------|
-| GET | `/content` | Yes | List content pieces |
-| GET | `/content/:id` | Yes | Get content piece with persisted brief, article input, and draft-body data |
-| POST | `/content/generate-brief/:keywordId` | Yes | Generate content brief |
-| POST | `/content/generate-article/:keywordId` | Yes | Generate full article |
-| PATCH | `/content/:id/status` | Yes | Update content status |
+- All routes prefixed with feature group
+- ValidationPipe with whitelist + transform
+- ClerkGuard on all authenticated routes
+- Swagger at `/docs`
+- Standardized error responses with NestJS exception filters
 
-### Webhooks
+## Integration Services Pattern
 
-| Method | Path | Auth | Description |
-|--------|------|------|-------------|
-| POST | `/webhooks/clerk` | Svix signature | Clerk auth webhook |
-
-## BullMQ Queues
-
-| Queue | Jobs |
-|-------|------|
-| `audit-queue` | Full 11-step audit pipeline |
-| `keyword-queue` | `discover`, `expand`, `gap-analysis` |
-| `content-queue` | `generate-brief`, `generate-article` |
+Each integration service:
+1. Wraps external API with typed methods
+2. Handles rate limiting internally
+3. Caches responses where appropriate
+4. Exposes tools that agents can call via tool registry
+5. Logs all calls for audit trail

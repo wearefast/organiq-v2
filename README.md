@@ -1,31 +1,22 @@
-# Calibrate Commerce
+# Pulse OS
 
-Multi-tenant SaaS product for automated SEO/GEO/AEO auditing and organic visibility growth.
+Agent-led SEO/GEO/AEO strategy consultant operating system for agencies.
 
-**Two surfaces:**
-1. **Public lead magnet** — free personalised audit report (no login)
-2. **Authenticated workspace** — keyword research, topical maps, content engine, CMS publishing
+**17-step guided workflow** from discovery through content production, powered by AI agents with human-in-the-loop approval at every checkpoint.
 
 ## Documentation
 
 | Category | Document | Description |
 |----------|----------|-------------|
-| Product | [Project Handbook](docs/project-handbook.md) | Single-file deep dive into the full product, architecture, flows, and integrations |
-| Product | [Overview](docs/product/overview.md) | Product description, quick start |
-| Product | [Features](docs/product/features.md) | Feature modules & conventions |
-| Product | [User Flows](docs/product/user-flows.md) | End-to-end user journeys |
-| Architecture | [System Design](docs/architecture/system-design.md) | Tech stack, repo structure, env vars |
-| Architecture | [Frontend](docs/architecture/frontend-architecture.md) | Next.js routing, auth, API layer |
-| Architecture | [Backend](docs/architecture/backend-architecture.md) | NestJS modules, API endpoints, queues |
-| Architecture | [Data Models](docs/architecture/data-models.md) | Drizzle schema, tables, relationships |
-| Features | [Audit](docs/features/audit.md) | Audit pipeline steps & scoring |
-| Features | [Keywords](docs/features/keywords.md) | Keyword research pipeline |
-| Features | [Content](docs/features/content.md) | Content engine workflow |
-| Features | [Leads](docs/features/leads.md) | Lead capture flow |
-| Features | [Integrations](docs/features/integrations.md) | External APIs & webhooks |
+| Planning | [Implementation Plan](docs/implementation-plan.md) | Master task checklist |
+| Planning | [Technical Debt](docs/technical-debt.md) | Deferred work tracker |
+| Product | [Project Handbook](docs/project-handbook.md) | Full product reference |
+| Architecture | [System Design](docs/architecture/system-design.md) | Tech stack, topology |
+| Architecture | [Frontend](docs/architecture/frontend-architecture.md) | Next.js structure |
+| Architecture | [Backend](docs/architecture/backend-architecture.md) | NestJS modules, agents |
+| Architecture | [Data Models](docs/architecture/data-models.md) | Drizzle schema |
 | Debugging | [Known Issues](docs/debugging/known-issues.md) | Tracked issues |
-| Debugging | [Patterns](docs/debugging/patterns.md) | Debugging rules & patterns |
-| Decisions | [Tech Decisions](docs/decisions/tech-decisions.md) | Architecture & tooling choices |
+| Decisions | [Tech Decisions](docs/decisions/tech-decisions.md) | Architecture choices |
 
 ## Quick Start
 
@@ -33,25 +24,47 @@ Multi-tenant SaaS product for automated SEO/GEO/AEO auditing and organic visibil
 # 1. Clone and install
 npm run install:all
 
-# 2. Start local services (Postgres + Redis)
+# 2. Start infrastructure (Postgres + Redis)
 npm run infra:up
 
-# 3. Push Drizzle schema to database
+# 3. Push schema to database
 npm run db:push
 
-# 4. Seed database (optional)
+# 4. Seed development data
 npm run db:seed
 
-# 5. Start frontend + server in dev mode
+# 5. Start dev servers
 npm run dev
 ```
 
-| App | URL |
-|-----|-----|
-| Web (Next.js) | http://localhost:3000 |
-| API (NestJS) | http://localhost:3001 |
-| API Docs (Swagger) | http://localhost:3001/docs |
+## Local Services
+
+| Service | URL |
+|---------|-----|
+| Frontend (Next.js) | http://localhost:3001 |
+| Backend API (NestJS) | http://localhost:3002 |
+| API Docs (Swagger) | http://localhost:3002/docs |
+| Python Sidecar | http://localhost:8000 |
+| Drizzle Studio | `npm run db:studio` |
+
+## Infrastructure
+
+| Service | Image | Port | DB/Details |
+|---------|-------|------|------------|
+| PostgreSQL | postgres:16-alpine | 5433 | `pulse_v2` / user: `pulse` |
+| Redis | redis:7-alpine | 6379 | BullMQ queues |
+
+## Tech Stack
+
+| Layer | Technology |
+|-------|-----------|
+| Frontend | Next.js 15, React 19, Tailwind CSS, Zustand, Clerk |
+| Backend | NestJS 10, Drizzle ORM, BullMQ, Redis |
+| Database | PostgreSQL 16 |
+| AI/Agents | OpenAI (function calling), custom runtime (~200 LOC) |
+| Integrations | Ahrefs v3, DataForSEO, Firecrawl, Serper.dev, PageSpeed/CrUX |
+| Python Sidecar | FastAPI, ReportLab (PDF), 12 analysis endpoints |
 
 ## Environment Variables
 
-Copy `.env.example` to `.env` and fill in your keys. See [Infrastructure docs](docs/infrastructure.md) for details.
+Copy `.env.example` to `.env` and fill in your keys.

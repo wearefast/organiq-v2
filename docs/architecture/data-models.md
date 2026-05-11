@@ -1,157 +1,263 @@
-# Data Models
+# Data Models — Pulse OS
 
-## ORM
+## Overview
 
-Drizzle ORM with PostgreSQL. Schema at `server/src/db/schema.ts`.
+PostgreSQL 16 with Drizzle ORM. Schema defined in `server/src/db/schema.ts`.
 
-## Product Boundary
+## Entity Relationship Diagram
 
-Pulse currently has two distinct product lanes:
+```
+organizations ─┬─ org_members ─── (user reference via Clerk ID)
+               ├─ credit_ledger
+               └─ workspaces ─── projects ─── workflow_runs
+                                                    │
+                                              workflow_steps
+                                                    │
+                                    ┌───────────────┼───────────────┐
+                              step_artifacts   step_approvals   step_tool_calls
+                                    │
+                              workflow_context
+                                    │
+                    ┌───────────────┼───────────────┐
+                keywords      topical_maps     content_pieces
+                                                      │
+                                                   reports
+```
 
-| Lane | Data Owner | Purpose |
-|------|------------|---------|
-| Public audit | `audits` and related lead data | Fast acquisition and automated diagnostics |
-| Keyword workspace | Keyword workflow entities, keywords, topical maps, and content | Human-in-the-loop strategist workflow |
+## Core Tables
 
-The audit lane can continue to reuse the same integrations, but it should not become the source of truth for approved keyword research artifacts.
+### organizations
 
-## Tables
+| Column | Type | Notes |
+|--------|------|-------|
+| id | uuid | PK |
+| clerk_org_id | text | Clerk org reference |
+| name | text | |
+| slug | text | Unique |
+| plan | enum | `starter`, `pro`, `agency`, `enterprise` |
+| credits_balance | integer | Current credit balance |
+| created_at | timestamp | |
+| updated_at | timestamp | |
 
-### Current Tables
+### org_members
 
-| Table | Description |
-|-------|-------------|
-| `users` | Clerk-synced user accounts |
-| `leads` | Audit submission leads |
-| `audits` | Website audit records + scores |
-| `keyword_projects` | Keyword research projects |
-| `topical_maps` | Pillar/cluster topic maps |
-| `keywords` | Individual keyword records |
-| `content_pieces` | Generated content (briefs + articles) |
+| Column | Type | Notes |
+|--------|------|-------|
+| id | uuid | PK |
+| organization_id | uuid | FK → organizations |
+| clerk_user_id | text | Clerk user reference |
+| role | enum | `owner`, `admin`, `member` |
+| email | text | |
+| name | text | |
+| created_at | timestamp | |
 
-### Required Workflow Tables
+### credit_ledger
 
-These are the target entities for the English-first strategist workflow. They document the intended schema direction for the next implementation epic.
+| Column | Type | Notes |
+|--------|------|-------|
+| id | uuid | PK |
+| organization_id | uuid | FK → organizations |
+| amount | integer | Positive = credit, negative = debit |
+| balance_after | integer | Running balance |
+| type | enum | `purchase`, `usage`, `refund`, `bonus` |
+| description | text | Human-readable reason |
+| workflow_run_id | uuid | FK → workflow_runs (nullable) |
+| step_key | text | Which step consumed credits (nullable) |
+| created_at | timestamp | |
 
-| Table | Description |
-|-------|-------------|
-| `keyword_workflow_runs` | One guided workflow run per project/language/market |
-| `keyword_workflow_artifacts` | Checkpoint records for each workflow step; the active step is rewritten in place and identified by checkpoint id plus step/timestamp ordering |
-| `keyword_workflow_approvals` | Approval, revision, and rejection decisions per checkpoint record |
-| `project_competitors` | Reviewed competitor candidates and approved buckets |
-| `project_competitor_metrics` | Comparable metrics captured per approved competitor |
-| `content_gap_imports` | Manual Ahrefs Content Gap uploads and parsed rows |
+### workspaces
+
+| Column | Type | Notes |
+|--------|------|-------|
+| id | uuid | PK |
+| organization_id | uuid | FK → organizations |
+| name | text | Client name |
+| slug | text | Unique within org |
+| domain | text | Primary client domain |
+| created_at | timestamp | |
+| updated_at | timestamp | |
+
+### projects
+
+| Column | Type | Notes |
+|--------|------|-------|
+| id | uuid | PK |
+| workspace_id | uuid | FK → workspaces |
+| organization_id | uuid | FK → organizations (denormalized for queries) |
+| name | text | |
+| domain | text | Target domain |
+| country | text | ISO country code |
+| language | text | ISO language code |
+| industry | text | For strategy templates |
+| created_at | timestamp | |
+| updated_at | timestamp | |
+
+### workflow_runs
+
+| Column | Type | Notes |
+|--------|------|-------|
+| id | uuid | PK |
+| project_id | uuid | FK → projects |
+| organization_id | uuid | FK → organizations |
+| status | enum | `draft`, `running`, `paused`, `completed`, `failed` |
+| current_step | text | Step key currently active |
+| credits_used | integer | Running total |
+| started_at | timestamp | |
+| completed_at | timestamp | Nullable |
+| created_at | timestamp | |
+| updated_at | timestamp | |
+
+### workflow_steps
+
+| Column | Type | Notes |
+|--------|------|-------|
+| id | uuid | PK |
+| workflow_run_id | uuid | FK → workflow_runs |
+| step_key | text | One of 17 step keys |
+| step_number | integer | 1-17 |
+| phase | integer | 1-4 |
+| status | enum | `pending`, `running`, `completed`, `awaiting_approval`, `approved`, `revision_requested`, `rejected`, `failed`, `skipped` |
+| started_at | timestamp | Nullable |
+| completed_at | timestamp | Nullable |
+| credits_used | integer | |
+| iterations | integer | Agent iteration count |
+| error | text | Nullable, on failure |
+| created_at | timestamp | |
+| updated_at | timestamp | |
+
+### step_artifacts
+
+| Column | Type | Notes |
+|--------|------|-------|
+| id | uuid | PK |
+| workflow_step_id | uuid | FK → workflow_steps |
+| workflow_run_id | uuid | FK → workflow_runs |
+| step_key | text | Denormalized for queries |
+| version | integer | Increment on revision |
+| data | jsonb | Artifact payload |
+| reasoning | text | Agent explanation |
+| created_at | timestamp | |
+
+### step_approvals
+
+| Column | Type | Notes |
+|--------|------|-------|
+| id | uuid | PK |
+| workflow_step_id | uuid | FK → workflow_steps |
+| artifact_id | uuid | FK → step_artifacts |
+| decision | enum | `approved`, `revision_requested`, `rejected` |
+| notes | text | Reviewer notes |
+| reviewer_id | text | Clerk user ID |
+| created_at | timestamp | |
+
+### step_tool_calls
+
+| Column | Type | Notes |
+|--------|------|-------|
+| id | uuid | PK |
+| workflow_step_id | uuid | FK → workflow_steps |
+| tool_name | text | e.g., `ahrefs.getOrganicKeywords` |
+| input | jsonb | Tool call arguments |
+| output | jsonb | Tool response (truncated if large) |
+| duration_ms | integer | Execution time |
+| error | text | Nullable |
+| created_at | timestamp | |
+
+### workflow_context
+
+| Column | Type | Notes |
+|--------|------|-------|
+| id | uuid | PK |
+| workflow_run_id | uuid | FK → workflow_runs |
+| key | text | Context key (e.g., `business_profile`, `seed_keywords`) |
+| value | jsonb | Accumulated state |
+| updated_at | timestamp | |
+
+### keywords
+
+| Column | Type | Notes |
+|--------|------|-------|
+| id | uuid | PK |
+| project_id | uuid | FK → projects |
+| workflow_run_id | uuid | FK → workflow_runs (nullable) |
+| keyword | text | |
+| volume | integer | Monthly search volume |
+| difficulty | integer | KD score 0-100 |
+| cpc | decimal | Cost per click |
+| intent | enum | `transactional`, `commercial`, `informational`, `navigational` |
+| funnel_stage | enum | `tofu`, `mofu`, `bofu` |
+| status | enum | `discovered`, `approved`, `brief_ready`, `written`, `published` |
+| source_step | text | Which step discovered it |
+| parent_topic | text | Topical grouping |
+| serp_features | jsonb | Array of SERP features present |
+| created_at | timestamp | |
+| updated_at | timestamp | |
+
+### topical_maps
+
+| Column | Type | Notes |
+|--------|------|-------|
+| id | uuid | PK |
+| project_id | uuid | FK → projects |
+| workflow_run_id | uuid | FK → workflow_runs |
+| name | text | Map name |
+| pillars | jsonb | Array of pillar objects with clusters |
+| calendar | jsonb | Content calendar assignments |
+| created_at | timestamp | |
+| updated_at | timestamp | |
+
+### content_pieces
+
+| Column | Type | Notes |
+|--------|------|-------|
+| id | uuid | PK |
+| project_id | uuid | FK → projects |
+| keyword_id | uuid | FK → keywords (nullable) |
+| workflow_run_id | uuid | FK → workflow_runs |
+| type | enum | `brief`, `article` |
+| status | enum | `draft`, `review`, `approved`, `published` |
+| title | text | |
+| brief_data | jsonb | Brief payload |
+| article_data | jsonb | Article payload |
+| scores | jsonb | Quality scores (readability, SEO, citability) |
+| word_count | integer | |
+| created_at | timestamp | |
+| updated_at | timestamp | |
+
+### reports
+
+| Column | Type | Notes |
+|--------|------|-------|
+| id | uuid | PK |
+| project_id | uuid | FK → projects |
+| workflow_run_id | uuid | FK → workflow_runs |
+| type | enum | `full_strategy`, `ai_visibility`, `keyword_research`, `content_plan` |
+| title | text | |
+| file_path | text | Path to generated PDF |
+| generated_at | timestamp | |
+| created_at | timestamp | |
 
 ## Enums
 
 | Enum | Values |
 |------|--------|
-| `audit_status` | pending, processing, complete, failed |
-| `lead_status` | new, contacted, qualified, converted, lost |
-| `keyword_intent` | transactional, commercial, informational, navigational |
-| `funnel_stage` | tofu, mofu, bofu |
-| `keyword_status` | discovered, approved, brief_ready, written, published |
-| `content_status` | brief, draft, review, approved, published |
+| `org_plan` | `starter`, `pro`, `agency`, `enterprise` |
+| `org_role` | `owner`, `admin`, `member` |
+| `credit_type` | `purchase`, `usage`, `refund`, `bonus` |
+| `workflow_status` | `draft`, `running`, `paused`, `completed`, `failed` |
+| `step_status` | `pending`, `running`, `completed`, `awaiting_approval`, `approved`, `revision_requested`, `rejected`, `failed`, `skipped` |
+| `approval_decision` | `approved`, `revision_requested`, `rejected` |
+| `keyword_intent` | `transactional`, `commercial`, `informational`, `navigational` |
+| `funnel_stage` | `tofu`, `mofu`, `bofu` |
+| `keyword_status` | `discovered`, `approved`, `brief_ready`, `written`, `published` |
+| `content_type` | `brief`, `article` |
+| `content_status` | `draft`, `review`, `approved`, `published` |
+| `report_type` | `full_strategy`, `ai_visibility`, `keyword_research`, `content_plan` |
 
-### Planned Workflow Enums
+## Indexes (Key)
 
-| Enum | Values |
-|------|--------|
-| `workflow_status` | draft, running, awaiting_approval, revision_requested, approved, completed, failed, archived |
-| `workflow_step_key` | business-profile, seed-keywords, serp-niche-map, competitor-buckets, competitor-metrics, phase1-baseline, method01-competitor-pages, method02-seed-expansion, method03-content-gap-import, consolidated-keywords, topical-map, content-brief, content-article |
-| `workflow_decision` | approved, revision_requested, rejected |
-| `competitor_bucket` | direct, organic, unclassified |
-| `competitor_status` | candidate, approved, rejected |
-| `dedupe_status` | kept, duplicate_existing, duplicate_cross_method, irrelevant, rejected |
-
-## Entity Relationships
-
-```
-users ──1:N──> audits
-users ──1:N──> keyword_projects
-leads ──1:1──> audits
-keyword_projects ──1:N──> keyword_workflow_runs
-keyword_workflow_runs ──1:N──> keyword_workflow_artifacts
-keyword_workflow_artifacts ──1:N──> keyword_workflow_approvals
-keyword_projects ──1:N──> project_competitors
-project_competitors ──1:1──> project_competitor_metrics
-keyword_workflow_runs ──1:N──> content_gap_imports
-keyword_workflow_runs ──1:N──> keywords
-keyword_projects ──1:N──> topical_maps
-keywords ──1:1──> content_pieces
-```
-
-## Keyword Fields
-
-| Field | DB Column | Type |
-|-------|-----------|------|
-| Primary Keyword | `keyword` | text |
-| KD | `kd` | integer |
-| Search Volume | `searchVolume` | integer |
-| Intent | `intent` | keyword_intent enum |
-| Funnel | `funnel` | funnel_stage enum |
-| Target URL | `targetUrl` | text |
-| LSI Keywords | `lsiKeywords` | jsonb |
-
-### Required Keyword Workflow Fields
-
-The final keyword ledger should retain strategist-review context and provenance:
-
-| Field | Purpose |
-|-------|---------|
-| `workflowRunId` | Tie the keyword to a specific guided workflow run |
-| `language` | English in the first rollout |
-| `country` | Market-specific research context |
-| `sourceMethods` | Preserve Method 01 / Method 02 / Method 03 / Phase 1 lineage |
-| `sourceArtifactIds` | Reference the reviewed checkpoints that support the keyword |
-| `approvalStatus` | Candidate vs approved state |
-| `dedupeStatus` | Track whether the keyword was retained or removed |
-| `existingCoverageUrl` | Link to any existing page that already covers the topic |
-| `parentTopic` | Parent topic used for topical-map grouping |
-| `contentType` | Recommended destination page/content type |
-
-## Workflow Artifact Model
-
-Each major strategist step is tracked as a checkpoint record. The active step is rewritten in place, checkpoint history is ordered by saved time, and downstream provenance depends on checkpoint ids rather than version numbers.
-
-| Artifact | Payload Summary |
-|----------|-----------------|
-| Business profile | Brand, audience, offer, geography, seed suggestions |
-| Seed keywords | Candidate list, approved list, notes |
-| SERP niche map | Core topics, sub-topics, page-type observations |
-| Competitor buckets | Candidate, approved, and rejected competitors |
-| Competitor metrics | DR, backlinks, traffic, top pages |
-| Phase 1 baseline | Existing winning pages, existing keywords, dedupe list |
-| Method 01 | Competitor-page keyword candidates |
-| Method 02 | Matching terms, related terms, parent topics |
-| Method 03 | Manual Content Gap import and normalized rows |
-| Consolidated keywords | Final ledger before topical-map generation |
-| Topical map | Pillar/cluster structure and target URL mapping |
-| Content brief/article | Generated content plus review notes |
-
-## Content Handoff
-
-Content generation should no longer start from a flat approved keyword alone. The target model is:
-
-1. Approved workflow run
-2. Approved consolidated keyword
-3. Approved topical-map node
-4. Brief generation
-5. Brief approval
-6. Article generation
-7. Article approval
-
-This keeps content output tied to reviewed strategist decisions rather than unstructured keyword rows.
-
-## Commands
-
-```bash
-# Push schema to database (dev)
-npm run db:push
-
-# Seed database
-npm run db:seed
-
-# Open Drizzle Studio
-cd server && npx drizzle-kit studio
-```
+- `workflow_steps`: compound on `(workflow_run_id, step_key)`
+- `step_artifacts`: compound on `(workflow_run_id, step_key, version)`
+- `keywords`: compound on `(project_id, status)`
+- `credit_ledger`: compound on `(organization_id, created_at)`
+- All FK columns indexed
