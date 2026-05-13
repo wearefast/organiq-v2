@@ -3,9 +3,14 @@ const LEGACY_LOCAL_DEV_API_URL_PATTERN = /^http:\/\/(localhost|127\.0\.0\.1):300
 
 // Module-level token store — set by AuthProvider on mount
 let _authToken: string | null = null;
+let _getTokenFn: (() => Promise<string | null>) | null = null;
 
 export function setAuthToken(token: string | null): void {
   _authToken = token;
+}
+
+export function setGetTokenFn(fn: (() => Promise<string | null>) | null): void {
+  _getTokenFn = fn;
 }
 
 export function getAuthToken(): string | null {
@@ -49,6 +54,27 @@ export async function apiFetch<T>(path: string, init?: RequestInit): Promise<T> 
       ...init?.headers,
     },
   });
+
+  // On 401, try refreshing the token once and retry
+  if (res.status === 401 && _getTokenFn) {
+    const freshToken = await _getTokenFn();
+    if (freshToken && freshToken !== _authToken) {
+      _authToken = freshToken;
+      headers['Authorization'] = `Bearer ${freshToken}`;
+      const retry = await fetch(`${API_URL}${path}`, {
+        ...init,
+        headers: {
+          ...headers,
+          ...init?.headers,
+        },
+      });
+      if (!retry.ok) {
+        const body = await retry.text();
+        throw new Error(`API ${retry.status}: ${body}`);
+      }
+      return retry.json() as Promise<T>;
+    }
+  }
 
   if (!res.ok) {
     const body = await res.text();

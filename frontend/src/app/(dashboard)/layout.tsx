@@ -5,6 +5,7 @@ import { TopBar } from '@/shared/components/top-bar';
 import { SideNav } from '@/shared/components/side-nav';
 import { CommandPalette } from '@/shared/components/command-palette';
 import { AuthSync } from '@/shared/components/auth-sync';
+import { ThemeProvider } from '@/shared/hooks/use-theme';
 
 export default function DashboardLayout({ children }: { children: React.ReactNode }) {
   const [commandPaletteOpen, setCommandPaletteOpen] = useState(false);
@@ -24,7 +25,7 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
   }, []);
 
   return (
-    <>
+    <ThemeProvider>
       <AuthSync />
       <TopBar onCommandPalette={openPalette} />
       <SideNav />
@@ -32,6 +33,6 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
         {children}
       </main>
       <CommandPalette open={commandPaletteOpen} onClose={closePalette} />
-    </>
+    </ThemeProvider>
   );
 }

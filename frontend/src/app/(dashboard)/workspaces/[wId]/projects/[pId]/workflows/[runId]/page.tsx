@@ -6,6 +6,7 @@ import { useAuth } from '@clerk/nextjs';
 import { WorkflowShell } from '@/features/workflow/components/workflow-shell';
 import { renderArtifact } from '@/features/workflow/renderers';
 import { ErrorBoundary } from '@/shared/components/error-boundary';
+import { setAuthToken } from '@/shared/utils/api';
 
 export default function WorkflowRunPage() {
   const params = useParams<{ runId: string }>();
@@ -30,8 +31,19 @@ function WorkflowRunInner({
   const [token, setToken] = useState<string | null>(null);
 
   useEffect(() => {
-    getToken().then(setToken);
+    getToken().then((t) => {
+      setAuthToken(t);
+      setToken(t);
+    });
   }, [getToken]);
+
+  if (!token) {
+    return (
+      <div className="flex h-full items-center justify-center text-zinc-500 text-sm">
+        Authenticating…
+      </div>
+    );
+  }
 
   return (
     <WorkflowShell

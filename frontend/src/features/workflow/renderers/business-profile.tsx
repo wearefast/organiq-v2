@@ -3,11 +3,12 @@
 interface BusinessProfileData {
   domain?: string;
   companyName?: string;
+  businessName?: string;
   industry?: string;
   description?: string;
   targetAudience?: string;
   goals?: string[];
-  competitors?: string[];
+  competitors?: Array<string | { name: string; link?: string }>;
   primaryMarket?: string;
   [key: string]: unknown;
 }
@@ -24,7 +25,7 @@ export function BusinessProfileRenderer({ data }: { data: unknown }) {
       {/* Domain & Company */}
       <div className="grid grid-cols-2 gap-4">
         <Field label="Domain" value={profile.domain} />
-        <Field label="Company" value={profile.companyName} />
+        <Field label="Company" value={profile.companyName ?? profile.businessName} />
         <Field label="Industry" value={profile.industry} />
         <Field label="Primary Market" value={profile.primaryMarket} />
       </div>
@@ -65,14 +66,17 @@ export function BusinessProfileRenderer({ data }: { data: unknown }) {
         <div>
           <Label>Known Competitors</Label>
           <div className="mt-1 flex flex-wrap gap-2">
-            {profile.competitors.map((comp, i) => (
-              <span
-                key={i}
-                className="rounded-md bg-zinc-800 px-2 py-1 text-[12px] text-zinc-300"
-              >
-                {comp}
-              </span>
-            ))}
+            {profile.competitors.map((comp, i) => {
+              const label = typeof comp === 'string' ? comp : comp.name;
+              return (
+                <span
+                  key={i}
+                  className="rounded-md bg-zinc-800 px-2 py-1 text-[12px] text-zinc-300"
+                >
+                  {label}
+                </span>
+              );
+            })}
           </div>
         </div>
       )}
@@ -83,6 +87,7 @@ export function BusinessProfileRenderer({ data }: { data: unknown }) {
         exclude={[
           'domain',
           'companyName',
+          'businessName',
           'industry',
           'description',
           'targetAudience',
@@ -113,6 +118,47 @@ function Label({ children }: { children: React.ReactNode }) {
   );
 }
 
+function toLabel(key: string) {
+  return key
+    .replace(/([A-Z])/g, ' $1')
+    .replace(/_/g, ' ')
+    .replace(/^./, (s) => s.toUpperCase())
+    .trim();
+}
+
+function FieldValue({ value }: { value: unknown }) {
+  // Array of primitives → pill tags
+  if (Array.isArray(value)) {
+    const items = value.map((v) => (typeof v === 'object' ? JSON.stringify(v) : String(v)));
+    return (
+      <div className="mt-1 flex flex-wrap gap-1.5">
+        {items.map((item, i) => (
+          <span
+            key={i}
+            className="rounded-md bg-zinc-800 px-2 py-0.5 text-[11px] text-zinc-300"
+          >
+            {item}
+          </span>
+        ))}
+      </div>
+    );
+  }
+  // Plain object → key: value list
+  if (typeof value === 'object' && value !== null) {
+    return (
+      <div className="mt-1 space-y-0.5">
+        {Object.entries(value as Record<string, unknown>).map(([k, v]) => (
+          <p key={k} className="text-sm text-zinc-300">
+            <span className="text-zinc-500">{toLabel(k)}: </span>
+            {String(v)}
+          </p>
+        ))}
+      </div>
+    );
+  }
+  return <p className="mt-0.5 text-sm text-zinc-300">{String(value)}</p>;
+}
+
 function AdditionalFields({
   data,
   exclude,
@@ -125,22 +171,20 @@ function AdditionalFields({
   );
   if (entries.length === 0) return null;
 
+  // Wide fields: arrays or long strings span the full row
+  const isWide = (v: unknown) =>
+    Array.isArray(v) || (typeof v === 'string' && v.length > 80);
+
   return (
     <div className="rounded-lg border border-zinc-800 bg-zinc-900/50 p-4">
-      <p className="mb-2 text-[11px] font-semibold uppercase tracking-wider text-zinc-500">
+      <p className="mb-3 text-[11px] font-semibold uppercase tracking-wider text-zinc-500">
         Additional Details
       </p>
-      <dl className="grid grid-cols-2 gap-x-4 gap-y-2">
+      <dl className="grid grid-cols-2 gap-x-6 gap-y-4">
         {entries.map(([key, value]) => (
-          <div key={key}>
-            <dt className="text-[11px] text-zinc-500">
-              {key.replace(/([A-Z])/g, ' $1').replace(/^./, (s) => s.toUpperCase())}
-            </dt>
-            <dd className="text-sm text-zinc-300">
-              {typeof value === 'object'
-                ? JSON.stringify(value)
-                : String(value)}
-            </dd>
+          <div key={key} className={isWide(value) ? 'col-span-2' : 'col-span-1'}>
+            <dt className="text-[11px] font-medium text-zinc-500">{toLabel(key)}</dt>
+            <FieldValue value={value} />
           </div>
         ))}
       </dl>

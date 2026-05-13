@@ -14,6 +14,9 @@ import { IntegrationsModule } from './features/integrations/integrations.module'
 import { AgentsModule } from './agents/agents.module';
 import { WorkflowsModule } from './features/workflows/workflows.module';
 import { KeywordsModule } from './features/keywords/keywords.module';
+import { TopicalMapsModule } from './features/topical-maps/topical-maps.module';
+import { ContentModule } from './features/content/content.module';
+import { ReportsModule } from './features/reports/reports.module';
 import { validateEnv } from './shared/config/env.validation';
 
 function resolveBullRedisHost() {
@@ -56,6 +59,9 @@ function resolveEnvFilePaths() {
     AgentsModule,
     WorkflowsModule,
     KeywordsModule,
+    TopicalMapsModule,
+    ContentModule,
+    ReportsModule,
   ],
 })
 export class AppModule {}

@@ -1,5 +1,6 @@
 import { Injectable, Logger } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
+import { withRetry } from '../../../shared/utils/retry';
 
 type SearchType = 'search' | 'news' | 'images' | 'places';
 
@@ -45,22 +46,27 @@ export class SerperService {
 
     this.logger.debug(`Serper API: POST ${endpoint} (q=${body.q})`);
 
-    const response = await fetch(`${this.baseUrl}${endpoint}`, {
-      method: 'POST',
-      headers: {
-        'X-API-KEY': this.apiKey,
-        'Content-Type': 'application/json',
+    return withRetry(
+      async () => {
+        const response = await fetch(`${this.baseUrl}${endpoint}`, {
+          method: 'POST',
+          headers: {
+            'X-API-KEY': this.apiKey,
+            'Content-Type': 'application/json',
+          },
+          body: JSON.stringify(body),
+          signal: AbortSignal.timeout(30_000),
+        });
+
+        if (!response.ok) {
+          const text = await response.text();
+          this.logger.error(`Serper API error: ${response.status}`);
+          throw new Error(`Serper API error: ${response.status}`);
+        }
+
+        return response.json();
       },
-      body: JSON.stringify(body),
-      signal: AbortSignal.timeout(30_000),
-    });
-
-    if (!response.ok) {
-      const text = await response.text();
-      this.logger.error(`Serper API error: ${response.status}`);
-      throw new Error(`Serper API error: ${response.status}`);
-    }
-
-    return response.json();
+      { label: `Serper POST ${endpoint}` },
+    );
   }
 }

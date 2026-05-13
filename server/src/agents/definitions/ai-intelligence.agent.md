@@ -12,6 +12,7 @@ tools:
   - firecrawl_scrape
   - serper_search
   - pagespeed_analyze
+  - openai_ai_inference
 ---
 
 # AI Intelligence Agent

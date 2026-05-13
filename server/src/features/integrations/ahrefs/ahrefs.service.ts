@@ -1,5 +1,6 @@
 import { Injectable, Logger } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
+import { withRetry } from '../../../shared/utils/retry';
 
 interface AhrefsRequestOptions {
   endpoint: string;
@@ -16,40 +17,68 @@ export class AhrefsService {
     this.apiKey = this.config.get<string>('AHREFS_API_KEY', '');
   }
 
+  /** Returns a recent date string (3 days ago) for Ahrefs v3 date param */
+  private getRecentDate(): string {
+    const d = new Date();
+    d.setDate(d.getDate() - 3);
+    return d.toISOString().slice(0, 10);
+  }
+
   // ─── Site Explorer ─────────────────────────────────────────
 
   async getDomainRating(domain: string) {
     return this.request({
       endpoint: '/site-explorer/domain-rating',
-      params: { target: domain },
+      params: { target: domain, date: this.getRecentDate() },
     });
   }
 
-  async getOrganicKeywords(domain: string, country: string = 'us', limit: number = 1000) {
+  async getOrganicKeywords(domain: string, country: string = 'us', limit: number = 50) {
     return this.request({
       endpoint: '/site-explorer/organic-keywords',
-      params: { target: domain, country, limit, mode: 'domain' },
+      params: {
+        target: domain,
+        country,
+        limit,
+        mode: 'domain',
+        date: this.getRecentDate(),
+        select: 'keyword,volume,keyword_difficulty,best_position,best_position_url,sum_traffic,cpc',
+      },
     });
   }
 
   async getOrganicPages(domain: string, country: string = 'us', limit: number = 100) {
     return this.request({
       endpoint: '/site-explorer/top-pages',
-      params: { target: domain, country, limit, mode: 'domain' },
+      params: {
+        target: domain,
+        country,
+        limit,
+        mode: 'domain',
+        date: this.getRecentDate(),
+        select: 'url,sum_traffic,top_keyword,top_keyword_best_position,top_keyword_volume,keywords',
+      },
     });
   }
 
   async getBacklinksStats(domain: string) {
     return this.request({
       endpoint: '/site-explorer/backlinks-stats',
-      params: { target: domain, mode: 'domain' },
+      params: { target: domain, mode: 'domain', date: this.getRecentDate() },
     });
   }
 
   async getCompetingDomains(domain: string, country: string = 'us', limit: number = 20) {
     return this.request({
-      endpoint: '/site-explorer/competing-domains',
-      params: { target: domain, country, limit, mode: 'domain' },
+      endpoint: '/site-explorer/organic-competitors',
+      params: {
+        target: domain,
+        country,
+        limit,
+        mode: 'domain',
+        date: this.getRecentDate(),
+        select: 'competitor_domain,keywords_common,keywords_competitor,keywords_target,traffic,share,domain_rating',
+      },
     });
   }
 
@@ -57,22 +86,35 @@ export class AhrefsService {
 
   async getKeywordDifficulty(keywords: string[], country: string = 'us') {
     return this.request({
-      endpoint: '/keywords-explorer/keyword-difficulty',
-      params: { keywords: keywords.join(','), country },
+      endpoint: '/keywords-explorer/overview',
+      params: {
+        keywords: keywords.join(','),
+        country,
+        select: 'keyword,difficulty,volume',
+      },
     });
   }
 
   async getKeywordVolume(keywords: string[], country: string = 'us') {
     return this.request({
-      endpoint: '/keywords-explorer/volume',
-      params: { keywords: keywords.join(','), country },
+      endpoint: '/keywords-explorer/overview',
+      params: {
+        keywords: keywords.join(','),
+        country,
+        select: 'keyword,volume,cpc,difficulty,global_volume,traffic_potential',
+      },
     });
   }
 
-  async getRelatedKeywords(keyword: string, country: string = 'us', limit: number = 100) {
+  async getRelatedKeywords(keyword: string, country: string = 'us', limit: number = 20) {
     return this.request({
       endpoint: '/keywords-explorer/related-terms',
-      params: { keyword, country, limit },
+      params: {
+        keywords: keyword,
+        country,
+        limit,
+        select: 'keyword,volume,difficulty,cpc,traffic_potential,parent_topic',
+      },
     });
   }
 
@@ -94,25 +136,32 @@ export class AhrefsService {
 
     const url = new URL(`${this.baseUrl}${endpoint}`);
     for (const [key, value] of Object.entries(params)) {
-      url.searchParams.set(key, String(value));
+      // Ahrefs v3 requires lowercase country codes
+      const normalizedValue = key === 'country' ? String(value).toLowerCase() : String(value);
+      url.searchParams.set(key, normalizedValue);
     }
 
     this.logger.debug(`Ahrefs API: ${endpoint}`);
 
-    const response = await fetch(url.toString(), {
-      headers: {
-        Authorization: `Bearer ${this.apiKey}`,
-        Accept: 'application/json',
+    return withRetry(
+      async () => {
+        const response = await fetch(url.toString(), {
+          headers: {
+            Authorization: `Bearer ${this.apiKey}`,
+            Accept: 'application/json',
+          },
+          signal: AbortSignal.timeout(30_000),
+        });
+
+        if (!response.ok) {
+          const text = await response.text();
+          this.logger.error(`Ahrefs API error: ${response.status}`, text);
+          throw new Error(`Ahrefs API error: ${response.status}`);
+        }
+
+        return response.json();
       },
-      signal: AbortSignal.timeout(30_000),
-    });
-
-    if (!response.ok) {
-      const text = await response.text();
-      this.logger.error(`Ahrefs API error: ${response.status}`);
-      throw new Error(`Ahrefs API error: ${response.status}`);
-    }
-
-    return response.json();
+      { label: `Ahrefs ${endpoint}` },
+    );
   }
 }

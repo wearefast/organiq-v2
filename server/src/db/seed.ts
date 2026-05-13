@@ -1,8 +1,23 @@
 import { db } from './index';
 import { organizations, orgMembers, workspaces, projects } from './schema';
+import { eq } from 'drizzle-orm';
+
+const DEV_CREDITS = 10_000;
 
 async function seed() {
   console.log('🌱 Seeding Pulse OS v2 database...');
+
+  // Top up all existing organizations with dev credits
+  const existingOrgs = await db.query.organizations.findMany();
+  for (const existing of existingOrgs) {
+    if (existing.creditsBalance < DEV_CREDITS) {
+      await db
+        .update(organizations)
+        .set({ creditsBalance: DEV_CREDITS, updatedAt: new Date() })
+        .where(eq(organizations.id, existing.id));
+      console.log(`  ✓ Topped up org "${existing.name}" to ${DEV_CREDITS} credits (was ${existing.creditsBalance})`);
+    }
+  }
 
   // Create a demo organization
   const [org] = await db
@@ -12,7 +27,7 @@ async function seed() {
       name: 'Demo Agency',
       slug: 'demo-agency',
       plan: 'pro',
-      creditsBalance: 5000,
+      creditsBalance: DEV_CREDITS,
     })
     .returning();
 

@@ -32,6 +32,7 @@ export function interpolatePrompt(
   return template.replace(/\{\{([^}]+)\}\}/g, (_match, path: string) => {
     const value = resolvePath(vars, path.trim());
     if (value === undefined || value === null) return '';
+    if (typeof value === 'object') return JSON.stringify(value, null, 2);
     return String(value);
   });
 }

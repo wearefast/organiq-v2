@@ -41,6 +41,8 @@ interface ChatMessage {
 @Injectable()
 export class AgentRuntime {
   private readonly logger = new Logger(AgentRuntime.name);
+  private static readonly AGENT_TIMEOUT_MS = 10 * 60 * 1000; // 10 minutes
+  private static readonly TOOL_TIMEOUT_MS = 60 * 1000; // 60 seconds per tool call
 
   constructor(
     private readonly openai: OpenAiService,
@@ -49,10 +51,25 @@ export class AgentRuntime {
   ) {}
 
   /**
-   * Execute an agent's function-calling loop.
+   * Execute an agent's function-calling loop with an overall timeout.
    * Iterates until the agent produces a final content response or hits max iterations.
    */
   async execute(config: AgentConfig): Promise<AgentResult> {
+    let timer: ReturnType<typeof setTimeout>;
+    const result = await Promise.race([
+      this.executeLoop(config),
+      new Promise<never>((_, reject) => {
+        timer = setTimeout(
+          () => reject(new Error(`Agent "${config.name}" timed out after ${AgentRuntime.AGENT_TIMEOUT_MS / 1000}s`)),
+          AgentRuntime.AGENT_TIMEOUT_MS,
+        );
+      }),
+    ]);
+    clearTimeout(timer!);
+    return result;
+  }
+
+  private async executeLoop(config: AgentConfig): Promise<AgentResult> {
     const toolCalls: ToolCallRecord[] = [];
     let totalTokens = 0;
     let iterations = 0;
@@ -94,7 +111,17 @@ export class AgentRuntime {
           }
 
           const start = Date.now();
-          const sandboxResult = await this.toolSandbox.execute(config.tools, toolName, input);
+          let toolTimer: ReturnType<typeof setTimeout>;
+          const sandboxResult = await Promise.race([
+            this.toolSandbox.execute(config.tools, toolName, input),
+            new Promise<{ success: false; error: string }>((resolve) => {
+              toolTimer = setTimeout(
+                () => resolve({ success: false, error: `Tool "${toolName}" timed out after ${AgentRuntime.TOOL_TIMEOUT_MS / 1000}s` }),
+                AgentRuntime.TOOL_TIMEOUT_MS,
+              );
+            }),
+          ]);
+          clearTimeout(toolTimer!);
           const durationMs = Date.now() - start;
 
           toolCalls.push({
@@ -105,10 +132,15 @@ export class AgentRuntime {
             success: sandboxResult.success,
           });
 
+          const toolContent = JSON.stringify(sandboxResult.success ? sandboxResult.result : { error: sandboxResult.error });
+          const MAX_TOOL_RESULT_CHARS = 8000;
+          const cappedContent = toolContent.length > MAX_TOOL_RESULT_CHARS
+            ? toolContent.slice(0, MAX_TOOL_RESULT_CHARS) + `... [truncated, ${toolContent.length} chars total]`
+            : toolContent;
           messages.push({
             role: 'tool',
             tool_call_id: tc.id,
-            content: JSON.stringify(sandboxResult.success ? sandboxResult.result : { error: sandboxResult.error }),
+            content: cappedContent,
           });
         }
 
@@ -134,9 +166,14 @@ export class AgentRuntime {
 
       try {
         const parsed = this.extractJson(content);
+        // Strip JSON block from reasoning so it only shows the narrative text
+        const reasoning = content
+          .replace(/```(?:json)?\s*\n[\s\S]*?\n```/g, '')
+          .replace(/^\s*\{[\s\S]*\}\s*$/, '')
+          .trim() || 'Output produced successfully.';
         return {
           output: parsed,
-          reasoning: content,
+          reasoning,
           toolCalls,
           iterations,
           totalTokens,

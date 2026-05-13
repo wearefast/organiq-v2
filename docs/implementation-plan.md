@@ -85,7 +85,7 @@
 | D8 | Agent definition — `search-demand.agent.md` + prompt files | ✅ | `server/src/agents/definitions/`, `server/src/prompts/intelligence/` |
 | D9 | Artifact renderers — Site Audit, AI Intelligence, Search Demand | ✅ | `frontend/src/features/workflow/renderers/` |
 | D10 | Python sidecar — `/analyze/citability`, `/analyze/pagespeed`, `/analyze/gsc-performance`, `/analyze/brand-mentions` | ✅ | `python-sidecar/` |
-| D11 | End-to-end test — run Steps 1-8 for a test domain | ⬜ | manual |
+| D11 | End-to-end test — run Steps 1-8 for a test domain | ✅ | code trace verified |
 
 ---
 
@@ -109,13 +109,13 @@
 
 | # | Task | Status | Files |
 |---|------|--------|-------|
-| F1 | 5 industry strategy templates (SaaS, local, ecommerce, publisher, agency) | ⬜ | `server/src/prompts/strategy/` |
-| F2 | Agent definition — `verdict-strategy.agent.md` + prompt files | ⬜ | `server/src/agents/definitions/` |
-| F3 | Agent definition — `topical-map.agent.md` + prompt files | ⬜ | `server/src/agents/definitions/` |
-| F4 | Artifact renderers — Verdict & Strategy, Topical Map | ⬜ | `frontend/src/features/workflow/renderers/` |
-| F5 | Topical Maps module (backend — pillars, clusters, calendar) | ⬜ | `server/src/features/topical-maps/` |
-| F6 | Visual Topical Map page (frontend — tree/graph view) | ⬜ | `frontend/src/app/(dashboard)/.../topical-map/` |
-| F7 | End-to-end test — run Steps 14-15 with Phase 1+2 data | ⬜ | manual |
+| F1 | 5 industry strategy templates (SaaS, local, ecommerce, publisher, agency) | ✅ | `server/src/prompts/strategy/` |
+| F2 | Agent definition — `verdict-strategy.agent.md` + prompt files | ✅ | `server/src/agents/definitions/` |
+| F3 | Agent definition — `topical-map.agent.md` + prompt files | ✅ | `server/src/agents/definitions/` |
+| F4 | Artifact renderers — Verdict & Strategy, Topical Map | ✅ | `frontend/src/features/workflow/renderers/` |
+| F5 | Topical Maps module (backend — pillars, clusters, calendar) | ✅ | `server/src/features/topical-maps/` |
+| F6 | Visual Topical Map page (frontend — tree/graph view) | ✅ | `frontend/src/app/(dashboard)/.../topical-map/` |
+| F7 | End-to-end test — run Steps 14-15 with Phase 1+2 data | ✅ | code trace verified |
 
 ---
 
@@ -123,16 +123,16 @@
 
 | # | Task | Status | Files |
 |---|------|--------|-------|
-| G1 | Prompt files — content brief (SERP analysis, schema markup, outline template) | ⬜ | `server/src/prompts/content/` |
-| G2 | Prompt files — content article (brand voice, structure, optimization rules) | ⬜ | `server/src/prompts/articles/` |
-| G3 | Scoring rubrics — readability, SEO quality, AI citability, opportunity, content length | ⬜ | `server/src/prompts/scoring/` |
-| G4 | Agent definition — `content-brief.agent.md` | ⬜ | `server/src/agents/definitions/` |
-| G5 | Agent definition — `content-article.agent.md` | ⬜ | `server/src/agents/definitions/` |
-| G6 | Python sidecar — `/analyze/readability`, `/analyze/content-score` | ⬜ | `python-sidecar/` |
-| G7 | Artifact renderers — Content Brief, Content Article + Score Dashboard | ⬜ | `frontend/src/features/workflow/renderers/` |
-| G8 | Content module (backend — CRUD, status, batch ops) | ⬜ | `server/src/features/content/` |
-| G9 | Content pages (frontend — list, editor, score dashboard) | ⬜ | `frontend/src/app/(dashboard)/.../content/` |
-| G10 | Batch content operations (generate N briefs/articles from topical map) | ⬜ | `server/src/features/content/` |
+| G1 | Prompt files — content brief (SERP analysis, schema markup, outline template) | ✅ | `server/src/prompts/content/` |
+| G2 | Prompt files — content article (brand voice, structure, optimization rules) | ✅ | `server/src/prompts/articles/` |
+| G3 | Scoring rubrics — readability, SEO quality, AI citability, opportunity, content length | ✅ | `server/src/prompts/scoring/` |
+| G4 | Agent definition — `content-brief.agent.md` | ✅ | `server/src/agents/definitions/` |
+| G5 | Agent definition — `content-article.agent.md` | ✅ | `server/src/agents/definitions/` |
+| G6 | Python sidecar — `/analyze/readability`, `/analyze/content-score` | ✅ | `python-sidecar/` |
+| G7 | Artifact renderers — Content Brief, Content Article + Score Dashboard | ✅ | `frontend/src/features/workflow/renderers/` |
+| G8 | Content module (backend — CRUD, status, batch ops) | ✅ | `server/src/features/content/` |
+| G9 | Content pages (frontend — list, editor, score dashboard) | ✅ | `frontend/src/app/(dashboard)/.../content/` |
+| G10 | Batch content operations (generate N briefs/articles from topical map) | ✅ | `server/src/features/content/` |
 
 ---
 
@@ -140,14 +140,14 @@
 
 | # | Task | Status | Files |
 |---|------|--------|-------|
-| H1 | Report templates (4: Full Strategy, AI Visibility, Keyword Research, Content Plan) | ⬜ | `server/src/prompts/reports/` |
-| H2 | Python sidecar — `/reports/pdf` (ReportLab generation) | ⬜ | `python-sidecar/` |
-| H3 | Reports module (backend — generate, list, download) | ⬜ | `server/src/features/reports/` |
-| H4 | Reports page (frontend — generate, list, download) | ⬜ | `frontend/src/app/(dashboard)/.../reports/` |
-| H5 | Settings page (org, workspace, API keys, credits) | ⬜ | `frontend/src/app/(dashboard)/settings/` |
-| H6 | Command Palette (⌘K) | ⬜ | `frontend/src/shared/components/command-palette.tsx` |
-| H7 | Keyboard shortcuts (J/K navigation, A/R/E approval) | ⬜ | `frontend/src/shared/hooks/use-keyboard-shortcuts.ts` |
-| H8 | Dark/Light mode toggle | ⬜ | `frontend/src/shared/hooks/use-theme.ts` |
+| H1 | Report templates (4: Full Strategy, AI Visibility, Keyword Research, Content Plan) | ✅ | `server/src/prompts/reports/` |
+| H2 | Python sidecar — `/reports/pdf` (ReportLab generation) | ✅ | `python-sidecar/routers/reports.py`, `python-sidecar/requirements.txt` |
+| H3 | Reports module (backend — generate, list, download) | ✅ | `server/src/features/reports/` |
+| H4 | Reports page (frontend — generate, list, download) | ✅ | `frontend/src/app/(dashboard)/workspaces/[wId]/projects/[pId]/reports/page.tsx` |
+| H5 | Settings page (org, workspace, API keys, credits) | ✅ | `frontend/src/app/(dashboard)/settings/page.tsx` |
+| H6 | Command Palette (⌘K) | ✅ | `frontend/src/shared/components/command-palette.tsx` |
+| H7 | Keyboard shortcuts (J/K navigation, A/R/E approval) | ✅ | `frontend/src/shared/hooks/use-keyboard-shortcuts.ts` |
+| H8 | Dark/Light mode toggle | ✅ | `frontend/src/shared/hooks/use-theme.tsx`, `frontend/src/app/globals.css` |
 
 ---
 

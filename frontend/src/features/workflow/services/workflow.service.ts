@@ -23,6 +23,12 @@ export async function startRun(runId: string): Promise<WorkflowRun> {
   });
 }
 
+export async function resumeRun(runId: string): Promise<{ enqueued: string[] }> {
+  return apiFetch<{ enqueued: string[] }>(`${BASE}/${runId}/resume`, {
+    method: 'POST',
+  });
+}
+
 export async function getRun(runId: string): Promise<WorkflowRunDetail> {
   return apiFetch<WorkflowRunDetail>(`${BASE}/${runId}`);
 }
@@ -68,4 +74,14 @@ export async function getContext(
   runId: string,
 ): Promise<Record<string, unknown>> {
   return apiFetch<Record<string, unknown>>(`${BASE}/${runId}/context`);
+}
+
+export async function rerunStep(
+  runId: string,
+  stepKey: string,
+): Promise<{ rerun: string; cascadeReset: string[] }> {
+  return apiFetch<{ rerun: string; cascadeReset: string[] }>(
+    `${BASE}/${runId}/steps/${stepKey}/rerun`,
+    { method: 'POST' },
+  );
 }

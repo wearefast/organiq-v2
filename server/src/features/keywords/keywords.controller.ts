@@ -8,6 +8,7 @@ import {
   Body,
   Query,
   UseGuards,
+  BadRequestException,
 } from '@nestjs/common';
 import { ApiTags, ApiBearerAuth } from '@nestjs/swagger';
 import { KeywordsService, BulkKeywordInput } from './keywords.service';
@@ -62,10 +63,14 @@ export class KeywordsController {
     @Param('projectId') projectId: string,
     @Body() body: { keywordIds: string[]; status: string },
   ) {
+    const validStatuses = ['discovered', 'approved', 'brief_ready', 'written', 'published'];
+    if (!validStatuses.includes(body.status)) {
+      throw new BadRequestException(`Invalid status. Must be one of: ${validStatuses.join(', ')}`);
+    }
     return this.keywordsService.updateStatus(
       projectId,
       body.keywordIds,
-      body.status as any,
+      body.status as 'discovered' | 'approved' | 'brief_ready' | 'written' | 'published',
     );
   }
 

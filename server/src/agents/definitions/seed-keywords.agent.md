@@ -3,11 +3,11 @@ name: Seed Keywords Generator
 step_key: seed-keywords
 model: gpt-4o
 temperature: 0.4
-max_iterations: 3
+max_iterations: 6
 credit_cost: 40
 depends_on:
   - business-profile
-requires_approval: false
+requires_approval: true
 tools:
   - ahrefs_organic_keywords
   - ahrefs_related_keywords
@@ -33,6 +33,8 @@ Produce a diverse set of 50-150 seed keywords that cover the full search landsca
 6. **Categorize and deduplicate** the final list
 
 ## Output Schema
+
+Return ONLY the JSON object below — no explanation, no markdown code fences, no commentary before or after.
 
 ```json
 {
@@ -68,3 +70,5 @@ Produce a diverse set of 50-150 seed keywords that cover the full search landsca
 - At least 5 categories must have entries
 - Deduplicate — no near-identical variations
 - Every keyword must have a clear connection to the business
+- **If any tool returns an error, skip it and use the remaining tools.** Do NOT retry a failed tool more than once.
+- **Always produce the JSON output** with whatever data you have gathered. Partial data is better than no output. Use your knowledge to supplement missing tool data.

@@ -5,6 +5,7 @@ import { SerperService } from '../features/integrations/serper/serper.service';
 import { FirecrawlService } from '../features/integrations/firecrawl/firecrawl.service';
 import { PageSpeedService } from '../features/integrations/pagespeed/pagespeed.service';
 import { DataForSeoService } from '../features/integrations/dataforseo/dataforseo.service';
+import { OpenAiService } from '../features/integrations/openai/openai.service';
 
 @Injectable()
 export class ToolBootstrap implements OnModuleInit {
@@ -17,6 +18,7 @@ export class ToolBootstrap implements OnModuleInit {
     private readonly firecrawl: FirecrawlService,
     private readonly pagespeed: PageSpeedService,
     private readonly dataForSeo: DataForSeoService,
+    private readonly openai: OpenAiService,
   ) {}
 
   onModuleInit() {
@@ -162,40 +164,40 @@ export class ToolBootstrap implements OnModuleInit {
       // --- DataForSEO ---
       {
         name: 'dataforseo_serp',
-        description: 'Get SERP results for a keyword',
+        description: 'Get SERP results for a keyword. Location accepts country names ("United States", "Saudi Arabia") or ISO codes ("us", "sa"). Language accepts ISO 639-1 codes ("en", "ar").',
         inputSchema: {
           type: 'object',
-          properties: { keyword: { type: 'string' }, location: { type: 'string' }, language: { type: 'string' } },
+          properties: { keyword: { type: 'string' }, location: { type: 'string', description: 'Country name or ISO code, e.g. "United States" or "us"' }, language: { type: 'string', description: 'ISO 639-1 language code, e.g. "en"' } },
           required: ['keyword'],
         },
         execute: (input: any) => this.dataForSeo.getSerpResults(input.keyword, input.location, input.language),
       },
       {
         name: 'dataforseo_keyword_volume',
-        description: 'Get search volume data for keywords via DataForSEO',
+        description: 'Get search volume data for keywords via DataForSEO. Location accepts country names or ISO codes. Language accepts ISO 639-1 codes.',
         inputSchema: {
           type: 'object',
-          properties: { keywords: { type: 'array', items: { type: 'string' } }, location: { type: 'string' }, language: { type: 'string' } },
+          properties: { keywords: { type: 'array', items: { type: 'string' } }, location: { type: 'string', description: 'Country name or ISO code' }, language: { type: 'string', description: 'ISO 639-1 language code' } },
           required: ['keywords'],
         },
         execute: (input: any) => this.dataForSeo.getKeywordSearchVolume(input.keywords, input.location, input.language),
       },
       {
         name: 'dataforseo_keyword_suggestions',
-        description: 'Get keyword suggestions for a seed keyword',
+        description: 'Get keyword suggestions for a seed keyword. Location accepts country names or ISO codes. Language accepts ISO 639-1 codes.',
         inputSchema: {
           type: 'object',
-          properties: { keyword: { type: 'string' }, location: { type: 'string' }, language: { type: 'string' }, limit: { type: 'number' } },
+          properties: { keyword: { type: 'string' }, location: { type: 'string', description: 'Country name or ISO code' }, language: { type: 'string', description: 'ISO 639-1 language code' }, limit: { type: 'number' } },
           required: ['keyword'],
         },
         execute: (input: any) => this.dataForSeo.getKeywordSuggestions(input.keyword, input.location, input.language, input.limit),
       },
       {
         name: 'dataforseo_keyword_difficulty',
-        description: 'Get keyword difficulty scores via DataForSEO',
+        description: 'Get keyword difficulty scores via DataForSEO. Location accepts country names or ISO codes. Language accepts ISO 639-1 codes.',
         inputSchema: {
           type: 'object',
-          properties: { keywords: { type: 'array', items: { type: 'string' } }, location: { type: 'string' }, language: { type: 'string' } },
+          properties: { keywords: { type: 'array', items: { type: 'string' } }, location: { type: 'string', description: 'Country name or ISO code' }, language: { type: 'string', description: 'ISO 639-1 language code' } },
           required: ['keywords'],
         },
         execute: (input: any) => this.dataForSeo.getKeywordDifficulty(input.keywords, input.location, input.language),
@@ -223,6 +225,27 @@ export class ToolBootstrap implements OnModuleInit {
         description: 'Detect technologies used by a domain',
         inputSchema: { type: 'object', properties: { domain: { type: 'string' } }, required: ['domain'] },
         execute: (input: any) => this.dataForSeo.getDomainTechnologies(input.domain),
+      },
+      // --- OpenAI Inference ---
+      {
+        name: 'openai_ai_inference',
+        description:
+          'Ask OpenAI a natural-language question as a real user would and check if a specific brand appears in the AI response. Use this to test ACTUAL AI visibility — whether ChatGPT mentions or recommends the brand when asked category-level or comparison questions. Returns the AI response text, whether the brand was mentioned, position quality (featured/cited/listed/absent), and the surrounding context sentence.',
+        inputSchema: {
+          type: 'object',
+          properties: {
+            query: {
+              type: 'string',
+              description: 'The question to ask OpenAI, e.g. "What are the best banks in Saudi Arabia?" or "Which bank should I use for personal loans in Saudi Arabia?"',
+            },
+            brand: {
+              type: 'string',
+              description: 'The brand name to look for in the AI response, e.g. "Saudi National Bank" or "SNB"',
+            },
+          },
+          required: ['query', 'brand'],
+        },
+        execute: (input: any) => this.openai.inferAiBrandMention(input.query, input.brand),
       },
     ];
 

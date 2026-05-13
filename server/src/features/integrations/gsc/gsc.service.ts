@@ -1,5 +1,6 @@
 import { Injectable, Logger } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
+import { withRetry } from '../../../shared/utils/retry';
 
 @Injectable()
 export class GscService {
@@ -25,19 +26,24 @@ export class GscService {
   private async post(endpoint: string, body: Record<string, unknown>): Promise<unknown> {
     this.logger.debug(`GSC Sidecar: POST ${endpoint}`);
 
-    const response = await fetch(`${this.sidecarUrl}${endpoint}`, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify(body),
-      signal: AbortSignal.timeout(30_000),
-    });
+    return withRetry(
+      async () => {
+        const response = await fetch(`${this.sidecarUrl}${endpoint}`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(body),
+          signal: AbortSignal.timeout(30_000),
+        });
 
-    if (!response.ok) {
-      const text = await response.text();
-      this.logger.error(`GSC Sidecar error: ${response.status}`);
-      throw new Error(`GSC Sidecar error: ${response.status}`);
-    }
+        if (!response.ok) {
+          const text = await response.text();
+          this.logger.error(`GSC Sidecar error: ${response.status}`);
+          throw new Error(`GSC Sidecar error: ${response.status}`);
+        }
 
-    return response.json();
+        return response.json();
+      },
+      { label: `GSC ${endpoint}` },
+    );
   }
 }

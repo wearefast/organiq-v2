@@ -1,6 +1,6 @@
 import { Injectable, Logger, OnModuleInit } from '@nestjs/common';
 import { PromptService } from '../shared/prompt/prompt.service';
-import { readdirSync } from 'fs';
+import { existsSync, readdirSync } from 'fs';
 import { join } from 'path';
 
 interface AgentDefinition {
@@ -24,11 +24,22 @@ export class AgentRegistry implements OnModuleInit {
   private readonly definitionsDir: string;
 
   constructor(private readonly promptService: PromptService) {
-    this.definitionsDir = join(process.cwd(), '..', 'server', 'src', 'agents', 'definitions');
+    this.definitionsDir = this.resolveDefinitionsDir();
+  }
+
+  private resolveDefinitionsDir(): string {
+    const candidates = [
+      join(process.cwd(), 'src', 'agents', 'definitions'),
+      join(process.cwd(), 'server', 'src', 'agents', 'definitions'),
+      join(__dirname, 'definitions'),
+    ];
+
+    return candidates.find((candidate) => existsSync(candidate)) ?? candidates[0];
   }
 
   async onModuleInit() {
     await this.loadAll();
+    this.validateDependencies();
   }
 
   async loadAll(): Promise<void> {
@@ -76,5 +87,31 @@ export class AgentRegistry implements OnModuleInit {
       graph.set(key, agent.dependsOn);
     }
     return graph;
+  }
+
+  /**
+   * Validate that every dependsOn reference in agent definitions
+   * points to a loaded agent. Logs warnings for mismatches.
+   */
+  private validateDependencies(): void {
+    const loadedKeys = new Set(this.agents.keys());
+    let issues = 0;
+
+    for (const [stepKey, agent] of this.agents) {
+      for (const dep of agent.dependsOn) {
+        if (!loadedKeys.has(dep)) {
+          this.logger.warn(
+            `Agent "${stepKey}" depends on "${dep}" which is not a loaded agent`,
+          );
+          issues++;
+        }
+      }
+    }
+
+    if (issues === 0) {
+      this.logger.log('Agent dependency cross-validation passed');
+    } else {
+      this.logger.warn(`Agent dependency cross-validation found ${issues} issue(s)`);
+    }
   }
 }

@@ -19,16 +19,21 @@ export class AuthService {
     name: string;
     slug: string;
   }) {
-    const [org] = await this.db.db
+    const result = await this.db.db
       .insert(organizations)
       .values({
         clerkOrgId: payload.id,
         name: payload.name,
         slug: payload.slug,
       })
+      .onConflictDoNothing()
       .returning();
 
-    return org;
+    if (result.length === 0) {
+      return this.findOrgByClerkId(payload.id);
+    }
+
+    return result[0];
   }
 
   /**
@@ -51,7 +56,7 @@ export class AuthService {
 
     const role = payload.role === 'org:admin' ? 'admin' : 'member';
 
-    const [member] = await this.db.db
+    const result = await this.db.db
       .insert(orgMembers)
       .values({
         organizationId: org.id,
@@ -60,9 +65,10 @@ export class AuthService {
         name,
         role: role as 'owner' | 'admin' | 'member',
       })
+      .onConflictDoNothing()
       .returning();
 
-    return member;
+    return result[0] ?? null;
   }
 
   /**

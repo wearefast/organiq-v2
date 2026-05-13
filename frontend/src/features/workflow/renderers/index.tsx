@@ -11,6 +11,10 @@ import { Method01Renderer } from './method01-competitor-pages';
 import { Method02Renderer } from './method02-seed-expansion';
 import { Method03Renderer } from './method03-content-gap';
 import { ConsolidatedKeywordsRenderer } from './consolidated-keywords';
+import { VerdictStrategyRenderer } from './verdict-strategy';
+import { TopicalMapRenderer } from './topical-map';
+import { ContentBriefRenderer } from './content-brief';
+import { ContentArticleRenderer } from './content-article';
 
 const RENDERERS: Record<string, React.ComponentType<{ data: unknown }>> = {
   'business-profile': BusinessProfileRenderer,
@@ -26,6 +30,10 @@ const RENDERERS: Record<string, React.ComponentType<{ data: unknown }>> = {
   'method02-seed-expansion': Method02Renderer,
   'method03-content-gap-import': Method03Renderer,
   'consolidated-keywords': ConsolidatedKeywordsRenderer,
+  'verdict-strategy': VerdictStrategyRenderer,
+  'topical-map': TopicalMapRenderer,
+  'content-brief': ContentBriefRenderer,
+  'content-article': ContentArticleRenderer,
 };
 
 export function renderArtifact(

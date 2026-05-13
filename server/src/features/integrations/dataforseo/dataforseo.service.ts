@@ -1,5 +1,65 @@
 import { Injectable, Logger } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
+import { withRetry } from '../../../shared/utils/retry';
+
+/** Maps common ISO country codes and short names to DataForSEO location_name values. */
+const LOCATION_MAP: Record<string, string> = {
+  us: 'United States',
+  uk: 'United Kingdom',
+  gb: 'United Kingdom',
+  ca: 'Canada',
+  au: 'Australia',
+  de: 'Germany',
+  fr: 'France',
+  es: 'Spain',
+  it: 'Italy',
+  br: 'Brazil',
+  in: 'India',
+  jp: 'Japan',
+  sa: 'Saudi Arabia',
+  ae: 'United Arab Emirates',
+  uae: 'United Arab Emirates',
+  eg: 'Egypt',
+  sg: 'Singapore',
+  my: 'Malaysia',
+  id: 'Indonesia',
+  tr: 'Turkey',
+  nl: 'Netherlands',
+  se: 'Sweden',
+  no: 'Norway',
+  dk: 'Denmark',
+  fi: 'Finland',
+  pl: 'Poland',
+  za: 'South Africa',
+  mx: 'Mexico',
+  ar: 'Argentina',
+  cl: 'Chile',
+  co: 'Colombia',
+  ph: 'Philippines',
+  th: 'Thailand',
+  vn: 'Vietnam',
+  kr: 'South Korea',
+  tw: 'Taiwan',
+  hk: 'Hong Kong',
+  nz: 'New Zealand',
+  ie: 'Ireland',
+  pt: 'Portugal',
+  ch: 'Switzerland',
+  at: 'Austria',
+  be: 'Belgium',
+  cz: 'Czechia',
+  ro: 'Romania',
+  hu: 'Hungary',
+  il: 'Israel',
+  ng: 'Nigeria',
+  ke: 'Kenya',
+  pk: 'Pakistan',
+  bd: 'Bangladesh',
+  qa: 'Qatar',
+  kw: 'Kuwait',
+  bh: 'Bahrain',
+  om: 'Oman',
+};
 
 @Injectable()
 export class DataForSeoService {
@@ -17,7 +77,7 @@ export class DataForSeoService {
 
   async getSerpResults(keyword: string, location: string = 'United States', language: string = 'en') {
     return this.post('/serp/google/organic/live/advanced', [
-      { keyword, location_name: location, language_name: language },
+      { keyword, location_name: this.resolveLocation(location), language_code: language },
     ]);
   }
 
@@ -25,19 +85,19 @@ export class DataForSeoService {
 
   async getKeywordSearchVolume(keywords: string[], location: string = 'United States', language: string = 'en') {
     return this.post('/keywords_data/google_ads/search_volume/live', [
-      { keywords, location_name: location, language_name: language },
+      { keywords, location_name: this.resolveLocation(location), language_code: language },
     ]);
   }
 
   async getKeywordSuggestions(keyword: string, location: string = 'United States', language: string = 'en', limit: number = 100) {
     return this.post('/keywords_data/google_ads/keywords_for_keywords/live', [
-      { keywords: [keyword], location_name: location, language_name: language, limit },
+      { keywords: [keyword], location_name: this.resolveLocation(location), language_code: language, limit },
     ]);
   }
 
   async getKeywordDifficulty(keywords: string[], location: string = 'United States', language: string = 'en') {
     return this.post('/keywords_data/google_ads/search_volume/live', [
-      { keywords, location_name: location, language_name: language, calculate_relevance: true },
+      { keywords, location_name: this.resolveLocation(location), language_code: language, calculate_relevance: true },
     ]);
   }
 
@@ -95,22 +155,48 @@ export class DataForSeoService {
 
     this.logger.debug(`DataForSEO API: ${method} ${endpoint}`);
 
-    const response = await fetch(url, {
-      method,
-      headers: {
-        Authorization: `Basic ${credentials}`,
-        'Content-Type': 'application/json',
+    return withRetry(
+      async () => {
+        const response = await fetch(url, {
+          method,
+          headers: {
+            Authorization: `Basic ${credentials}`,
+            'Content-Type': 'application/json',
+          },
+          signal: AbortSignal.timeout(30_000),
+          ...(body ? { body: JSON.stringify(body) } : {}),
+        });
+
+        if (!response.ok) {
+          const text = await response.text();
+          this.logger.error(`DataForSEO API error: ${response.status}`);
+          throw new Error(`DataForSEO API error: ${response.status}`);
+        }
+
+        const result = await response.json() as { tasks?: Array<{ status_code?: number; status_message?: string }> };
+
+        // Check task-level errors (DataForSEO returns HTTP 200 with error details inside tasks)
+        const task = result.tasks?.[0];
+        if (task && task.status_code && task.status_code !== 20000) {
+          const msg = `DataForSEO task error ${task.status_code}: ${task.status_message ?? 'unknown'}`;
+          this.logger.error(msg);
+          throw new Error(msg);
+        }
+
+        return result;
       },
-      signal: AbortSignal.timeout(30_000),
-      ...(body ? { body: JSON.stringify(body) } : {}),
-    });
+      { label: `DataForSEO ${method} ${endpoint}` },
+    );
+  }
 
-    if (!response.ok) {
-      const text = await response.text();
-      this.logger.error(`DataForSEO API error: ${response.status}`);
-      throw new Error(`DataForSEO API error: ${response.status}`);
+  /** Resolve ISO country codes or short names to DataForSEO location_name values. */
+  private resolveLocation(location: string): string {
+    const key = location.trim().toLowerCase();
+    // If it's a known ISO code or abbreviation, map it
+    if (LOCATION_MAP[key]) {
+      return LOCATION_MAP[key];
     }
-
-    return response.json();
+    // Otherwise pass through as-is (already a full name like "Saudi Arabia")
+    return location;
   }
 }

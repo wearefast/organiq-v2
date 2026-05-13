@@ -5,6 +5,7 @@ const logger = new Logger('RetryUtil');
 /**
  * Retry a function with exponential backoff.
  * Useful for transient network failures in integration services.
+ * Skips retries for 4xx client errors (except 429 rate limits).
  */
 export async function withRetry<T>(
   fn: () => Promise<T>,
@@ -16,6 +17,15 @@ export async function withRetry<T>(
     try {
       return await fn();
     } catch (error) {
+      // Don't retry 4xx client errors (except 429 rate limits) — they're permanent failures
+      const statusMatch = error instanceof Error && error.message.match(/(\d{3})/);
+      if (statusMatch) {
+        const status = parseInt(statusMatch[1], 10);
+        if (status >= 400 && status < 500 && status !== 429) {
+          throw error;
+        }
+      }
+
       if (attempt === attempts) throw error;
 
       const wait = delayMs * Math.pow(2, attempt - 1);

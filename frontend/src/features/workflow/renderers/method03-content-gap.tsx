@@ -1,5 +1,8 @@
 'use client';
 
+import { useState } from 'react';
+import { InfoTip } from '@/shared/components';
+
 interface ImportedKeyword {
   keyword: string;
   volume: number;
@@ -45,8 +48,33 @@ interface Method03Data {
   [key: string]: unknown;
 }
 
+/**
+ * Normalize agent output: data may have 'keywords' instead of 'importedKeywords',
+ * and fields may be snake_case (funnel_stage, opportunity_score).
+ */
+function normalizeMethod03(raw: Record<string, unknown>): Method03Data {
+  const result = { ...raw } as Method03Data;
+
+  // Map 'keywords' → 'importedKeywords' if needed
+  const kwSource = (result.importedKeywords ?? (raw as Record<string, unknown>).keywords) as Array<Record<string, unknown>> | undefined;
+  if (Array.isArray(kwSource) && kwSource.length > 0 && !result.importedKeywords) {
+    result.importedKeywords = kwSource.map((kw) => ({
+      keyword: String(kw.keyword ?? ''),
+      volume: Number(kw.volume ?? 0),
+      difficulty: Number(kw.difficulty ?? 0),
+      intent: String(kw.intent ?? ''),
+      funnelStage: String(kw.funnelStage ?? kw.funnel_stage ?? ''),
+      source: String(kw.source ?? 'content-gap'),
+      opportunityScore: Number(kw.opportunityScore ?? kw.opportunity_score ?? 0),
+      isNew: Boolean(kw.isNew ?? kw.is_new ?? true),
+    }));
+  }
+
+  return result;
+}
+
 export function Method03Renderer({ data }: { data: unknown }) {
-  const m03 = data as Method03Data;
+  const m03 = data && typeof data === 'object' ? normalizeMethod03(data as Record<string, unknown>) : (data as Method03Data);
 
   if (!m03 || typeof m03 !== 'object') {
     return <p className="text-sm text-zinc-500">No content gap import data available.</p>;
@@ -71,13 +99,13 @@ export function Method03Renderer({ data }: { data: unknown }) {
         <div>
           <SectionLabel>Import Pipeline</SectionLabel>
           <div className="mt-2 flex items-center gap-2">
-            <PipelineStep label="Imported" value={m03.importStats.totalImported} />
+            <PipelineStep label="Imported" value={m03.importStats.totalImported} tip="Raw keywords imported from analysis" />
             <Arrow />
-            <PipelineStep label="Cleaned" value={m03.importStats.afterCleaning} />
+            <PipelineStep label="Cleaned" value={m03.importStats.afterCleaning} tip="After removing formatting issues" />
             <Arrow />
-            <PipelineStep label="Deduped" value={m03.importStats.afterDedup} />
+            <PipelineStep label="Deduped" value={m03.importStats.afterDedup} tip="After removing exact duplicates" />
             <Arrow />
-            <PipelineStep label="New Unique" value={m03.importStats.newUnique} active />
+            <PipelineStep label="New Unique" value={m03.importStats.newUnique} active tip="Final count ready for strategy" />
           </div>
           <p className="mt-1.5 text-[10px] text-zinc-500">
             {m03.importStats.duplicatesRemoved} duplicates removed · {m03.importStats.enriched} enriched with metrics
@@ -133,39 +161,7 @@ export function Method03Renderer({ data }: { data: unknown }) {
 
       {/* Imported Keywords Table */}
       {m03.importedKeywords && m03.importedKeywords.length > 0 && (
-        <div>
-          <SectionLabel>Imported Keywords (top {Math.min(20, m03.importedKeywords.length)})</SectionLabel>
-          <div className="mt-2 overflow-hidden rounded-lg border border-zinc-800">
-            <table className="w-full text-sm">
-              <thead>
-                <tr className="border-b border-zinc-800 bg-zinc-900/80">
-                  <th className="px-3 py-2 text-left text-[10px] uppercase text-zinc-500">Keyword</th>
-                  <th className="px-3 py-2 text-right text-[10px] uppercase text-zinc-500">Volume</th>
-                  <th className="px-3 py-2 text-right text-[10px] uppercase text-zinc-500">KD</th>
-                  <th className="px-3 py-2 text-left text-[10px] uppercase text-zinc-500">Source</th>
-                  <th className="px-3 py-2 text-right text-[10px] uppercase text-zinc-500">Score</th>
-                </tr>
-              </thead>
-              <tbody>
-                {m03.importedKeywords.slice(0, 20).map((kw, i) => (
-                  <tr key={i} className="border-b border-zinc-800/50 hover:bg-zinc-800/30">
-                    <td className="px-3 py-2 text-zinc-200">{kw.keyword}</td>
-                    <td className="px-3 py-2 text-right text-zinc-400">{formatNumber(kw.volume)}</td>
-                    <td className="px-3 py-2 text-right"><DifficultyBadge value={kw.difficulty} /></td>
-                    <td className="px-3 py-2">
-                      <span className="rounded bg-zinc-800 px-1.5 py-0.5 text-[10px] text-zinc-400">{kw.source}</span>
-                    </td>
-                    <td className="px-3 py-2 text-right">
-                      <span className="rounded bg-violet-500/20 px-1.5 py-0.5 text-[10px] font-medium text-violet-400">
-                        {(kw.opportunityScore * 100).toFixed(0)}%
-                      </span>
-                    </td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-          </div>
-        </div>
+        <SortableImportedKeywordsTable keywords={m03.importedKeywords} />
       )}
 
       {/* Recommendation */}
@@ -178,11 +174,67 @@ export function Method03Renderer({ data }: { data: unknown }) {
   );
 }
 
-function PipelineStep({ label, value, active }: { label: string; value: number; active?: boolean }) {
+function SortableImportedKeywordsTable({ keywords }: { keywords: ImportedKeyword[] }) {
+  type SK = 'keyword' | 'volume' | 'difficulty' | 'source' | 'opportunityScore';
+  const [sortKey, setSortKey] = useState<SK>('opportunityScore');
+  const [sortDir, setSortDir] = useState<'asc' | 'desc'>('desc');
+
+  const handleSort = (key: SK) => {
+    if (sortKey === key) setSortDir(d => d === 'asc' ? 'desc' : 'asc');
+    else { setSortKey(key); setSortDir(key === 'keyword' || key === 'source' ? 'asc' : 'desc'); }
+  };
+
+  const sorted = [...keywords].sort((a, b) => {
+    const va = a[sortKey], vb = b[sortKey];
+    const cmp = typeof va === 'string' ? va.localeCompare(vb as string) : (Number(va) || 0) - (Number(vb) || 0);
+    return sortDir === 'asc' ? cmp : -cmp;
+  });
+
+  const arrow = (key: SK) => sortKey === key ? (sortDir === 'asc' ? ' ▲' : ' ▼') : '';
+  const th = (align: string) => `cursor-pointer select-none px-3 py-2 text-[10px] uppercase text-zinc-500 hover:text-zinc-300 ${align}`;
+
+  return (
+    <div>
+      <SectionLabel>Imported Keywords ({keywords.length})</SectionLabel>
+      <div className="mt-2 overflow-hidden rounded-lg border border-zinc-800">
+        <table className="w-full text-sm">
+          <thead>
+            <tr className="border-b border-zinc-800 bg-zinc-900/80">
+              <th className={th('text-left')} onClick={() => handleSort('keyword')}><InfoTip tip="Imported keyword term">Keyword{arrow('keyword')}</InfoTip></th>
+              <th className={th('text-right')} onClick={() => handleSort('volume')}><InfoTip tip="Monthly search volume">Volume{arrow('volume')}</InfoTip></th>
+              <th className={th('text-right')} onClick={() => handleSort('difficulty')}><InfoTip tip="Keyword Difficulty (0–100)">KD{arrow('difficulty')}</InfoTip></th>
+              <th className={th('text-left')} onClick={() => handleSort('source')}><InfoTip tip="Where this keyword originated">Source{arrow('source')}</InfoTip></th>
+              <th className={th('text-right')} onClick={() => handleSort('opportunityScore')}><InfoTip tip="Opportunity score (0–100%)">Score{arrow('opportunityScore')}</InfoTip></th>
+            </tr>
+          </thead>
+          <tbody>
+            {sorted.slice(0, 20).map((kw, i) => (
+              <tr key={i} className="border-b border-zinc-800/50 hover:bg-zinc-800/30">
+                <td className="px-3 py-2 text-zinc-200">{kw.keyword}</td>
+                <td className="px-3 py-2 text-right text-zinc-400">{formatNumber(kw.volume)}</td>
+                <td className="px-3 py-2 text-right"><DifficultyBadge value={kw.difficulty} /></td>
+                <td className="px-3 py-2">
+                  <span className="rounded bg-zinc-800 px-1.5 py-0.5 text-[10px] text-zinc-400">{kw.source}</span>
+                </td>
+                <td className="px-3 py-2 text-right">
+                  <span className="rounded bg-violet-500/20 px-1.5 py-0.5 text-[10px] font-medium text-violet-400">
+                    {(kw.opportunityScore * 100).toFixed(0)}%
+                  </span>
+                </td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      </div>
+    </div>
+  );
+}
+
+function PipelineStep({ label, value, active, tip }: { label: string; value: number; active?: boolean; tip?: string }) {
   return (
     <div className={`rounded border px-3 py-2 text-center ${active ? 'border-emerald-500/50 bg-emerald-500/10' : 'border-zinc-800 bg-zinc-900/50'}`}>
       <p className={`text-sm font-bold ${active ? 'text-emerald-400' : 'text-zinc-100'}`}>{formatNumber(value)}</p>
-      <p className="text-[9px] uppercase text-zinc-500">{label}</p>
+      <p className="text-[9px] uppercase text-zinc-500">{tip ? <InfoTip tip={tip}>{label}</InfoTip> : label}</p>
     </div>
   );
 }

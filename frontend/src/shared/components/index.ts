@@ -6,3 +6,4 @@ export { Avatar } from './avatar';
 export { TopBar } from './top-bar';
 export { SideNav } from './side-nav';
 export { CommandPalette } from './command-palette';
+export { InfoTip } from './info-tip';

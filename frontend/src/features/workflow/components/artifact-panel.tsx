@@ -2,7 +2,6 @@
 
 import { useState } from 'react';
 import { cn } from '@/shared/utils/cn';
-import { StatusBadge } from '@/shared/components/status-badge';
 import {
   STEP_DEFINITIONS,
   type WorkflowStep,
@@ -16,6 +15,7 @@ interface ArtifactPanelProps {
   onApprove: (stepKey: string, notes?: string) => void;
   onRevise: (stepKey: string, notes: string) => void;
   onReject: (stepKey: string, notes: string) => void;
+  onRerun?: (stepKey: string) => void;
   renderArtifact?: (stepKey: string, data: unknown) => React.ReactNode;
 }
 
@@ -24,10 +24,12 @@ export function ArtifactPanel({
   onApprove,
   onRevise,
   onReject,
+  onRerun,
   renderArtifact,
 }: ArtifactPanelProps) {
   const [notes, setNotes] = useState('');
   const [showNotes, setShowNotes] = useState(false);
+  const [rerunConfirm, setRerunConfirm] = useState(false);
 
   if (!step) {
     return (
@@ -47,6 +49,11 @@ export function ArtifactPanel({
   const latestArtifact: StepArtifact | undefined = step.artifacts?.[0];
   const showApprovalBar =
     step.status === 'awaiting_approval' || step.status === 'completed';
+  const showRerunButton =
+    onRerun &&
+    step.status !== 'approved' &&
+    step.status !== 'pending' &&
+    step.status !== 'running';
 
   return (
     <div className="flex flex-1 flex-col overflow-hidden">
@@ -60,7 +67,6 @@ export function ArtifactPanel({
             <h2 className="text-section text-zinc-100">
               {def?.label ?? step.stepKey}
             </h2>
-            <StatusBadge status={step.status} pulse={step.status === 'running'} />
           </div>
           {def && (
             <p className="mt-0.5 text-[12px] text-zinc-500">{def.description}</p>
@@ -153,8 +159,38 @@ export function ArtifactPanel({
       </div>
 
       {/* Approval bar */}
-      {showApprovalBar && (
+      {(showApprovalBar || showRerunButton) && (
         <footer className="border-t border-zinc-800 bg-[var(--bg-elevated)] px-6 py-3">
+          {rerunConfirm && (
+            <div className="mb-3 flex items-center justify-between rounded-md border border-blue-500/20 bg-blue-500/5 px-3 py-2">
+              <p className="text-[12px] text-blue-300">
+                Re-run this step? Downstream steps will also be reset and re-executed.
+              </p>
+              <div className="flex items-center gap-2">
+                <button
+                  type="button"
+                  onClick={() => setRerunConfirm(false)}
+                  className="btn-ghost text-[12px]"
+                >
+                  Cancel
+                </button>
+                <button
+                  type="button"
+                  onClick={() => {
+                    onRerun!(step.stepKey);
+                    setRerunConfirm(false);
+                  }}
+                  className={cn(
+                    'inline-flex items-center gap-1.5 rounded-md px-3 py-1.5 text-[12px] font-medium transition-colors',
+                    'bg-blue-600 text-white hover:bg-blue-700',
+                  )}
+                >
+                  Confirm Re-run
+                </button>
+              </div>
+            </div>
+          )}
+
           {showNotes && (
             <div className="mb-3">
               <textarea
@@ -176,6 +212,21 @@ export function ArtifactPanel({
             </button>
 
             <div className="flex items-center gap-2">
+              {showRerunButton && (
+                <button
+                  type="button"
+                  onClick={() => setRerunConfirm(true)}
+                  className={cn(
+                    'inline-flex items-center gap-1.5 rounded-md px-3 py-1.5 text-[12px] font-medium transition-colors',
+                    'border border-blue-500/30 text-blue-400 hover:bg-blue-500/10',
+                  )}
+                >
+                  <svg className="h-3.5 w-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+                    <path strokeLinecap="round" strokeLinejoin="round" d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" />
+                  </svg>
+                  Re-run
+                </button>
+              )}
               <button
                 type="button"
                 onClick={() => {

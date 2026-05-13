@@ -1,5 +1,8 @@
 'use client';
 
+import { useState } from 'react';
+import { InfoTip } from '@/shared/components';
+
 interface CurrentRankings {
   total: number;
   top3: number;
@@ -49,12 +52,87 @@ interface Phase1BaselineData {
   [key: string]: unknown;
 }
 
+/**
+ * Normalize agent output: field names may differ from interface.
+ * Agent uses: currentRankingKeywords, quickWinOpportunities, keywordOverlapAnalysis,
+ *   keywordGapsVsCompetitors, searchIntentDistribution
+ */
+function normalizeBaseline(raw: Record<string, unknown>): Phase1BaselineData {
+  const result: Phase1BaselineData = {};
+
+  // Map quickWinOpportunities → quickWins
+  const qwRaw = (raw.quickWins ?? raw.quickWinOpportunities) as Array<Record<string, unknown>> | undefined;
+  if (Array.isArray(qwRaw) && qwRaw.length > 0) {
+    result.quickWins = qwRaw.map((qw) => ({
+      keyword: String(qw.keyword ?? qw.metric ?? ''),
+      currentPosition: Number(qw.currentPosition ?? qw.position ?? 0),
+      volume: Number(qw.volume ?? 0),
+      difficulty: Number(qw.difficulty ?? 0),
+      url: String(qw.url ?? ''),
+      estimatedTrafficGain: Number(qw.estimatedTrafficGain ?? qw.difference ?? 0),
+      action: String(qw.action ?? `Beat ${qw.competitor ?? 'competitor'}`),
+    }));
+  }
+
+  // Map searchIntentDistribution → intentDistribution
+  const intentRaw = (raw.intentDistribution ?? raw.searchIntentDistribution) as Record<string, unknown> | undefined;
+  if (intentRaw && typeof intentRaw === 'object') {
+    const entries = Object.entries(intentRaw);
+    const total = entries.reduce((s, [, v]) => s + Number(v ?? 0), 0);
+    const mapped: Record<string, { count: number; volume: number; percentage: number }> = {};
+    for (const [intent, val] of entries) {
+      const count = Number(val ?? 0);
+      mapped[intent] = { count, volume: count, percentage: total > 0 ? Math.round((count / total) * 100) : 0 };
+    }
+    result.intentDistribution = mapped;
+  }
+
+  // Map keywordOverlapAnalysis → competitorOverlap
+  const overlapRaw = (raw.competitorOverlap ?? raw.keywordOverlapAnalysis) as Record<string, unknown> | undefined;
+  if (overlapRaw && typeof overlapRaw === 'object') {
+    const overlap = (overlapRaw as Record<string, unknown>).overlapWithCompetitors ?? (overlapRaw as Record<string, unknown>).overlap;
+    if (Array.isArray(overlap)) {
+      result.competitorOverlap = overlap.map((co: Record<string, unknown>) => ({
+        competitor: String(co.competitor ?? co.domain ?? ''),
+        sharedKeywords: Number(co.sharedKeywords ?? co.shared ?? 0),
+        uniqueToCompetitor: Number(co.uniqueToCompetitor ?? 0),
+        uniqueToUs: Number(co.uniqueToUs ?? 0),
+        overlapPercentage: Number(co.overlapPercentage ?? co.overlap ?? 0),
+      }));
+    }
+  }
+
+  // Map keywordGapsVsCompetitors summary
+  const gapsRaw = raw.keywordGapsVsCompetitors as Record<string, unknown> | undefined;
+  if (gapsRaw?.summary && typeof gapsRaw.summary === 'string') {
+    result.summary = {
+      totalKeywordUniverse: 0,
+      currentVisibility: 0,
+      estimatedTraffic: 0,
+      quickWinPotential: result.quickWins?.length ?? 0,
+      gapOpportunity: 0,
+    };
+    // Store raw summary as _gapSummary for display
+    (result as Record<string, unknown>)._gapSummary = gapsRaw.summary;
+  }
+
+  // Preserve any matching fields from raw
+  if (raw.currentRankings) result.currentRankings = raw.currentRankings as CurrentRankings;
+  if (raw.summary && typeof raw.summary === 'object') result.summary = raw.summary as Phase1BaselineData['summary'];
+
+  return result;
+}
+
 export function Phase1BaselineRenderer({ data }: { data: unknown }) {
-  const baseline = data as Phase1BaselineData;
+  const baseline = data && typeof data === 'object'
+    ? normalizeBaseline(data as Record<string, unknown>)
+    : (data as Phase1BaselineData);
 
   if (!baseline || typeof baseline !== 'object') {
     return <p className="text-sm text-zinc-500">No baseline data available.</p>;
   }
+
+  const gapSummary = (baseline as Record<string, unknown>)._gapSummary as string | undefined;
 
   return (
     <div className="space-y-6">
@@ -63,11 +141,11 @@ export function Phase1BaselineRenderer({ data }: { data: unknown }) {
         <div>
           <SectionLabel>Current Ranking Distribution</SectionLabel>
           <div className="mt-2 grid grid-cols-5 gap-2">
-            <RankBucket label="Top 3" count={baseline.currentRankings.top3} color="text-emerald-400" />
-            <RankBucket label="Top 10" count={baseline.currentRankings.top10} color="text-green-400" />
-            <RankBucket label="Top 20" count={baseline.currentRankings.top20} color="text-yellow-400" />
-            <RankBucket label="Top 100" count={baseline.currentRankings.top100} color="text-orange-400" />
-            <RankBucket label="Total" count={baseline.currentRankings.total} color="text-zinc-300" />
+            <RankBucket label="Top 3" count={baseline.currentRankings.top3} color="text-emerald-400" tip="Keywords ranking in positions 1–3" />
+            <RankBucket label="Top 10" count={baseline.currentRankings.top10} color="text-green-400" tip="Keywords on page 1 of search results" />
+            <RankBucket label="Top 20" count={baseline.currentRankings.top20} color="text-yellow-400" tip="Keywords ranking in positions 1–20" />
+            <RankBucket label="Top 100" count={baseline.currentRankings.top100} color="text-orange-400" tip="Keywords ranking in the top 100 results" />
+            <RankBucket label="Total" count={baseline.currentRankings.total} color="text-zinc-300" tip="Total trackable keywords for your site" />
           </div>
         </div>
       )}
@@ -75,47 +153,15 @@ export function Phase1BaselineRenderer({ data }: { data: unknown }) {
       {/* Summary Metrics */}
       {baseline.summary && (
         <div className="grid grid-cols-3 gap-3">
-          <MetricCard label="Keyword Universe" value={formatNumber(baseline.summary.totalKeywordUniverse)} />
-          <MetricCard label="Est. Traffic" value={formatNumber(baseline.summary.estimatedTraffic)} />
-          <MetricCard label="Quick Win Potential" value={formatNumber(baseline.summary.quickWinPotential)} />
+          <MetricCard label="Keyword Universe" value={formatNumber(baseline.summary.totalKeywordUniverse)} tip="Total trackable keywords for your niche" />
+          <MetricCard label="Est. Traffic" value={formatNumber(baseline.summary.estimatedTraffic)} tip="Estimated monthly organic traffic" />
+          <MetricCard label="Quick Win Potential" value={formatNumber(baseline.summary.quickWinPotential)} tip="Keywords close to ranking on page 1" />
         </div>
       )}
 
       {/* Quick Wins */}
       {baseline.quickWins && baseline.quickWins.length > 0 && (
-        <div>
-          <SectionLabel>Quick Wins ({baseline.quickWins.length})</SectionLabel>
-          <div className="mt-2 overflow-hidden rounded-lg border border-zinc-800">
-            <table className="w-full text-sm">
-              <thead>
-                <tr className="border-b border-zinc-800 bg-zinc-900/80">
-                  <th className="px-3 py-2 text-left text-[10px] uppercase text-zinc-500">Keyword</th>
-                  <th className="px-3 py-2 text-right text-[10px] uppercase text-zinc-500">Pos</th>
-                  <th className="px-3 py-2 text-right text-[10px] uppercase text-zinc-500">Volume</th>
-                  <th className="px-3 py-2 text-right text-[10px] uppercase text-zinc-500">KD</th>
-                  <th className="px-3 py-2 text-right text-[10px] uppercase text-zinc-500">Traffic Gain</th>
-                  <th className="px-3 py-2 text-left text-[10px] uppercase text-zinc-500">Action</th>
-                </tr>
-              </thead>
-              <tbody>
-                {baseline.quickWins.slice(0, 15).map((qw, i) => (
-                  <tr key={i} className="border-b border-zinc-800/50 hover:bg-zinc-800/30">
-                    <td className="px-3 py-2 text-zinc-200">{qw.keyword}</td>
-                    <td className="px-3 py-2 text-right text-zinc-300">{qw.currentPosition}</td>
-                    <td className="px-3 py-2 text-right text-zinc-400">{formatNumber(qw.volume)}</td>
-                    <td className="px-3 py-2 text-right">
-                      <DifficultyBadge value={qw.difficulty} />
-                    </td>
-                    <td className="px-3 py-2 text-right text-emerald-400">+{formatNumber(qw.estimatedTrafficGain)}</td>
-                    <td className="px-3 py-2">
-                      <span className="rounded bg-zinc-800 px-1.5 py-0.5 text-[10px] text-zinc-400">{qw.action}</span>
-                    </td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-          </div>
-        </div>
+        <SortableQuickWinsTable quickWins={baseline.quickWins} />
       )}
 
       {/* Intent Distribution */}
@@ -153,23 +199,85 @@ export function Phase1BaselineRenderer({ data }: { data: unknown }) {
           </div>
         </div>
       )}
+
+      {/* Gap Summary */}
+      {gapSummary && (
+        <div>
+          <SectionLabel>Gap Analysis</SectionLabel>
+          <p className="mt-1 text-sm leading-relaxed text-zinc-300">{gapSummary}</p>
+        </div>
+      )}
     </div>
   );
 }
 
-function RankBucket({ label, count, color }: { label: string; count: number; color: string }) {
+function SortableQuickWinsTable({ quickWins }: { quickWins: QuickWin[] }) {
+  type SK = 'keyword' | 'currentPosition' | 'volume' | 'difficulty' | 'estimatedTrafficGain';
+  const [sortKey, setSortKey] = useState<SK>('estimatedTrafficGain');
+  const [sortDir, setSortDir] = useState<'asc' | 'desc'>('desc');
+
+  const handleSort = (key: SK) => {
+    if (sortKey === key) setSortDir(d => d === 'asc' ? 'desc' : 'asc');
+    else { setSortKey(key); setSortDir(key === 'keyword' ? 'asc' : 'desc'); }
+  };
+
+  const sorted = [...quickWins].sort((a, b) => {
+    const va = a[sortKey], vb = b[sortKey];
+    const cmp = typeof va === 'string' ? va.localeCompare(vb as string) : (Number(va) || 0) - (Number(vb) || 0);
+    return sortDir === 'asc' ? cmp : -cmp;
+  });
+
+  const arrow = (key: SK) => sortKey === key ? (sortDir === 'asc' ? ' ▲' : ' ▼') : '';
+  const th = (align: string) => `cursor-pointer select-none px-3 py-2 text-[10px] uppercase text-zinc-500 hover:text-zinc-300 ${align}`;
+
+  return (
+    <div>
+      <SectionLabel>Quick Wins ({quickWins.length})</SectionLabel>
+      <div className="mt-2 overflow-hidden rounded-lg border border-zinc-800">
+        <table className="w-full text-sm">
+          <thead>
+            <tr className="border-b border-zinc-800 bg-zinc-900/80">
+              <th className={th('text-left')} onClick={() => handleSort('keyword')}><InfoTip tip="Term you currently rank for">Keyword{arrow('keyword')}</InfoTip></th>
+              <th className={th('text-right')} onClick={() => handleSort('currentPosition')}><InfoTip tip="Current SERP position">Pos{arrow('currentPosition')}</InfoTip></th>
+              <th className={th('text-right')} onClick={() => handleSort('volume')}><InfoTip tip="Monthly search volume">Volume{arrow('volume')}</InfoTip></th>
+              <th className={th('text-right')} onClick={() => handleSort('difficulty')}><InfoTip tip="Keyword Difficulty (0–100)">KD{arrow('difficulty')}</InfoTip></th>
+              <th className={th('text-right')} onClick={() => handleSort('estimatedTrafficGain')}><InfoTip tip="Est. traffic if moved to position #1">Traffic Gain{arrow('estimatedTrafficGain')}</InfoTip></th>
+              <th className="px-3 py-2 text-left text-[10px] uppercase text-zinc-500"><InfoTip tip="Recommended optimization action">Action</InfoTip></th>
+            </tr>
+          </thead>
+          <tbody>
+            {sorted.slice(0, 15).map((qw, i) => (
+              <tr key={i} className="border-b border-zinc-800/50 hover:bg-zinc-800/30">
+                <td className="px-3 py-2 text-zinc-200">{qw.keyword}</td>
+                <td className="px-3 py-2 text-right text-zinc-300">{qw.currentPosition}</td>
+                <td className="px-3 py-2 text-right text-zinc-400">{formatNumber(qw.volume)}</td>
+                <td className="px-3 py-2 text-right"><DifficultyBadge value={qw.difficulty} /></td>
+                <td className="px-3 py-2 text-right text-emerald-400">+{formatNumber(qw.estimatedTrafficGain)}</td>
+                <td className="px-3 py-2">
+                  <span className="rounded bg-zinc-800 px-1.5 py-0.5 text-[10px] text-zinc-400">{qw.action}</span>
+                </td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      </div>
+    </div>
+  );
+}
+
+function RankBucket({ label, count, color, tip }: { label: string; count: number; color: string; tip?: string }) {
   return (
     <div className="rounded border border-zinc-800 bg-zinc-900/50 p-2 text-center">
       <p className={`text-lg font-bold ${color}`}>{formatNumber(count)}</p>
-      <p className="text-[10px] text-zinc-500">{label}</p>
+      <p className="text-[10px] text-zinc-500">{tip ? <InfoTip tip={tip}>{label}</InfoTip> : label}</p>
     </div>
   );
 }
 
-function MetricCard({ label, value }: { label: string; value: string }) {
+function MetricCard({ label, value, tip }: { label: string; value: string; tip?: string }) {
   return (
     <div className="rounded-lg border border-zinc-800 bg-zinc-900/50 p-3">
-      <p className="text-[10px] uppercase tracking-wider text-zinc-500">{label}</p>
+      <p className="text-[10px] uppercase tracking-wider text-zinc-500">{tip ? <InfoTip tip={tip}>{label}</InfoTip> : label}</p>
       <p className="mt-1 text-xl font-bold text-zinc-100">{value}</p>
     </div>
   );

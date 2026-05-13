@@ -49,6 +49,8 @@ export class OpenAiService {
     this.defaultModel = this.config.get<string>('OPENAI_MODEL', 'gpt-4o');
   }
 
+  private static readonly MAX_RETRIES = 3;
+
   async chatCompletion(options: ChatCompletionOptions): Promise<ChatCompletionResult> {
     if (!this.apiKey) throw new Error('OPENAI_API_KEY is not configured');
 
@@ -68,6 +70,90 @@ export class OpenAiService {
 
     this.logger.debug(`OpenAI API: chat/completions (model=${body.model})`);
 
+    let lastError: Error | null = null;
+
+    for (let attempt = 0; attempt <= OpenAiService.MAX_RETRIES; attempt++) {
+      const response = await fetch(`${this.baseUrl}/chat/completions`, {
+        method: 'POST',
+        headers: {
+          Authorization: `Bearer ${this.apiKey}`,
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify(body),
+        signal: AbortSignal.timeout(120_000),
+      });
+
+      if (!response.ok) {
+        const errorBody = await response.text();
+        this.logger.error(`OpenAI API error: ${response.status}`, errorBody);
+
+        // Retry on rate limit (429) and server errors (5xx)
+        if ((response.status === 429 || response.status >= 500) && attempt < OpenAiService.MAX_RETRIES) {
+          const delay = Math.min(1000 * 2 ** attempt, 8000) + Math.random() * 1000;
+          this.logger.warn(`OpenAI retrying in ${Math.round(delay)}ms (attempt ${attempt + 1}/${OpenAiService.MAX_RETRIES})`);
+          await new Promise((r) => setTimeout(r, delay));
+          lastError = new Error(`OpenAI API error: ${response.status}`);
+          continue;
+        }
+
+        throw new Error(`OpenAI API error: ${response.status}`);
+      }
+
+      const data = (await response.json()) as {
+        choices: Array<{ message: ChatMessage; finish_reason: string }>;
+        usage: { prompt_tokens: number; completion_tokens: number; total_tokens: number };
+      };
+
+      if (!data.choices || !data.choices[0]) {
+        throw new Error('OpenAI API returned an invalid response: missing choices');
+      }
+
+      const choice = data.choices[0];
+
+      return {
+        message: choice.message,
+        finishReason: choice.finish_reason as ChatCompletionResult['finishReason'],
+        usage: {
+          promptTokens: data.usage.prompt_tokens,
+          completionTokens: data.usage.completion_tokens,
+          totalTokens: data.usage.total_tokens,
+        },
+      };
+    }
+
+    // All retries exhausted
+    throw lastError ?? new Error('OpenAI API request failed after retries');
+  }
+
+  // ─── AI Brand Inference ────────────────────────────────────────────────────
+
+  /**
+   * Sends a natural-language query to GPT-4o-mini and checks whether a brand
+   * appears in the response — simulating what a real user would see from an AI
+   * assistant. Used by the AI Intelligence agent to measure actual AI presence.
+   */
+  async inferAiBrandMention(query: string, brand: string): Promise<{
+    query: string;
+    mentioned: boolean;
+    position: 'featured' | 'cited' | 'listed' | 'absent';
+    mentionContext: string | null;
+    aiResponse: string;
+  }> {
+    if (!this.apiKey) throw new Error('OPENAI_API_KEY is not configured');
+
+    const body = {
+      model: 'gpt-4o-mini',
+      messages: [
+        {
+          role: 'system',
+          content: 'You are a helpful assistant. Answer the user\'s question naturally and thoroughly, as you would to any user.',
+        },
+        { role: 'user', content: query },
+      ],
+      temperature: 0.5,
+      max_tokens: 600,
+    };
+
     const response = await fetch(`${this.baseUrl}/chat/completions`, {
       method: 'POST',
       headers: {
@@ -75,30 +161,45 @@ export class OpenAiService {
         'Content-Type': 'application/json',
       },
       body: JSON.stringify(body),
-      signal: AbortSignal.timeout(120_000),
+      signal: AbortSignal.timeout(30_000),
     });
 
     if (!response.ok) {
       const text = await response.text();
-      this.logger.error(`OpenAI API error: ${response.status}`);
-      throw new Error(`OpenAI API error: ${response.status}`);
+      throw new Error(`OpenAI inference error: ${response.status} — ${text}`);
     }
 
     const data = (await response.json()) as {
-      choices: Array<{ message: ChatMessage; finish_reason: string }>;
-      usage: { prompt_tokens: number; completion_tokens: number; total_tokens: number };
+      choices: Array<{ message: { content: string } }>;
     };
 
-    const choice = data.choices[0];
+    const aiResponse = data.choices[0]?.message?.content ?? '';
+    const brandLower = brand.toLowerCase();
+    const responseLower = aiResponse.toLowerCase();
+    const mentioned = responseLower.includes(brandLower);
 
-    return {
-      message: choice.message,
-      finishReason: choice.finish_reason as ChatCompletionResult['finishReason'],
-      usage: {
-        promptTokens: data.usage.prompt_tokens,
-        completionTokens: data.usage.completion_tokens,
-        totalTokens: data.usage.total_tokens,
-      },
-    };
+    let position: 'featured' | 'cited' | 'listed' | 'absent' = 'absent';
+    let mentionContext: string | null = null;
+
+    if (mentioned) {
+      const idx = responseLower.indexOf(brandLower);
+      // Extract ~150 chars around the mention for context
+      const start = Math.max(0, idx - 80);
+      const end = Math.min(aiResponse.length, idx + brand.length + 80);
+      mentionContext = `...${aiResponse.slice(start, end).trim()}...`;
+
+      // Determine position quality
+      const firstSentenceEnd = aiResponse.search(/[.!?]/);
+      const firstSentence = firstSentenceEnd > -1 ? aiResponse.slice(0, firstSentenceEnd) : aiResponse.slice(0, 120);
+      if (firstSentence.toLowerCase().includes(brandLower)) {
+        position = 'featured';
+      } else if (/[-•*]\s/.test(aiResponse.slice(Math.max(0, idx - 5), idx + 5))) {
+        position = 'listed';
+      } else {
+        position = 'cited';
+      }
+    }
+
+    return { query, mentioned, position, mentionContext, aiResponse };
   }
 }

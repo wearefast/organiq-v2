@@ -1,5 +1,6 @@
 import { Injectable, Logger } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
+import { withRetry } from '../../../shared/utils/retry';
 
 type Strategy = 'mobile' | 'desktop';
 
@@ -22,18 +23,23 @@ export class PageSpeedService {
 
     this.logger.debug(`PageSpeed API: ${url} (${strategy})`);
 
-    const response = await fetch(
-      `https://www.googleapis.com/pagespeedonline/v5/runPagespeed?${params}`,
-      { signal: AbortSignal.timeout(60_000) },
+    return withRetry(
+      async () => {
+        const response = await fetch(
+          `https://www.googleapis.com/pagespeedonline/v5/runPagespeed?${params}`,
+          { signal: AbortSignal.timeout(60_000) },
+        );
+
+        if (!response.ok) {
+          const text = await response.text();
+          this.logger.error(`PageSpeed API error: ${response.status}`);
+          throw new Error(`PageSpeed API error: ${response.status}`);
+        }
+
+        return response.json();
+      },
+      { label: `PageSpeed ${url}` },
     );
-
-    if (!response.ok) {
-      const text = await response.text();
-      this.logger.error(`PageSpeed API error: ${response.status}`);
-      throw new Error(`PageSpeed API error: ${response.status}`);
-    }
-
-    return response.json();
   }
 
   async getCruxData(origin: string): Promise<unknown> {
@@ -41,22 +47,27 @@ export class PageSpeedService {
 
     this.logger.debug(`CrUX API: ${origin}`);
 
-    const response = await fetch(
-      `https://chromeuxreport.googleapis.com/v1/records:queryRecord?key=${this.apiKey}`,
-      {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ origin }),
-        signal: AbortSignal.timeout(30_000),
+    return withRetry(
+      async () => {
+        const response = await fetch(
+          `https://chromeuxreport.googleapis.com/v1/records:queryRecord?key=${this.apiKey}`,
+          {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ origin }),
+            signal: AbortSignal.timeout(30_000),
+          },
+        );
+
+        if (!response.ok) {
+          const text = await response.text();
+          this.logger.error(`CrUX API error: ${response.status}`);
+          throw new Error(`CrUX API error: ${response.status}`);
+        }
+
+        return response.json();
       },
+      { label: `CrUX ${origin}` },
     );
-
-    if (!response.ok) {
-      const text = await response.text();
-      this.logger.error(`CrUX API error: ${response.status}`);
-      throw new Error(`CrUX API error: ${response.status}`);
-    }
-
-    return response.json();
   }
 }

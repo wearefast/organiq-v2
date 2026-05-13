@@ -25,6 +25,16 @@ export class WorkflowController {
     return this.workflowService.startRun(id);
   }
 
+  @Post(':id/resume')
+  async resumeRun(@Param('id') id: string) {
+    return this.workflowService.resumeRun(id);
+  }
+
+  @Get('steps/:stepId/tool-calls')
+  async getStepToolCalls(@Param('stepId') stepId: string) {
+    return this.workflowService.getStepToolCalls(stepId);
+  }
+
   @Get(':id')
   async getRun(@Param('id') id: string) {
     return this.workflowService.getRun(id);
@@ -116,5 +126,18 @@ export class WorkflowController {
   @Get(':id/context')
   async getContext(@Param('id') runId: string) {
     return this.workflowService.getContext(runId);
+  }
+
+  @Post(':id/steps/:stepKey/rerun')
+  async rerunStep(
+    @Param('id') runId: string,
+    @Param('stepKey') stepKey: string,
+  ) {
+    const result = await this.workflowService.rerunStep(runId, stepKey);
+
+    // Emit real-time rerun event
+    this.workflowGateway.emitStepRerun(runId, stepKey, result.cascadeReset);
+
+    return result;
   }
 }

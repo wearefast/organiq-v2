@@ -11,18 +11,13 @@ import {
 const STATUS_COLORS: Record<StepStatus, string> = {
   pending: 'bg-zinc-600',
   running: 'bg-blue-500',
-  completed: 'bg-green-500',
+  completed: 'bg-yellow-500',
   awaiting_approval: 'bg-amber-500',
   approved: 'bg-emerald-500',
   revision_requested: 'bg-orange-500',
   rejected: 'bg-red-500',
   failed: 'bg-red-500',
   skipped: 'bg-zinc-500',
-};
-
-const STATUS_LABELS: Partial<Record<StepStatus, string>> = {
-  awaiting_approval: 'Awaiting review',
-  revision_requested: 'Revision needed',
 };
 
 const PHASE_COLORS: Record<number, string> = {
@@ -100,9 +95,19 @@ export function StepRail({ steps, activeStepKey, onStepClick }: StepRailProps) {
                   {/* Status dot */}
                   <span className="flex h-5 w-5 shrink-0 items-center justify-center">
                     {status === 'running' ? (
-                      <span className="relative flex h-2.5 w-2.5">
-                        <span className="absolute inline-flex h-full w-full animate-ping rounded-full bg-blue-500 opacity-40" />
-                        <span className="relative inline-flex h-2.5 w-2.5 rounded-full bg-blue-500" />
+                      <span className="h-3 w-3 animate-spin rounded-full border-2 border-blue-500 border-t-transparent" />
+                    ) : status === 'approved' ? (
+                      <span className="flex h-3.5 w-3.5 items-center justify-center rounded-full bg-emerald-500">
+                        <svg className="h-2 w-2 text-white" viewBox="0 0 12 12" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
+                          <polyline points="2,6 5,9 10,3" />
+                        </svg>
+                      </span>
+                    ) : status === 'rejected' || status === 'failed' ? (
+                      <span className="flex h-3.5 w-3.5 items-center justify-center rounded-full bg-red-500">
+                        <svg className="h-2 w-2 text-white" viewBox="0 0 12 12" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round">
+                          <line x1="3" y1="3" x2="9" y2="9" />
+                          <line x1="9" y1="3" x2="3" y2="9" />
+                        </svg>
                       </span>
                     ) : (
                       <span
@@ -124,26 +129,6 @@ export function StepRail({ steps, activeStepKey, onStepClick }: StepRailProps) {
                         {def.label}
                       </span>
                     </div>
-                    {status !== 'pending' && (
-                      <span
-                        className={cn(
-                          'text-[10px]',
-                          status === 'failed' || status === 'rejected'
-                            ? 'text-red-400'
-                            : status === 'running'
-                              ? 'text-blue-400'
-                              : status === 'awaiting_approval'
-                                ? 'text-amber-400'
-                                : status === 'approved' || status === 'completed'
-                                  ? 'text-emerald-400'
-                                  : 'text-zinc-500',
-                        )}
-                      >
-                        {STATUS_LABELS[status] ??
-                          status.charAt(0).toUpperCase() +
-                            status.slice(1).replace(/_/g, ' ')}
-                      </span>
-                    )}
                   </div>
                 </button>
               );

@@ -12,13 +12,20 @@ Build the topical map:
 4. Create a 12-month content calendar
 5. Define internal linking architecture
 
+## Constraints
+- NEVER include keywords containing competitor brand names in pillars, clusters, content calendar, or linking architecture
+- Competitor brands to exclude: {{competitor-brands}}
+- Only build content for keywords the target domain ({{domain}}) can realistically own and rank for
+- If a keyword is navigational toward a competitor (e.g., "[brand] login", "[brand] app", "[brand] customer service"), exclude it entirely
+- Generic industry keywords are fine even if competitors also rank for them
+
 ---
 
 Strategy:
-{{verdictStrategy}}
+{{verdict-strategy}}
 
 Consolidated keywords:
-{{consolidatedKeywords}}
+{{consolidated-keywords}}
 
 Domain: {{domain}}
 Industry: {{industry}}

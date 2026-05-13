@@ -4,6 +4,25 @@
 
 Single-file reference for the Pulse OS v2 codebase. Covers product model, architecture, agent system, workflow engine, and development conventions.
 
+## Detailed Documentation Index
+
+For comprehensive coverage, see the dedicated docs:
+
+| Area | Document | What It Covers |
+|------|----------|----------------|
+| Product | [Product Overview](product/overview.md) | What Pulse is, 17-step workflow, key concepts, credit costs |
+| API | [API Reference](architecture/api-reference.md) | Complete REST endpoints for all 11 controllers + sidecar |
+| Dependencies | [Dependencies](architecture/dependencies.md) | All packages, env variables, external services |
+| Workflows | [Workflows](features/workflows.md) | Agent pipeline, step states, dependency graph |
+| Keywords | [Keywords](features/keywords.md) | Keyword lifecycle, intent, funnel stages |
+| Content | [Content](features/content.md) | Briefs, articles, scoring framework |
+| Reports | [Reports](features/reports.md) | PDF generation, templates, download flow |
+| Topical Maps | [Topical Maps](features/topical-maps.md) | Pillar → cluster → keyword hierarchy |
+| Integrations | [Integrations](features/integrations.md) | 8 external services, retry logic, tool registry |
+| Auth | [Auth & Orgs](features/auth.md) | Clerk SSO, webhooks, idempotency |
+| Credits | [Credits](features/credits.md) | Credit system, ledger, debit flow |
+| Changelog | [Changelog](changelog.md) | All fixes and updates with evidence |
+
 ---
 
 ## Product Summary

@@ -27,7 +27,8 @@ import { WorkflowService } from './workflow.service';
 })
 export class WorkflowGateway implements OnGatewayConnection, OnGatewayDisconnect {
   private readonly logger = new Logger(WorkflowGateway.name);
-  private jwks: ReturnType<typeof createRemoteJWKSet> | null = null;
+  private readonly jwksByIssuer = new Map<string, { jwks: ReturnType<typeof createRemoteJWKSet>; createdAt: number }>();
+  private static readonly JWKS_TTL_MS = 60 * 60 * 1000; // 1 hour
 
   constructor(
     private readonly configService: ConfigService,
@@ -47,13 +48,15 @@ export class WorkflowGateway implements OnGatewayConnection, OnGatewayDisconnect
         return;
       }
 
-      if (!this.jwks) {
-        const clerkDomain = this.configService.get<string>('CLERK_DOMAIN') || 'clerk.dev';
-        this.jwks = createRemoteJWKSet(new URL(`https://${clerkDomain}/.well-known/jwks.json`));
-      }
+      const issuer = this.resolveIssuer(token);
+      const jwks = this.getJwks(issuer);
 
-      const { payload } = await jwtVerify(token, this.jwks);
-      const clerkOrgId = payload.org_id as string | undefined;
+      const { payload } = await jwtVerify(token, jwks, {
+        issuer,
+      });
+      // Clerk v2 JWTs store org at payload.o.id; v1 used payload.org_id
+      const clerkOrgId = payload.org_id as string | undefined
+        ?? (payload.o as { id?: string } | undefined)?.id;
 
       if (!clerkOrgId) {
         this.logger.warn(`Client ${client.id} rejected: no org context`);
@@ -112,32 +115,81 @@ export class WorkflowGateway implements OnGatewayConnection, OnGatewayDisconnect
   }
 
   // ─── Emit Methods (called by processor/service) ────────────
+  // All wrapped in try-catch to prevent Socket.IO failures from crashing the processor.
 
   emitStepStarted(workflowRunId: string, stepKey: string) {
-    this.server.to(`run:${workflowRunId}`).emit('step:started', { stepKey });
+    try { this.server.to(`run:${workflowRunId}`).emit('step:started', { stepKey }); }
+    catch (e) { this.logger.error(`WebSocket emit failed (step:started): ${e}`); }
   }
 
   emitStepToolCall(workflowRunId: string, stepKey: string, toolName: string) {
-    this.server.to(`run:${workflowRunId}`).emit('step:tool-call', { stepKey, toolName });
+    try { this.server.to(`run:${workflowRunId}`).emit('step:tool-call', { stepKey, toolName }); }
+    catch (e) { this.logger.error(`WebSocket emit failed (step:tool-call): ${e}`); }
   }
 
   emitStepCompleted(workflowRunId: string, stepKey: string, status: string) {
-    this.server.to(`run:${workflowRunId}`).emit('step:completed', { stepKey, status });
+    try { this.server.to(`run:${workflowRunId}`).emit('step:completed', { stepKey, status }); }
+    catch (e) { this.logger.error(`WebSocket emit failed (step:completed): ${e}`); }
   }
 
   emitStepApproved(workflowRunId: string, stepKey: string) {
-    this.server.to(`run:${workflowRunId}`).emit('step:approved', { stepKey });
+    try { this.server.to(`run:${workflowRunId}`).emit('step:approved', { stepKey }); }
+    catch (e) { this.logger.error(`WebSocket emit failed (step:approved): ${e}`); }
   }
 
   emitStepRejected(workflowRunId: string, stepKey: string) {
-    this.server.to(`run:${workflowRunId}`).emit('step:rejected', { stepKey });
+    try { this.server.to(`run:${workflowRunId}`).emit('step:rejected', { stepKey }); }
+    catch (e) { this.logger.error(`WebSocket emit failed (step:rejected): ${e}`); }
+  }
+
+  emitStepRerun(workflowRunId: string, stepKey: string, cascadeReset: string[]) {
+    try { this.server.to(`run:${workflowRunId}`).emit('step:rerun', { stepKey, cascadeReset }); }
+    catch (e) { this.logger.error(`WebSocket emit failed (step:rerun): ${e}`); }
   }
 
   emitStepError(workflowRunId: string, stepKey: string, error: string) {
-    this.server.to(`run:${workflowRunId}`).emit('step:error', { stepKey, error });
+    try { this.server.to(`run:${workflowRunId}`).emit('step:error', { stepKey, error }); }
+    catch (e) { this.logger.error(`WebSocket emit failed (step:error): ${e}`); }
   }
 
   emitWorkflowCompleted(workflowRunId: string) {
-    this.server.to(`run:${workflowRunId}`).emit('workflow:completed', { workflowRunId });
+    try { this.server.to(`run:${workflowRunId}`).emit('workflow:completed', { workflowRunId }); }
+    catch (e) { this.logger.error(`WebSocket emit failed (workflow:completed): ${e}`); }
+  }
+
+  // ─── Auth Helpers ──────────────────────────────────────────
+
+  private getJwks(issuer: string) {
+    const cached = this.jwksByIssuer.get(issuer);
+    if (cached && Date.now() - cached.createdAt <= WorkflowGateway.JWKS_TTL_MS) {
+      return cached.jwks;
+    }
+
+    const jwks = createRemoteJWKSet(new URL(`${issuer}/.well-known/jwks.json`));
+    this.jwksByIssuer.set(issuer, { jwks, createdAt: Date.now() });
+    return jwks;
+  }
+
+  private resolveIssuer(token: string): string {
+    const configuredDomain = this.configService.get<string>('CLERK_DOMAIN')?.trim().replace(/^https?:\/\//, '').replace(/\/$/, '');
+    if (configuredDomain) {
+      return `https://${configuredDomain}`;
+    }
+
+    // Fallback: read issuer from token (same logic as ClerkGuard)
+    const [, payloadSegment] = token.split('.');
+    if (!payloadSegment) throw new Error('Invalid token');
+
+    const payload = JSON.parse(Buffer.from(payloadSegment, 'base64url').toString('utf8')) as { iss?: unknown };
+    if (typeof payload.iss !== 'string') throw new Error('Invalid token');
+
+    const issuer = new URL(payload.iss);
+    const isTrustedDevIssuer =
+      process.env.NODE_ENV !== 'production' &&
+      issuer.protocol === 'https:' &&
+      issuer.hostname.endsWith('.clerk.accounts.dev');
+
+    if (!isTrustedDevIssuer) throw new Error('Untrusted issuer');
+    return issuer.origin;
   }
 }

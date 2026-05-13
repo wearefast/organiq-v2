@@ -47,6 +47,26 @@
     --status-failed: #EF4444;
   }
 
+  [data-theme="light"] {
+    --bg-shell: #F4F4F5;
+    --bg-sidebar: #FFFFFF;
+    --bg-content: #FFFFFF;
+    --bg-elevated: #F4F4F5;
+    --bg-hover: #E4E4E7;
+
+    --accent: #E11D48;
+    --accent-hover: #BE123C;
+    --accent-muted: rgba(225, 29, 72, 0.1);
+
+    --text-primary: #18181B;
+    --text-secondary: #52525B;
+    --text-muted: #A1A1AA;
+
+    --border: #E4E4E7;
+    --border-subtle: #F4F4F5;
+    --ring: #E11D48;
+  }
+
   * {
     border-color: var(--border);
     box-sizing: border-box;
@@ -75,6 +95,11 @@
   code, pre, kbd {
     font-family: var(--font-mono), 'JetBrains Mono', monospace;
   }
+
+  /* Hide Clerk development mode floating indicator */
+  #clerk-components {
+    display: none !important;
+  }
 }
 
 @layer components {
@@ -83,18 +108,120 @@
   }
 
   .btn-secondary {
-    @apply inline-flex items-center justify-center rounded-md border border-zinc-700 bg-zinc-800 px-4 py-2 text-sm font-medium text-zinc-100 transition-colors hover:bg-zinc-700 focus-visible:outline-none disabled:opacity-50;
+    @apply inline-flex items-center justify-center rounded-md px-4 py-2 text-sm font-medium transition-colors focus-visible:outline-none disabled:opacity-50 disabled:pointer-events-none;
+    border: 1px solid var(--border);
+    background-color: var(--bg-elevated);
+    color: var(--text-primary);
+  }
+
+  .btn-secondary:hover {
+    background-color: var(--bg-hover);
   }
 
   .btn-ghost {
-    @apply inline-flex items-center justify-center rounded-md px-4 py-2 text-sm font-medium text-zinc-400 transition-colors hover:text-zinc-100 hover:bg-zinc-800 focus-visible:outline-none;
+    @apply inline-flex items-center justify-center rounded-md px-4 py-2 text-sm font-medium transition-colors focus-visible:outline-none;
+    color: var(--text-muted);
+  }
+
+  .btn-ghost:hover {
+    color: var(--text-primary);
+    background-color: var(--bg-elevated);
   }
 
   .card {
-    @apply rounded-lg border border-zinc-800 bg-elevated;
+    @apply rounded-lg border;
+    border-color: var(--border);
+    background-color: var(--bg-elevated);
   }
 
   .input {
-    @apply h-9 w-full rounded-md border border-zinc-700 bg-zinc-900 px-3 text-sm text-zinc-100 placeholder:text-zinc-500 focus:border-rose-600 focus:outline-none focus:ring-1 focus:ring-rose-600;
+    @apply h-9 w-full rounded-md border px-3 text-sm focus:outline-none focus:ring-1;
+    border-color: var(--border);
+    background-color: var(--bg-elevated);
+    color: var(--text-primary);
+    --tw-ring-color: var(--ring);
+  }
+
+  .input::placeholder {
+    color: var(--text-muted);
+  }
+
+  .input:focus {
+    border-color: var(--accent);
   }
 }
+
+/* ═══════════════════════════════════════════════════════════════════════════
+   LIGHT MODE — Remap hardcoded dark zinc Tailwind utilities to their light
+   equivalents. The component library was built for dark mode using absolute
+   zinc-* classes. This block inverts them when [data-theme="light"] is active
+   without requiring changes to individual component files.
+   ═══════════════════════════════════════════════════════════════════════════ */
+
+/* ── Backgrounds ─────────────────────────────────────────────────────────── */
+[data-theme="light"] .bg-zinc-950  { background-color: #f8fafc; }
+[data-theme="light"] .bg-zinc-900  { background-color: #f4f4f5; }
+[data-theme="light"] .bg-zinc-800  { background-color: #e4e4e7; }
+[data-theme="light"] .bg-zinc-700  { background-color: #d4d4d8; }
+[data-theme="light"] .bg-zinc-600  { background-color: #a1a1aa; }
+
+/* Alpha variants */
+[data-theme="light"] .bg-zinc-900\/50 { background-color: rgb(244 244 245 / 0.7); }
+[data-theme="light"] .bg-zinc-900\/30 { background-color: rgb(244 244 245 / 0.5); }
+[data-theme="light"] .bg-zinc-800\/50 { background-color: rgb(228 228 231 / 0.7); }
+[data-theme="light"] .bg-zinc-800\/40 { background-color: rgb(228 228 231 / 0.6); }
+[data-theme="light"] .bg-zinc-800\/30 { background-color: rgb(228 228 231 / 0.5); }
+[data-theme="light"] .bg-zinc-800\/20 { background-color: rgb(228 228 231 / 0.4); }
+
+/* ── Text ────────────────────────────────────────────────────────────────── */
+[data-theme="light"] .text-white    { color: #18181b; }
+[data-theme="light"] .text-zinc-100 { color: #18181b; }
+[data-theme="light"] .text-zinc-200 { color: #27272a; }
+[data-theme="light"] .text-zinc-300 { color: #3f3f46; }
+[data-theme="light"] .text-zinc-400 { color: #52525b; }
+[data-theme="light"] .text-zinc-500 { color: #71717a; }
+[data-theme="light"] .text-zinc-600 { color: #71717a; }
+
+/* Colored text — boost to accessible contrast on white */
+[data-theme="light"] .text-blue-300   { color: #1d4ed8; }
+[data-theme="light"] .text-blue-400   { color: #2563eb; }
+[data-theme="light"] .text-green-300  { color: #15803d; }
+[data-theme="light"] .text-green-400  { color: #16a34a; }
+[data-theme="light"] .text-emerald-400 { color: #059669; }
+[data-theme="light"] .text-amber-400  { color: #b45309; }
+[data-theme="light"] .text-violet-400 { color: #7c3aed; }
+[data-theme="light"] .text-red-400    { color: #dc2626; }
+[data-theme="light"] .text-orange-400 { color: #c2410c; }
+
+/* Colored backgrounds — swap deep dark tints to soft light tints */
+[data-theme="light"] .bg-blue-900\/40   { background-color: rgb(219 234 254 / 0.8); }
+[data-theme="light"] .bg-violet-900\/40 { background-color: rgb(237 233 254 / 0.8); }
+[data-theme="light"] .bg-amber-900\/40  { background-color: rgb(254 243 199 / 0.8); }
+[data-theme="light"] .bg-red-900\/40    { background-color: rgb(254 226 226 / 0.8); }
+[data-theme="light"] .bg-emerald-900\/40 { background-color: rgb(209 250 229 / 0.8); }
+
+/* Hover white-text */
+[data-theme="light"] .hover\:text-white:hover { color: #18181b; }
+
+/* ── Borders ─────────────────────────────────────────────────────────────── */
+[data-theme="light"] .border-zinc-900          { border-color: #d4d4d8; }
+[data-theme="light"] .border-zinc-800          { border-color: #e4e4e7; }
+[data-theme="light"] .border-zinc-700          { border-color: #d4d4d8; }
+[data-theme="light"] .border-zinc-800\/50      { border-color: rgb(228 228 231 / 0.6); }
+
+/* ── Dividers ────────────────────────────────────────────────────────────── */
+[data-theme="light"] .divide-zinc-800 > :not([hidden]) ~ :not([hidden]) { border-color: #e4e4e7; }
+[data-theme="light"] .divide-zinc-700 > :not([hidden]) ~ :not([hidden]) { border-color: #d4d4d8; }
+
+/* ── Hover states ────────────────────────────────────────────────────────── */
+[data-theme="light"] .hover\:bg-zinc-800:hover       { background-color: #e4e4e7; }
+[data-theme="light"] .hover\:bg-zinc-700:hover       { background-color: #d4d4d8; }
+[data-theme="light"] .hover\:bg-zinc-800\/40:hover   { background-color: rgb(228 228 231 / 0.6); }
+[data-theme="light"] .hover\:bg-zinc-800\/30:hover   { background-color: rgb(228 228 231 / 0.5); }
+[data-theme="light"] .hover\:bg-zinc-800\/20:hover   { background-color: rgb(228 228 231 / 0.4); }
+[data-theme="light"] .hover\:text-zinc-100:hover     { color: #18181b; }
+[data-theme="light"] .hover\:text-zinc-200:hover     { color: #27272a; }
+[data-theme="light"] .hover\:border-zinc-700:hover   { border-color: #d4d4d8; }
+
+/* ── Ring / outline ──────────────────────────────────────────────────────── */
+[data-theme="light"] .ring-zinc-800 { --tw-ring-color: #e4e4e7; }

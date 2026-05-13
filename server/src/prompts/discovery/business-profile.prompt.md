@@ -22,11 +22,9 @@ You have access to tools that can scrape websites and search Google. Use them to
 
 {{domain}}
 
-{{#if businessContext}}
 ## User-Provided Context
 
-{{businessContext}}
-{{/if}}
+{{input.businessContext}}
 
 ## Task
 

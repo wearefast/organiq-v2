@@ -1,7 +1,7 @@
-import { Injectable, Logger, NotFoundException } from '@nestjs/common';
+import { Injectable, Logger, NotFoundException, BadRequestException, OnModuleInit } from '@nestjs/common';
 import { InjectQueue } from '@nestjs/bullmq';
 import { Queue } from 'bullmq';
-import { eq, and } from 'drizzle-orm';
+import { eq, and, inArray, asc } from 'drizzle-orm';
 import { DatabaseService } from '../../shared/database/database.service';
 import {
   workflowRuns,
@@ -10,8 +10,10 @@ import {
   stepApprovals,
   workflowContext,
   projects,
+  stepToolCalls,
 } from '../../db/schema';
 import { AgentRegistry } from '../../agents/agent.registry';
+import { CreditsService } from '../credits/credits.service';
 
 /** The 17-step workflow definition: stepKey → [stepNumber, phase, dependsOn[]] */
 const STEP_DEFINITIONS: Array<[string, number, number, string[]]> = [
@@ -35,14 +37,100 @@ const STEP_DEFINITIONS: Array<[string, number, number, string[]]> = [
 ];
 
 @Injectable()
-export class WorkflowService {
+export class WorkflowService implements OnModuleInit {
   private readonly logger = new Logger(WorkflowService.name);
 
   constructor(
     private readonly db: DatabaseService,
     private readonly agentRegistry: AgentRegistry,
+    private readonly creditsService: CreditsService,
     @InjectQueue('workflow-steps') private readonly workflowQueue: Queue,
   ) {}
+
+  onModuleInit() {
+    this.validateStepDefinitions();
+  }
+
+  /**
+   * Validate STEP_DEFINITIONS at startup:
+   * 1. No duplicate step keys
+   * 2. Every dependsOn reference exists
+   * 3. Step numbers are sequential (1..N)
+   * 4. No circular dependencies (Kahn's topological sort)
+   */
+  private validateStepDefinitions(): void {
+    const keys = new Set<string>();
+    const stepNumbers = new Set<number>();
+
+    // Pass 1: Check duplicates and collect keys
+    for (const [stepKey, stepNumber] of STEP_DEFINITIONS) {
+      if (keys.has(stepKey)) {
+        throw new Error(`STEP_DEFINITIONS: Duplicate step key "${stepKey}"`);
+      }
+      if (stepNumbers.has(stepNumber)) {
+        throw new Error(`STEP_DEFINITIONS: Duplicate step number ${stepNumber}`);
+      }
+      keys.add(stepKey);
+      stepNumbers.add(stepNumber);
+    }
+
+    // Pass 2: Check sequential step numbers (1..N)
+    for (let i = 1; i <= STEP_DEFINITIONS.length; i++) {
+      if (!stepNumbers.has(i)) {
+        throw new Error(`STEP_DEFINITIONS: Missing step number ${i} (expected 1..${STEP_DEFINITIONS.length})`);
+      }
+    }
+
+    // Pass 3: Check all dependsOn references exist
+    for (const [stepKey, , , dependsOn] of STEP_DEFINITIONS) {
+      for (const dep of dependsOn) {
+        if (!keys.has(dep)) {
+          throw new Error(`STEP_DEFINITIONS: Step "${stepKey}" depends on unknown step "${dep}"`);
+        }
+      }
+    }
+
+    // Pass 4: Kahn's algorithm — detect cycles
+    const inDegree = new Map<string, number>();
+    const adjacency = new Map<string, string[]>();
+    for (const [stepKey] of STEP_DEFINITIONS) {
+      inDegree.set(stepKey, 0);
+      adjacency.set(stepKey, []);
+    }
+    for (const [stepKey, , , dependsOn] of STEP_DEFINITIONS) {
+      inDegree.set(stepKey, dependsOn.length);
+      for (const dep of dependsOn) {
+        adjacency.get(dep)!.push(stepKey);
+      }
+    }
+
+    const queue: string[] = [];
+    for (const [key, degree] of inDegree) {
+      if (degree === 0) queue.push(key);
+    }
+
+    let visited = 0;
+    while (queue.length > 0) {
+      const node = queue.shift()!;
+      visited++;
+      for (const dependent of adjacency.get(node)!) {
+        const newDegree = inDegree.get(dependent)! - 1;
+        inDegree.set(dependent, newDegree);
+        if (newDegree === 0) queue.push(dependent);
+      }
+    }
+
+    if (visited !== STEP_DEFINITIONS.length) {
+      const cycleNodes = [...inDegree.entries()]
+        .filter(([, degree]) => degree > 0)
+        .map(([key]) => key);
+      throw new Error(
+        `STEP_DEFINITIONS: Circular dependency detected involving: ${cycleNodes.join(', ')}`,
+      );
+    }
+
+    this.logger.log(`STEP_DEFINITIONS validated: ${STEP_DEFINITIONS.length} steps, DAG is acyclic`);
+  }
 
   async createRun(projectId: string, organizationId: string) {
     return this.db.db.transaction(async (tx) => {
@@ -93,6 +181,21 @@ export class WorkflowService {
   }
 
   async startRun(runId: string) {
+    // Pre-flight: verify the org has enough credits for at least the first step
+    const run = await this.db.db.query.workflowRuns.findFirst({
+      where: eq(workflowRuns.id, runId),
+    });
+    if (!run) throw new NotFoundException('Workflow run not found');
+
+    const allAgents = this.agentRegistry.getAllAgents();
+    const totalCost = allAgents.reduce((sum, a) => sum + a.creditCost, 0);
+    const balance = await this.creditsService.getBalance(run.organizationId);
+    if (balance < totalCost) {
+      throw new BadRequestException(
+        `Insufficient credits: workflow requires ${totalCost} credits but your balance is ${balance}. Add credits before starting.`,
+      );
+    }
+
     const [updated] = await this.db.db
       .update(workflowRuns)
       .set({ status: 'running', startedAt: new Date(), updatedAt: new Date() })
@@ -105,17 +208,35 @@ export class WorkflowService {
     const project = await this.db.db.query.projects.findFirst({
       where: eq(projects.id, updated.projectId),
     });
-    if (project) {
-      await this.setContext(runId, 'domain', project.domain);
-      await this.setContext(runId, 'country', project.country);
-      await this.setContext(runId, 'language', project.language);
-      await this.setContext(runId, 'industry', project.industry ?? '');
+    if (!project) {
+      throw new NotFoundException(`Project not found for workflow run ${runId}`);
     }
+    await this.setContext(runId, 'domain', project.domain);
+    await this.setContext(runId, 'country', project.country);
+    await this.setContext(runId, 'language', project.language);
+    await this.setContext(runId, 'industry', project.industry ?? '');
 
     // Enqueue the first step(s) — those with no dependencies
     await this.enqueuePendingSteps(runId);
 
     return updated;
+  }
+
+  /**
+   * Resume a stuck running workflow by re-enqueuing eligible pending steps.
+   */
+  async resumeRun(runId: string) {
+    const run = await this.db.db.query.workflowRuns.findFirst({
+      where: eq(workflowRuns.id, runId),
+    });
+    if (!run) throw new NotFoundException('Workflow run not found');
+    if (run.status !== 'running') {
+      throw new Error(`Cannot resume run in status: ${run.status}`);
+    }
+
+    const enqueued = await this.enqueuePendingSteps(runId);
+    this.logger.log(`Resumed run ${runId}, enqueued: [${enqueued.join(', ')}]`);
+    return { enqueued };
   }
 
   /**
@@ -166,19 +287,41 @@ export class WorkflowService {
       }
     });
 
-    // Enqueue BullMQ jobs outside the transaction (after commit)
+    // Enqueue BullMQ jobs outside the transaction (after commit).
+    // If any enqueue fails, rollback those steps to 'pending' so they can be retried.
+    const enqueueFailures: string[] = [];
     for (const stepKey of enqueued) {
-      await this.workflowQueue.add('execute-step', {
-        workflowRunId,
-        stepKey,
-        organizationId: run.organizationId,
-      }, {
-        jobId: `${workflowRunId}:${stepKey}`,
-      });
+      try {
+        await this.workflowQueue.add('execute-step', {
+          workflowRunId,
+          stepKey,
+          organizationId: run.organizationId,
+        }, {
+            jobId: `${workflowRunId}__${stepKey}__${Date.now()}`,
+        });
+      } catch (error) {
+        this.logger.error(`Failed to enqueue step ${stepKey}: ${error}`);
+        enqueueFailures.push(stepKey);
+      }
     }
 
-    this.logger.log(`Enqueued steps for run ${workflowRunId}: [${enqueued.join(', ')}]`);
-    return enqueued;
+    // Rollback orphaned steps that failed to enqueue
+    if (enqueueFailures.length > 0) {
+      await this.db.db
+        .update(workflowSteps)
+        .set({ status: 'pending', startedAt: null, updatedAt: new Date() })
+        .where(
+          and(
+            eq(workflowSteps.workflowRunId, workflowRunId),
+            inArray(workflowSteps.stepKey, enqueueFailures),
+          ),
+        );
+      this.logger.warn(`Rolled back ${enqueueFailures.length} steps to pending after enqueue failure`);
+    }
+
+    const successfullyEnqueued = enqueued.filter((k) => !enqueueFailures.includes(k));
+    this.logger.log(`Enqueued steps for run ${workflowRunId}: [${successfullyEnqueued.join(', ')}]`);
+    return successfullyEnqueued;
   }
 
   /**
@@ -263,5 +406,124 @@ export class WorkflowService {
         target: [workflowContext.workflowRunId, workflowContext.key],
         set: { value, updatedAt: new Date() },
       });
+  }
+
+  /**
+   * Re-run a step and cascade-reset all non-approved downstream dependents.
+   * Only allowed when the step is NOT approved, pending, or running.
+   */
+  async rerunStep(workflowRunId: string, stepKey: string) {
+    const step = await this.db.db.query.workflowSteps.findFirst({
+      where: and(
+        eq(workflowSteps.workflowRunId, workflowRunId),
+        eq(workflowSteps.stepKey, stepKey),
+      ),
+    });
+    if (!step) throw new NotFoundException('Step not found');
+
+    const NON_RERUNNABLE: string[] = ['approved', 'pending', 'running'];
+    if (NON_RERUNNABLE.includes(step.status)) {
+      throw new BadRequestException(
+        `Cannot re-run step in status: ${step.status}`,
+      );
+    }
+
+    // Find all transitive downstream steps
+    const downstream = this.getDownstreamSteps(stepKey);
+
+    // Collect all step keys to reset (target + non-approved downstream)
+    const allKeysToReset = [stepKey, ...downstream];
+
+    const cascadeReset: string[] = [];
+
+    await this.db.db.transaction(async (tx) => {
+      // Get current status of all steps in one query
+      const steps = await tx.query.workflowSteps.findMany({
+        where: eq(workflowSteps.workflowRunId, workflowRunId),
+      });
+      const statusByKey = new Map(steps.map((s) => [s.stepKey, s.status]));
+
+      for (const key of allKeysToReset) {
+        const currentStatus = statusByKey.get(key);
+        // Skip approved steps (immutable) and already-pending steps
+        if (currentStatus === 'approved' || currentStatus === 'pending') continue;
+
+        await tx
+          .update(workflowSteps)
+          .set({
+            status: 'pending',
+            startedAt: null,
+            completedAt: null,
+            error: null,
+            iterations: 0,
+            updatedAt: new Date(),
+          })
+          .where(
+            and(
+              eq(workflowSteps.workflowRunId, workflowRunId),
+              eq(workflowSteps.stepKey, key),
+            ),
+          );
+
+        // Clear stale context for this step
+        await tx
+          .delete(workflowContext)
+          .where(
+            and(
+              eq(workflowContext.workflowRunId, workflowRunId),
+              eq(workflowContext.key, key),
+            ),
+          );
+
+        if (key !== stepKey) cascadeReset.push(key);
+      }
+    });
+
+    // Enqueue pending steps whose dependencies are met (will pick up the reset target)
+    await this.enqueuePendingSteps(workflowRunId);
+
+    this.logger.log(
+      `Re-run step ${stepKey} (run: ${workflowRunId}), cascade reset: [${cascadeReset.join(', ')}]`,
+    );
+
+    return { rerun: stepKey, cascadeReset };
+  }
+
+  async getStepToolCalls(stepId: string) {
+    return this.db.db
+      .select()
+      .from(stepToolCalls)
+      .where(eq(stepToolCalls.workflowStepId, stepId))
+      .orderBy(asc(stepToolCalls.createdAt));
+  }
+
+  /**
+   * Walk the STEP_DEFINITIONS DAG to find all transitive downstream dependents of a step.
+   */
+  private getDownstreamSteps(stepKey: string): string[] {
+    // Build adjacency: step → direct dependents
+    const dependents = new Map<string, string[]>();
+    for (const [key] of STEP_DEFINITIONS) {
+      dependents.set(key, []);
+    }
+    for (const [key, , , deps] of STEP_DEFINITIONS) {
+      for (const dep of deps) {
+        dependents.get(dep)?.push(key);
+      }
+    }
+
+    // BFS from stepKey
+    const visited = new Set<string>();
+    const queue = [...(dependents.get(stepKey) ?? [])];
+    while (queue.length > 0) {
+      const current = queue.shift()!;
+      if (visited.has(current)) continue;
+      visited.add(current);
+      for (const child of dependents.get(current) ?? []) {
+        queue.push(child);
+      }
+    }
+
+    return [...visited];
   }
 }

@@ -12,6 +12,13 @@ class EnvironmentVariables {
   CLERK_SECRET_KEY: string;
 
   @IsString()
+  CLERK_WEBHOOK_SECRET: string;
+
+  @IsOptional()
+  @IsString()
+  CLERK_DOMAIN?: string;
+
+  @IsString()
   OPENAI_API_KEY: string;
 
   @IsOptional()
@@ -37,6 +44,10 @@ class EnvironmentVariables {
   @IsOptional()
   @IsString()
   FRONTEND_URL?: string;
+
+  @IsOptional()
+  @IsString()
+  PYTHON_SIDECAR_URL?: string;
 
   @IsOptional()
   @IsString()

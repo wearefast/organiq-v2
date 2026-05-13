@@ -1,5 +1,6 @@
 import { Injectable, Logger } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
+import { withRetry } from '../../../shared/utils/retry';
 
 interface ScrapeOptions {
   formats?: ('markdown' | 'html' | 'rawHtml' | 'links' | 'screenshot')[];
@@ -47,39 +48,49 @@ export class FirecrawlService {
 
     this.logger.debug(`Firecrawl API: POST ${endpoint}`);
 
-    const response = await fetch(`${this.baseUrl}${endpoint}`, {
-      method: 'POST',
-      headers: {
-        Authorization: `Bearer ${this.apiKey}`,
-        'Content-Type': 'application/json',
+    return withRetry(
+      async () => {
+        const response = await fetch(`${this.baseUrl}${endpoint}`, {
+          method: 'POST',
+          headers: {
+            Authorization: `Bearer ${this.apiKey}`,
+            'Content-Type': 'application/json',
+          },
+          body: JSON.stringify(body),
+          signal: AbortSignal.timeout(60_000),
+        });
+
+        if (!response.ok) {
+          const text = await response.text();
+          this.logger.error(`Firecrawl API error: ${response.status}`);
+          throw new Error(`Firecrawl API error: ${response.status}`);
+        }
+
+        return response.json();
       },
-      body: JSON.stringify(body),
-      signal: AbortSignal.timeout(60_000),
-    });
-
-    if (!response.ok) {
-      const text = await response.text();
-      this.logger.error(`Firecrawl API error: ${response.status}`);
-      throw new Error(`Firecrawl API error: ${response.status}`);
-    }
-
-    return response.json();
+      { label: `Firecrawl POST ${endpoint}` },
+    );
   }
 
   private async get(endpoint: string): Promise<unknown> {
     if (!this.apiKey) throw new Error('FIRECRAWL_API_KEY is not configured');
 
-    const response = await fetch(`${this.baseUrl}${endpoint}`, {
-      headers: { Authorization: `Bearer ${this.apiKey}` },
-      signal: AbortSignal.timeout(30_000),
-    });
+    return withRetry(
+      async () => {
+        const response = await fetch(`${this.baseUrl}${endpoint}`, {
+          headers: { Authorization: `Bearer ${this.apiKey}` },
+          signal: AbortSignal.timeout(30_000),
+        });
 
-    if (!response.ok) {
-      const text = await response.text();
-      this.logger.error(`Firecrawl API error: ${response.status}`);
-      throw new Error(`Firecrawl API error: ${response.status}`);
-    }
+        if (!response.ok) {
+          const text = await response.text();
+          this.logger.error(`Firecrawl API error: ${response.status}`);
+          throw new Error(`Firecrawl API error: ${response.status}`);
+        }
 
-    return response.json();
+        return response.json();
+      },
+      { label: `Firecrawl GET ${endpoint}` },
+    );
   }
 }

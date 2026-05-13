@@ -6,7 +6,7 @@ temperature: 0.3
 max_iterations: 3
 credit_cost: 30
 depends_on: []
-requires_approval: false
+requires_approval: true
 tools:
   - firecrawl_scrape
   - serper_search

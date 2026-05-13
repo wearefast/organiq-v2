@@ -32,10 +32,23 @@ export class PromptService {
   private static readonly MAX_CACHE_SIZE = 100;
 
   constructor(private readonly config: ConfigService) {
-    const repoRoot = join(process.cwd(), '..');
-    this.promptsDir = join(repoRoot, 'server', 'src', 'prompts');
-    this.agentsDir = join(repoRoot, 'server', 'src', 'agents', 'definitions');
+    this.promptsDir = this.resolveFirstExistingDir([
+      join(process.cwd(), 'src', 'prompts'),
+      join(process.cwd(), 'server', 'src', 'prompts'),
+      join(__dirname, '..', '..', 'prompts'),
+      join(__dirname, '..', '..', '..', 'src', 'prompts'),
+    ]);
+    this.agentsDir = this.resolveFirstExistingDir([
+      join(process.cwd(), 'src', 'agents', 'definitions'),
+      join(process.cwd(), 'server', 'src', 'agents', 'definitions'),
+      join(__dirname, '..', '..', 'agents', 'definitions'),
+      join(__dirname, '..', '..', '..', 'src', 'agents', 'definitions'),
+    ]);
     this.useCache = config.get('NODE_ENV') === 'production';
+  }
+
+  private resolveFirstExistingDir(candidates: string[]): string {
+    return candidates.find((candidate) => existsSync(candidate)) ?? candidates[0];
   }
 
   /**
@@ -44,7 +57,7 @@ export class PromptService {
    */
   async loadPrompt(relativePath: string, vars?: Record<string, unknown>): Promise<ParsedPrompt> {
     const filePath = join(this.promptsDir, relativePath);
-    const raw = await this.readFileWithCache(filePath);
+    const raw = this.normalizeLineEndings(await this.readFileWithCache(filePath));
 
     const separatorIndex = raw.indexOf('\n---\n');
     let system: string;
@@ -71,7 +84,7 @@ export class PromptService {
    */
   async loadAgentDefinition(stepKey: string): Promise<AgentDefinition> {
     const filePath = join(this.agentsDir, `${stepKey}.agent.md`);
-    const raw = await this.readFileWithCache(filePath);
+    const raw = this.normalizeLineEndings(await this.readFileWithCache(filePath));
     return this.parseAgentDefinition(raw, stepKey);
   }
 
@@ -152,10 +165,15 @@ export class PromptService {
     return value.split(',').map((s) => s.trim()).filter(Boolean);
   }
 
+  private normalizeLineEndings(value: string): string {
+    return value.replace(/\r\n/g, '\n');
+  }
+
   private interpolate(template: string, vars: Record<string, unknown>): string {
     return template.replace(/\{\{([^}]+)\}\}/g, (_match, path: string) => {
       const value = this.resolvePath(vars, path.trim());
       if (value === undefined || value === null) return '';
+      if (typeof value === 'object') return JSON.stringify(value, null, 2);
       return String(value);
     });
   }

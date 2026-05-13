@@ -17,5 +17,5 @@ FastAPI service providing specialized analysis endpoints that are better suited 
 ```bash
 cd python-sidecar
 pip install -r requirements.txt
-uvicorn main:app --port 3003
+uvicorn main:app --port 8000
 ```

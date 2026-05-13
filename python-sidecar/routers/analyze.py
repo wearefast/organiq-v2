@@ -6,6 +6,7 @@ from typing import Optional
 from bs4 import BeautifulSoup
 from fastapi import APIRouter
 from pydantic import BaseModel
+import textstat
 
 router = APIRouter()
 
@@ -301,3 +302,308 @@ def _has_statistics(soup: BeautifulSoup) -> bool:
     text = soup.get_text()
     stat_pattern = re.compile(r"\d+%|\$\d+|\d+\.\d+x|\d{1,3}(,\d{3})+")
     return len(stat_pattern.findall(text)) >= 3
+
+
+# --- Readability & Content Scoring Models ---
+
+
+class ReadabilityRequest(BaseModel):
+    text: str
+    content_type: str = "article"
+
+
+class ReadabilityResponse(BaseModel):
+    flesch_reading_ease: float
+    flesch_kincaid_grade: float
+    gunning_fog: float
+    avg_sentence_length: float
+    avg_word_length: float
+    sentence_count: int
+    word_count: int
+    paragraph_count: int
+    passive_voice_percent: float
+    transition_word_percent: float
+    readability_score: int  # 0-100
+    grade_label: str
+
+
+class ContentScoreRequest(BaseModel):
+    text: str
+    target_keyword: str
+    secondary_keywords: list[str] = []
+    target_word_count: int = 1500
+    content_type: str = "article"
+
+
+class ContentScoreResponse(BaseModel):
+    readability: int  # 0-100
+    seo_quality: int  # 0-100
+    citability: int  # 0-100
+    content_length: int  # 0-100
+    opportunity: int  # 0-100
+    overall: int  # 0-100
+    details: dict
+    recommendations: list[str]
+
+
+# --- Readability Endpoint ---
+
+
+@router.post("/readability", response_model=ReadabilityResponse)
+async def analyze_readability(req: ReadabilityRequest):
+    """Analyze text readability using textstat metrics."""
+    text = req.text.strip()
+    if not text:
+        return ReadabilityResponse(
+            flesch_reading_ease=0, flesch_kincaid_grade=0, gunning_fog=0,
+            avg_sentence_length=0, avg_word_length=0, sentence_count=0,
+            word_count=0, paragraph_count=0, passive_voice_percent=0,
+            transition_word_percent=0, readability_score=0, grade_label="N/A",
+        )
+
+    fre = textstat.flesch_reading_ease(text)
+    fkg = textstat.flesch_kincaid_grade(text)
+    fog = textstat.gunning_fog(text)
+
+    sentences = [s.strip() for s in re.split(r"[.!?]+", text) if s.strip()]
+    sentence_count = len(sentences)
+    words = text.split()
+    word_count = len(words)
+    paragraphs = [p.strip() for p in text.split("\n\n") if p.strip()]
+    paragraph_count = len(paragraphs) if paragraphs else 1
+
+    avg_sentence_length = word_count / max(sentence_count, 1)
+    avg_word_length = sum(len(w) for w in words) / max(word_count, 1)
+
+    # Passive voice detection (simple heuristic)
+    passive_patterns = re.compile(
+        r"\b(is|are|was|were|been|being|be)\s+\w+ed\b", re.IGNORECASE
+    )
+    passive_count = len(passive_patterns.findall(text))
+    passive_pct = (passive_count / max(sentence_count, 1)) * 100
+
+    # Transition words detection
+    transition_words = {
+        "however", "therefore", "furthermore", "moreover", "additionally",
+        "consequently", "meanwhile", "nevertheless", "nonetheless", "although",
+        "because", "since", "while", "whereas", "thus", "hence", "accordingly",
+        "similarly", "likewise", "conversely", "instead", "otherwise",
+        "specifically", "particularly", "notably", "for example", "for instance",
+        "in addition", "on the other hand", "as a result", "in contrast",
+        "in conclusion", "to summarize", "first", "second", "third", "finally",
+    }
+    transition_count = sum(
+        1 for s in sentences
+        if any(tw in s.lower() for tw in transition_words)
+    )
+    transition_pct = (transition_count / max(sentence_count, 1)) * 100
+
+    # Compute composite readability score (0-100)
+    # Flesch Reading Ease is already 0-100 (higher = easier)
+    fre_score = max(0, min(100, fre))
+
+    # Sentence length score
+    if 15 <= avg_sentence_length <= 20:
+        sl_score = 100
+    elif 12 <= avg_sentence_length < 15 or 20 < avg_sentence_length <= 25:
+        sl_score = 75
+    elif 10 <= avg_sentence_length < 12 or 25 < avg_sentence_length <= 30:
+        sl_score = 50
+    else:
+        sl_score = 25
+
+    # Passive voice score (less is better)
+    if passive_pct < 5:
+        pv_score = 100
+    elif passive_pct < 10:
+        pv_score = 75
+    elif passive_pct < 15:
+        pv_score = 50
+    else:
+        pv_score = 25
+
+    # Transition word score
+    if transition_pct > 30:
+        tw_score = 100
+    elif transition_pct > 20:
+        tw_score = 75
+    elif transition_pct > 10:
+        tw_score = 50
+    else:
+        tw_score = 25
+
+    readability_score = int(
+        fre_score * 0.35 + sl_score * 0.25 + pv_score * 0.20 + tw_score * 0.20
+    )
+    readability_score = max(0, min(100, readability_score))
+
+    if readability_score >= 90:
+        grade_label = "Excellent"
+    elif readability_score >= 75:
+        grade_label = "Good"
+    elif readability_score >= 60:
+        grade_label = "Needs Improvement"
+    else:
+        grade_label = "Poor"
+
+    return ReadabilityResponse(
+        flesch_reading_ease=round(fre, 1),
+        flesch_kincaid_grade=round(fkg, 1),
+        gunning_fog=round(fog, 1),
+        avg_sentence_length=round(avg_sentence_length, 1),
+        avg_word_length=round(avg_word_length, 1),
+        sentence_count=sentence_count,
+        word_count=word_count,
+        paragraph_count=paragraph_count,
+        passive_voice_percent=round(passive_pct, 1),
+        transition_word_percent=round(transition_pct, 1),
+        readability_score=readability_score,
+        grade_label=grade_label,
+    )
+
+
+# --- Content Score Endpoint ---
+
+
+@router.post("/content-score", response_model=ContentScoreResponse)
+async def analyze_content_score(req: ContentScoreRequest):
+    """Compute a multi-dimensional content quality score."""
+    text = req.text.strip()
+    words = text.split()
+    word_count = len(words)
+    text_lower = text.lower()
+
+    # --- Readability score ---
+    fre = textstat.flesch_reading_ease(text) if text else 0
+    readability = max(0, min(100, int(fre)))
+
+    # --- SEO Quality score ---
+    seo_factors = {}
+    # Keyword density
+    primary_kw = req.target_keyword.lower()
+    primary_count = text_lower.count(primary_kw)
+    primary_density = (primary_count / max(word_count, 1)) * 100
+    if 1 <= primary_density <= 2:
+        seo_factors["keyword_density"] = 100
+    elif 0.5 <= primary_density < 1 or 2 < primary_density <= 3:
+        seo_factors["keyword_density"] = 70
+    else:
+        seo_factors["keyword_density"] = 30
+
+    # Secondary keyword coverage
+    secondary_found = sum(
+        1 for kw in req.secondary_keywords if kw.lower() in text_lower
+    )
+    secondary_total = max(len(req.secondary_keywords), 1)
+    seo_factors["secondary_coverage"] = int((secondary_found / secondary_total) * 100)
+
+    # Heading structure (check for markdown headings)
+    h2_count = len(re.findall(r"^##\s", text, re.MULTILINE))
+    h3_count = len(re.findall(r"^###\s", text, re.MULTILINE))
+    if h2_count >= 3 and h3_count >= 2:
+        seo_factors["heading_structure"] = 100
+    elif h2_count >= 2:
+        seo_factors["heading_structure"] = 70
+    else:
+        seo_factors["heading_structure"] = 30
+
+    # Lists and tables
+    list_count = len(re.findall(r"^[-*]\s", text, re.MULTILINE))
+    table_count = len(re.findall(r"^\|", text, re.MULTILINE))
+    if list_count >= 3 and table_count >= 1:
+        seo_factors["formatting"] = 100
+    elif list_count >= 2 or table_count >= 1:
+        seo_factors["formatting"] = 70
+    else:
+        seo_factors["formatting"] = 30
+
+    seo_quality = int(
+        seo_factors.get("keyword_density", 0) * 0.30
+        + seo_factors.get("secondary_coverage", 0) * 0.25
+        + seo_factors.get("heading_structure", 0) * 0.25
+        + seo_factors.get("formatting", 0) * 0.20
+    )
+
+    # --- Citability score ---
+    citability_factors = {}
+    # Definition patterns
+    definition_count = len(re.findall(r"\b\w+\s+is\s+(a|an|the)\s+", text, re.IGNORECASE))
+    citability_factors["definitions"] = min(100, definition_count * 20)
+
+    # FAQ / Q&A patterns
+    question_count = len(re.findall(r"\?", text))
+    citability_factors["qa_patterns"] = min(100, question_count * 15)
+
+    # List usage
+    citability_factors["list_usage"] = min(100, list_count * 15)
+
+    # Statistics / data points
+    stat_count = len(re.findall(r"\d+%|\$[\d,.]+|\d+\.\d+x", text))
+    citability_factors["data_points"] = min(100, stat_count * 20)
+
+    citability = int(
+        citability_factors.get("definitions", 0) * 0.25
+        + citability_factors.get("qa_patterns", 0) * 0.25
+        + citability_factors.get("list_usage", 0) * 0.25
+        + citability_factors.get("data_points", 0) * 0.25
+    )
+    citability = min(100, citability)
+
+    # --- Content Length score ---
+    target = req.target_word_count
+    if target > 0:
+        ratio = word_count / target
+        content_length = min(100, int(ratio * 100))
+    else:
+        content_length = 50  # default when no target
+
+    # --- Opportunity (composite) ---
+    opportunity = int(
+        readability * 0.25 + seo_quality * 0.25 + citability * 0.25 + content_length * 0.25
+    )
+
+    # --- Overall score ---
+    overall = int(
+        readability * 0.20 + seo_quality * 0.30 + citability * 0.20 + content_length * 0.30
+    )
+
+    # --- Recommendations ---
+    recommendations = []
+    if readability < 60:
+        recommendations.append("Simplify sentence structure — aim for 15-20 words per sentence")
+    if seo_quality < 60:
+        if seo_factors.get("keyword_density", 0) < 50:
+            recommendations.append(f"Increase usage of primary keyword '{req.target_keyword}' (target 1-2% density)")
+        if seo_factors.get("secondary_coverage", 0) < 50:
+            recommendations.append("Include more secondary keywords naturally in the content")
+        if seo_factors.get("heading_structure", 0) < 50:
+            recommendations.append("Add more H2 and H3 subheadings (every 200-300 words)")
+    if citability < 60:
+        recommendations.append("Add clear definitions, Q&A pairs, and data points for AI citability")
+    if content_length < 70:
+        recommendations.append(f"Content is {word_count} words — target is {target} words. Add more depth.")
+    elif content_length > 120:
+        recommendations.append(f"Content is {word_count} words — significantly exceeds target of {target}. Consider trimming.")
+
+    return ContentScoreResponse(
+        readability=readability,
+        seo_quality=seo_quality,
+        citability=citability,
+        content_length=content_length,
+        opportunity=opportunity,
+        overall=overall,
+        details={
+            "word_count": word_count,
+            "primary_keyword_count": primary_count,
+            "primary_keyword_density": round(primary_density, 2),
+            "secondary_keywords_found": secondary_found,
+            "secondary_keywords_total": len(req.secondary_keywords),
+            "h2_count": h2_count,
+            "h3_count": h3_count,
+            "list_items": list_count,
+            "tables": table_count,
+            "seo_factors": seo_factors,
+            "citability_factors": citability_factors,
+        },
+        recommendations=recommendations,
+    )

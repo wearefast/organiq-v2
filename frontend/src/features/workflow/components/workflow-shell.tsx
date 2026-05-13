@@ -25,6 +25,7 @@ export function WorkflowShell({
   const [activeStepKey, setActiveStepKey] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const [resuming, setResuming] = useState(false);
   const initializedRef = useRef(false);
 
   // Fetch initial run data
@@ -75,6 +76,7 @@ export function WorkflowShell({
         event.type === 'step:error' ||
         event.type === 'step:approved' ||
         event.type === 'step:rejected' ||
+        event.type === 'step:rerun' ||
         event.type === 'workflow:completed'
       ) {
         fetchRun();
@@ -88,6 +90,17 @@ export function WorkflowShell({
     token,
     onEvent: handleWsEvent,
   });
+
+  // Polling fallback — keep UI fresh when WebSocket is unavailable
+  useEffect(() => {
+    const isActive =
+      run?.status === 'running' ||
+      run?.steps.some((s) => s.status === 'running' || s.status === 'awaiting_approval');
+    if (!isActive) return;
+
+    const id = setInterval(() => fetchRun(), 10_000);
+    return () => clearInterval(id);
+  }, [run?.status, run?.steps, fetchRun]);
 
   // Approval handlers
   const handleApprove = useCallback(
@@ -118,6 +131,18 @@ export function WorkflowShell({
     async (stepKey: string, notes: string) => {
       try {
         await workflowApi.rejectStep(runId, stepKey, notes);
+        await fetchRun();
+      } catch {
+        // Error is handled in the API layer
+      }
+    },
+    [runId, fetchRun],
+  );
+
+  const handleRerun = useCallback(
+    async (stepKey: string) => {
+      try {
+        await workflowApi.rerunStep(runId, stepKey);
         await fetchRun();
       } catch {
         // Error is handled in the API layer
@@ -168,6 +193,19 @@ export function WorkflowShell({
     return () => document.removeEventListener('keydown', handleKeyDown);
   }, [run, activeStepKey, handleApprove]);
 
+  // Resume handler for stuck runs
+  const handleResume = useCallback(async () => {
+    setResuming(true);
+    try {
+      await workflowApi.resumeRun(runId);
+      await fetchRun();
+    } catch {
+      // Error handled in fetchRun
+    } finally {
+      setResuming(false);
+    }
+  }, [runId, fetchRun]);
+
   if (loading) {
     return (
       <div className="flex h-full items-center justify-center">
@@ -214,11 +252,33 @@ export function WorkflowShell({
     );
   }
 
+  // Detect stuck run: status is running but no steps are active or completed
+  const isStuck =
+    run.status === 'running' &&
+    !run.steps.some((s) => s.status === 'running' || s.status === 'completed' || s.status === 'awaiting_approval' || s.status === 'approved');
+
   const activeStep: WorkflowStep | null =
     run.steps.find((s) => s.stepKey === activeStepKey) ?? null;
 
   return (
     <div className="flex h-full flex-col">
+      {/* Stuck run banner */}
+      {isStuck && (
+        <div className="flex items-center justify-between border-b border-yellow-800/40 bg-yellow-950/30 px-6 py-3">
+          <p className="text-sm text-yellow-300">
+            This workflow is stuck — no steps are processing. Click Resume to restart step execution.
+          </p>
+          <button
+            type="button"
+            onClick={handleResume}
+            disabled={resuming}
+            className="rounded-md bg-yellow-600 px-3 py-1.5 text-xs font-medium text-white hover:bg-yellow-500 disabled:opacity-50"
+          >
+            {resuming ? 'Resuming…' : 'Resume'}
+          </button>
+        </div>
+      )}
+
       {/* Top progress bar */}
       <div className="border-b border-zinc-800 bg-[var(--bg-elevated)] px-6 py-2.5">
         <ProgressBar steps={run.steps} />
@@ -236,6 +296,7 @@ export function WorkflowShell({
           onApprove={handleApprove}
           onRevise={handleRevise}
           onReject={handleReject}
+          onRerun={handleRerun}
           renderArtifact={renderArtifact}
         />
       </div>

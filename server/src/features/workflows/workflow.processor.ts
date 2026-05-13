@@ -51,14 +51,11 @@ export class WorkflowProcessor extends WorkerHost {
         throw new Error(`No agent definition found for step: ${stepKey}`);
       }
 
-      // 2. Debit credits BEFORE execution (fail fast if insufficient)
-      await this.creditsService.debit({
-        organizationId,
-        amount: agentDef.creditCost,
-        description: `Step: ${stepKey}`,
-        workflowRunId,
-        stepKey,
-      });
+      // 2. Pre-check credit balance (fail fast if insufficient, but don't debit yet)
+      const hasCredits = await this.creditsService.hasCredits(organizationId, agentDef.creditCost);
+      if (!hasCredits) {
+        throw new Error(`Insufficient credits for step: ${stepKey} (requires ${agentDef.creditCost})`);
+      }
 
       // 3. Emit step started
       this.workflowGateway.emitStepStarted(workflowRunId, stepKey);
@@ -66,7 +63,8 @@ export class WorkflowProcessor extends WorkerHost {
       // 4. Load prompts
       const promptPath = this.getPromptPath(stepKey);
       const context = await this.workflowService.getContext(workflowRunId);
-      const prompt = await this.promptService.loadPrompt(promptPath, context);
+      const transformedContext = this.transformContextForStep(stepKey, context);
+      const prompt = await this.promptService.loadPrompt(promptPath, transformedContext);
 
       // 5. Execute agent
       const result = await this.agentRuntime.execute({
@@ -99,7 +97,7 @@ export class WorkflowProcessor extends WorkerHost {
 
       if (!step) throw new Error(`Step record not found: ${stepKey}`);
 
-      // 7-12. Persist artifacts and update status in a transaction
+      // 7-12. Persist artifacts, debit credits, and update status in a single transaction
       await this.db.db.transaction(async (tx) => {
         // 7. Compute next artifact version
         const latestArtifact = await tx.query.stepArtifacts.findFirst({
@@ -136,6 +134,15 @@ export class WorkflowProcessor extends WorkerHost {
           );
         }
 
+        // 10. Debit credits AFTER successful execution (inside transaction with artifacts)
+        await this.creditsService.debit({
+          organizationId,
+          amount: agentDef.creditCost,
+          description: `Step: ${stepKey}`,
+          workflowRunId,
+          stepKey,
+        });
+
         // 11. Update step status
         const newStatus = agentDef.requiresApproval ? 'awaiting_approval' : 'completed';
         await tx
@@ -161,7 +168,9 @@ export class WorkflowProcessor extends WorkerHost {
       });
 
       // 10. Store artifact in workflow context for downstream steps
-      await this.workflowService.setContext(workflowRunId, stepKey, result.output);
+      if (result.output != null) {
+        await this.workflowService.setContext(workflowRunId, stepKey, result.output);
+      }
 
       // 13. Emit completion event
       const newStatus = agentDef.requiresApproval ? 'awaiting_approval' : 'completed';
@@ -191,6 +200,114 @@ export class WorkflowProcessor extends WorkerHost {
           ),
         );
     }
+  }
+
+  /**
+   * Apply per-step context transformations before prompt interpolation.
+   * Currently filters competitor-branded keywords out of the topical-map step
+   * so the content plan only includes keywords the target domain can own.
+   */
+  private transformContextForStep(
+    stepKey: string,
+    context: Record<string, unknown>,
+  ): Record<string, unknown> {
+    if (stepKey !== 'topical-map') return context;
+
+    const competitorBrands = this.extractCompetitorBrands(context);
+    if (competitorBrands.length === 0) return context;
+
+    const targetDomain = String(context['domain'] ?? '').toLowerCase();
+    const targetBrand = targetDomain.replace(/\.[^.]+$/, '').toLowerCase();
+
+    // Remove target brand from the filter list so own-brand keywords pass through
+    const brandsToFilter = competitorBrands.filter(
+      (b) => b !== targetBrand && !targetBrand.includes(b),
+    );
+
+    if (brandsToFilter.length === 0) return context;
+
+    // Deep-clone consolidated keywords and filter out competitor-branded entries
+    const consolidated = context['consolidated-keywords'] as
+      | { keywords?: Array<{ keyword: string; [k: string]: unknown }> }
+      | undefined;
+
+    if (!consolidated?.keywords?.length) {
+      return { ...context, 'competitor-brands': brandsToFilter };
+    }
+
+    const filteredKeywords = consolidated.keywords.filter((kw) => {
+      const lower = kw.keyword.toLowerCase();
+      return !brandsToFilter.some((brand) => lower.includes(brand));
+    });
+
+    const beforeCount = consolidated.keywords.length;
+    const afterCount = filteredKeywords.length;
+    if (beforeCount !== afterCount) {
+      this.logger.log(
+        `Topical-map brand filter: ${beforeCount} → ${afterCount} keywords (removed ${beforeCount - afterCount} competitor-branded)`,
+      );
+    }
+
+    return {
+      ...context,
+      'consolidated-keywords': { ...consolidated, keywords: filteredKeywords },
+      'competitor-brands': brandsToFilter,
+    };
+  }
+
+  /**
+   * Extract competitor brand names from both competitor-metrics domains
+   * and competitor-buckets labels. Strips TLDs and filters out brands
+   * shorter than 4 characters to avoid false positives.
+   */
+  private extractCompetitorBrands(context: Record<string, unknown>): string[] {
+    const brands = new Set<string>();
+    const MIN_BRAND_LENGTH = 4;
+
+    // Source 1: competitor-metrics → competitorMetrics[].domain
+    const metrics = context['competitor-metrics'] as
+      | { competitorMetrics?: Array<{ domain?: string }> }
+      | undefined;
+    if (metrics?.competitorMetrics) {
+      for (const c of metrics.competitorMetrics) {
+        if (c.domain) {
+          const brand = c.domain.toLowerCase().replace(/\.[^.]+$/, '');
+          if (brand.length >= MIN_BRAND_LENGTH) brands.add(brand);
+        }
+      }
+    }
+
+    // Source 2: competitor-buckets → buckets/competitors with name fields
+    const buckets = context['competitor-buckets'] as
+      | {
+          direct?: Array<{ name?: string; domain?: string }>;
+          indirect?: Array<{ name?: string; domain?: string }>;
+          content?: Array<{ name?: string; domain?: string }>;
+          aspirational?: Array<{ name?: string; domain?: string }>;
+          competitors?: Array<{ name?: string; domain?: string; bucket?: string }>;
+        }
+      | undefined;
+    if (buckets) {
+      const allCompetitors = [
+        ...(buckets.direct ?? []),
+        ...(buckets.indirect ?? []),
+        ...(buckets.content ?? []),
+        ...(buckets.aspirational ?? []),
+        ...(buckets.competitors ?? []),
+      ];
+      for (const c of allCompetitors) {
+        if (c.domain) {
+          const brand = c.domain.toLowerCase().replace(/\.[^.]+$/, '');
+          if (brand.length >= MIN_BRAND_LENGTH) brands.add(brand);
+        }
+        if (c.name) {
+          const name = c.name.toLowerCase().trim();
+          if (name.length >= MIN_BRAND_LENGTH) brands.add(name);
+        }
+      }
+    }
+
+    return Array.from(brands);
   }
 
   private getPromptPath(stepKey: string): string {

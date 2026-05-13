@@ -27,14 +27,38 @@ Establish the Phase 1 keyword baseline — a complete picture of the domain's cu
 
 ## Process
 
-1. **Pull current rankings** using `ahrefs_organic_keywords` for the target domain
-2. **Cross-reference with search demand** data to identify volume + position combos
-3. **Identify keyword gaps** — keywords competitors rank for that the domain does not
-4. **Flag quick wins** — positions 4-20 with low difficulty (< 40)
-5. **Analyze intent distribution** across the current ranking portfolio
-6. **Calculate keyword overlap** with each competitor bucket
-7. **Validate difficulty** using `ahrefs_keyword_difficulty` for top opportunities
-8. **Check SERP features** using `dataforseo_serp` for highest-value keywords
+1. **Pull current rankings** using `ahrefs_organic_keywords` for the target domain.
+   - If the response contains zero keywords, set `currentRankings.total = 0` and all bucket counts to 0.
+   - Do NOT use Ahrefs response field names (`domainRating`, `liveRefDomains`, `urlRating`, etc.) as keyword values — those are metadata, not rankings.
+   - Only populate `topKeywords[]` with entries that have a real `keyword` string and a numeric `position`. If none exist, return `topKeywords: []`.
+
+2. **Cross-reference with search demand** data to identify volume + position combos.
+   - Use only keywords confirmed by the tool response. Do not fabricate keywords from search demand category names.
+
+3. **Identify keyword gaps** — keywords competitors rank for that the domain does not.
+   - Source these from `competitor-metrics` data only. If no competitor keyword data is available, return `keywordGaps: []`.
+
+4. **Flag quick wins** — positions 4–20 with difficulty < 40.
+   - Only include entries where both `keyword` (string) and `currentPosition` (integer 4–20) are confirmed tool results.
+   - If no qualifying keywords exist, return `quickWins: []`. Do NOT invent entries.
+
+5. **Analyze intent distribution** across confirmed ranking keywords only.
+   - If `currentRankings.total = 0`, return `intentDistribution` with all counts and volumes at 0.
+
+6. **Calculate keyword overlap** with each competitor from competitor-buckets data.
+   - If no shared keyword data is available, return `competitorOverlap: []`.
+
+7. **Validate difficulty** using `ahrefs_keyword_difficulty` for top opportunities only if you have real keyword strings from step 1.
+
+8. **Check SERP features** using `dataforseo_serp` for the top 20 keywords by volume — only if you have real keywords.
+
+### Data Integrity Rules (MUST follow)
+
+- **Never** use API response metadata field names as keyword entries.
+- **Never** estimate or infer keyword counts that were not returned by tools.
+- **Always** set `summary.totalKeywordUniverse` to the actual count of keywords across all upstream sources (seed-keywords + search-demand keyword totals). This is NOT the Ahrefs ranking count — it is the total keyword universe size from research.
+- **Always** set `summary.estimatedTraffic` to the sum of `volume × CTR` for ranking keywords only. CTR approximation: position 1 = 28%, 2 = 15%, 3 = 11%, 4–10 = 5%, 11–20 = 2%.
+- If a section has no data, use an empty array `[]` or zero values — never substitute metadata or fabricated entries.
 
 ## Output Schema
 
@@ -113,10 +137,13 @@ Establish the Phase 1 keyword baseline — a complete picture of the domain's cu
 
 ## Constraints
 
-- Current rankings: return top 50 keywords by traffic value
-- Keyword gaps: return top 100 by opportunity score
-- Quick wins: positions 4-20 only, difficulty < 40, minimum volume 100
-- Competitor overlap: calculate for each competitor in competitor-buckets
-- SERP features: check top 20 keywords by volume
-- All scores normalized 0-1
+- Current rankings: return top 50 keywords by traffic value — if fewer exist, return only confirmed results
+- Keyword gaps: return top 100 by opportunity score — if no gaps can be confirmed, return `[]`
+- Quick wins: positions 4–20 only, difficulty < 40, minimum volume 100 — return `[]` if none qualify
+- Competitor overlap: calculate per competitor from competitor-buckets — return `[]` if data unavailable
+- SERP features: check top 20 keywords by volume — skip entirely if no real keywords exist
+- All scores normalized 0–1
 - Must reference data from ALL upstream steps (seed-keywords, site-audit, competitor-metrics, search-demand)
+- `summary.totalKeywordUniverse` = total count of distinct keywords across ALL research steps (seed + demand + competitor), NOT the Ahrefs ranking count
+- `summary.estimatedTraffic` = sum of (volume × position-based CTR) for confirmed ranking keywords only
+- If Ahrefs returns no ranking data for the domain, explicitly state this in a `dataGaps` field: `{ "dataGaps": ["No Ahrefs ranking data available for domain"] }`

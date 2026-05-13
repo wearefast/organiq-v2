@@ -2,7 +2,7 @@
 
 import { useAuth } from '@clerk/nextjs';
 import { useEffect } from 'react';
-import { setAuthToken } from '@/shared/utils/api';
+import { setAuthToken, setGetTokenFn } from '@/shared/utils/api';
 
 /**
  * Syncs the Clerk session token into the apiFetch module-level store.
@@ -14,10 +14,14 @@ export function AuthSync() {
   useEffect(() => {
     if (!isSignedIn) {
       setAuthToken(null);
+      setGetTokenFn(null);
       return;
     }
 
     let cancelled = false;
+
+    // Store getToken so apiFetch can refresh on 401
+    setGetTokenFn(() => getToken());
 
     async function sync() {
       const token = await getToken();
@@ -28,12 +32,11 @@ export function AuthSync() {
 
     sync();
 
-    // Refresh token every 50 seconds (Clerk tokens last ~60s)
-    const interval = setInterval(sync, 50_000);
+    // Refresh token every 30 seconds (Clerk tokens last ~60s)
+    const interval = setInterval(sync, 30_000);
     return () => {
       cancelled = true;
       clearInterval(interval);
-      setAuthToken(null);
     };
   }, [getToken, isSignedIn]);
 

@@ -1,5 +1,8 @@
 'use client';
 
+import { useState } from 'react';
+import { InfoTip } from '@/shared/components';
+
 interface DiscoveredKeyword {
   keyword: string;
   volume: number;
@@ -42,6 +45,15 @@ interface Method01Data {
 }
 
 export function Method01Renderer({ data }: { data: unknown }) {
+  // Agent may return a plain string explanation when no pages were found
+  if (typeof data === 'string') {
+    return (
+      <div className="rounded-lg border border-zinc-800 bg-zinc-900/50 p-4">
+        <p className="text-sm leading-relaxed text-zinc-400">{data}</p>
+      </div>
+    );
+  }
+
   const m01 = data as Method01Data;
 
   if (!m01 || typeof m01 !== 'object') {
@@ -53,10 +65,10 @@ export function Method01Renderer({ data }: { data: unknown }) {
       {/* Summary Stats */}
       {m01.summary && (
         <div className="grid grid-cols-4 gap-3">
-          <StatCard label="Keywords Found" value={m01.summary.totalDiscovered} />
-          <StatCard label="Total Volume" value={m01.summary.totalVolume} format />
-          <StatCard label="Avg Difficulty" value={m01.summary.avgDifficulty} />
-          <StatCard label="Pages Analyzed" value={m01.summary.pagesAnalyzed} />
+          <StatCard label="Keywords Found" value={m01.summary.totalDiscovered} tip="Total new keywords discovered from competitors" />
+          <StatCard label="Total Volume" value={m01.summary.totalVolume} format tip="Sum of monthly searches for discovered keywords" />
+          <StatCard label="Avg Difficulty" value={m01.summary.avgDifficulty} tip="Average keyword difficulty of discovered set" />
+          <StatCard label="Pages Analyzed" value={m01.summary.pagesAnalyzed} tip="Number of competitor pages analyzed" />
         </div>
       )}
 
@@ -113,48 +125,72 @@ export function Method01Renderer({ data }: { data: unknown }) {
 
       {/* Top Keywords Table */}
       {m01.discoveredKeywords && m01.discoveredKeywords.length > 0 && (
-        <div>
-          <SectionLabel>Top Discovered Keywords</SectionLabel>
-          <div className="mt-2 overflow-hidden rounded-lg border border-zinc-800">
-            <table className="w-full text-sm">
-              <thead>
-                <tr className="border-b border-zinc-800 bg-zinc-900/80">
-                  <th className="px-3 py-2 text-left text-[10px] uppercase text-zinc-500">Keyword</th>
-                  <th className="px-3 py-2 text-right text-[10px] uppercase text-zinc-500">Volume</th>
-                  <th className="px-3 py-2 text-right text-[10px] uppercase text-zinc-500">KD</th>
-                  <th className="px-3 py-2 text-left text-[10px] uppercase text-zinc-500">Intent</th>
-                  <th className="px-3 py-2 text-left text-[10px] uppercase text-zinc-500">Source</th>
-                  <th className="px-3 py-2 text-right text-[10px] uppercase text-zinc-500">Score</th>
-                </tr>
-              </thead>
-              <tbody>
-                {m01.discoveredKeywords.slice(0, 20).map((kw, i) => (
-                  <tr key={i} className="border-b border-zinc-800/50 hover:bg-zinc-800/30">
-                    <td className="px-3 py-2 text-zinc-200">{kw.keyword}</td>
-                    <td className="px-3 py-2 text-right text-zinc-400">{formatNumber(kw.volume)}</td>
-                    <td className="px-3 py-2 text-right"><DifficultyBadge value={kw.difficulty} /></td>
-                    <td className="px-3 py-2"><IntentBadge intent={kw.intent} /></td>
-                    <td className="px-3 py-2 text-[11px] text-zinc-500">{kw.sourceCompetitor}</td>
-                    <td className="px-3 py-2 text-right">
-                      <span className="rounded bg-violet-500/20 px-1.5 py-0.5 text-[10px] font-medium text-violet-400">
-                        {(kw.opportunityScore * 100).toFixed(0)}%
-                      </span>
-                    </td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-          </div>
-        </div>
+        <SortableDiscoveredKeywordsTable keywords={m01.discoveredKeywords} />
       )}
     </div>
   );
 }
 
-function StatCard({ label, value, format }: { label: string; value: number; format?: boolean }) {
+function SortableDiscoveredKeywordsTable({ keywords }: { keywords: DiscoveredKeyword[] }) {
+  type SK = 'keyword' | 'volume' | 'difficulty' | 'intent' | 'sourceCompetitor' | 'opportunityScore';
+  const [sortKey, setSortKey] = useState<SK>('opportunityScore');
+  const [sortDir, setSortDir] = useState<'asc' | 'desc'>('desc');
+
+  const handleSort = (key: SK) => {
+    if (sortKey === key) setSortDir(d => d === 'asc' ? 'desc' : 'asc');
+    else { setSortKey(key); setSortDir(key === 'keyword' || key === 'intent' || key === 'sourceCompetitor' ? 'asc' : 'desc'); }
+  };
+
+  const sorted = [...keywords].sort((a, b) => {
+    const va = a[sortKey], vb = b[sortKey];
+    const cmp = typeof va === 'string' ? va.localeCompare(vb as string) : (Number(va) || 0) - (Number(vb) || 0);
+    return sortDir === 'asc' ? cmp : -cmp;
+  });
+
+  const arrow = (key: SK) => sortKey === key ? (sortDir === 'asc' ? ' ▲' : ' ▼') : '';
+  const th = (align: string) => `cursor-pointer select-none px-3 py-2 text-[10px] uppercase text-zinc-500 hover:text-zinc-300 ${align}`;
+
+  return (
+    <div>
+      <SectionLabel>Top Discovered Keywords</SectionLabel>
+      <div className="mt-2 overflow-hidden rounded-lg border border-zinc-800">
+        <table className="w-full text-sm">
+          <thead>
+            <tr className="border-b border-zinc-800 bg-zinc-900/80">
+              <th className={th('text-left')} onClick={() => handleSort('keyword')}><InfoTip tip="Discovered keyword term">Keyword{arrow('keyword')}</InfoTip></th>
+              <th className={th('text-right')} onClick={() => handleSort('volume')}><InfoTip tip="Monthly search volume">Volume{arrow('volume')}</InfoTip></th>
+              <th className={th('text-right')} onClick={() => handleSort('difficulty')}><InfoTip tip="Keyword Difficulty (0–100)">KD{arrow('difficulty')}</InfoTip></th>
+              <th className={th('text-left')} onClick={() => handleSort('intent')}><InfoTip tip="Search intent type">Intent{arrow('intent')}</InfoTip></th>
+              <th className={th('text-left')} onClick={() => handleSort('sourceCompetitor')}><InfoTip tip="Competitor domain it came from">Source{arrow('sourceCompetitor')}</InfoTip></th>
+              <th className={th('text-right')} onClick={() => handleSort('opportunityScore')}><InfoTip tip="Opportunity score (0–100%)">Score{arrow('opportunityScore')}</InfoTip></th>
+            </tr>
+          </thead>
+          <tbody>
+            {sorted.slice(0, 20).map((kw, i) => (
+              <tr key={i} className="border-b border-zinc-800/50 hover:bg-zinc-800/30">
+                <td className="px-3 py-2 text-zinc-200">{kw.keyword}</td>
+                <td className="px-3 py-2 text-right text-zinc-400">{formatNumber(kw.volume)}</td>
+                <td className="px-3 py-2 text-right"><DifficultyBadge value={kw.difficulty} /></td>
+                <td className="px-3 py-2"><IntentBadge intent={kw.intent} /></td>
+                <td className="px-3 py-2 text-[11px] text-zinc-500">{kw.sourceCompetitor}</td>
+                <td className="px-3 py-2 text-right">
+                  <span className="rounded bg-violet-500/20 px-1.5 py-0.5 text-[10px] font-medium text-violet-400">
+                    {(kw.opportunityScore * 100).toFixed(0)}%
+                  </span>
+                </td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      </div>
+    </div>
+  );
+}
+
+function StatCard({ label, value, format, tip }: { label: string; value: number; format?: boolean; tip?: string }) {
   return (
     <div className="rounded-lg border border-zinc-800 bg-zinc-900/50 p-3 text-center">
-      <p className="text-[10px] uppercase text-zinc-500">{label}</p>
+      <p className="text-[10px] uppercase text-zinc-500">{tip ? <InfoTip tip={tip}>{label}</InfoTip> : label}</p>
       <p className="mt-1 text-lg font-bold text-zinc-100">{format ? formatNumber(value) : value}</p>
     </div>
   );

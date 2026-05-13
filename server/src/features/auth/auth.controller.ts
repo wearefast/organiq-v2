@@ -3,7 +3,7 @@ import { ApiTags, ApiExcludeEndpoint } from '@nestjs/swagger';
 import { Request } from 'express';
 import { ConfigService } from '@nestjs/config';
 import { AuthService } from './auth.service';
-import { createHmac } from 'crypto';
+import { createHmac, timingSafeEqual } from 'crypto';
 
 @ApiTags('webhooks')
 @Controller('webhooks')
@@ -46,7 +46,13 @@ export class AuthController {
       const signature = createHmac('sha256', secretBytes).update(payload).digest('base64');
       const expectedSignatures = svixSignature.split(' ').map((s) => s.replace('v1,', ''));
 
-      if (!expectedSignatures.includes(signature)) {
+      const sigBuffer = Buffer.from(signature, 'base64');
+      const isValid = expectedSignatures.some((expected) => {
+        const expectedBuffer = Buffer.from(expected, 'base64');
+        if (sigBuffer.length !== expectedBuffer.length) return false;
+        return timingSafeEqual(sigBuffer, expectedBuffer);
+      });
+      if (!isValid) {
         throw new UnauthorizedException('Invalid webhook signature');
       }
     }

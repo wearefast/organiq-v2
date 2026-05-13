@@ -7,22 +7,31 @@ import Link from 'next/link';
 import { StatusBadge } from '@/shared/components/status-badge';
 import { StartRun } from '@/features/workflow/components/start-run';
 import * as workflowApi from '@/features/workflow/services/workflow.service';
+import { setAuthToken } from '@/shared/utils/api';
 import type { WorkflowRun } from '@/features/workflow/types';
 
 export default function WorkflowRunsPage() {
   const params = useParams<{ wId: string; pId: string }>();
-  const { orgId } = useAuth();
+  const { orgId, isSignedIn, getToken } = useAuth();
   const [runs, setRuns] = useState<WorkflowRun[]>([]);
   const [loading, setLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
-    if (!params.pId) return;
-    workflowApi
-      .listRuns(params.pId)
-      .then(setRuns)
-      .catch(() => {})
-      .finally(() => setLoading(false));
-  }, [params.pId]);
+    if (!params.pId || !isSignedIn) return;
+    setError(null);
+    (async () => {
+      try {
+        setAuthToken(await getToken());
+        const data = await workflowApi.listRuns(params.pId);
+        setRuns(data);
+      } catch (err) {
+        setError(err instanceof Error ? err.message : 'Failed to load workflow runs');
+      } finally {
+        setLoading(false);
+      }
+    })();
+  }, [params.pId, isSignedIn, getToken]);
 
   return (
     <div>
@@ -39,6 +48,8 @@ export default function WorkflowRunsPage() {
           workspaceId={params.wId}
         />
       </div>
+
+      {error && <p className="mb-4 text-sm text-red-400">{error}</p>}
 
       {loading ? (
         <div className="flex items-center justify-center py-16 text-zinc-500">
