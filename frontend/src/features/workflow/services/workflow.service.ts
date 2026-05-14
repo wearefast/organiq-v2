@@ -85,3 +85,17 @@ export async function rerunStep(
     { method: 'POST' },
   );
 }
+
+export async function updateArtifact(
+  runId: string,
+  stepKey: string,
+  data: Record<string, unknown>,
+): Promise<{ id: string; version: number }> {
+  return apiFetch<{ id: string; version: number }>(
+    `${BASE}/${runId}/steps/${stepKey}/artifact`,
+    {
+      method: 'PATCH',
+      body: JSON.stringify({ data }),
+    },
+  );
+}

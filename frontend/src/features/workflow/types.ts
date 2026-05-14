@@ -118,4 +118,5 @@ export const STEP_DEFINITIONS: StepDefinition[] = [
   { key: 'topical-map', number: 15, phase: 3, label: 'Topical Map', description: 'Generate content pillars and topic clusters', dependsOn: ['verdict-strategy'] },
   { key: 'content-brief', number: 16, phase: 4, label: 'Content Brief', description: 'Create detailed content briefs from topical map', dependsOn: ['topical-map'] },
   { key: 'content-article', number: 17, phase: 4, label: 'Content Article', description: 'Generate optimized articles from briefs', dependsOn: ['content-brief'] },
+  { key: 'content-images', number: 18, phase: 4, label: 'Content Images', description: 'Generate AI images for article illustrations', dependsOn: ['content-article'] },
 ];

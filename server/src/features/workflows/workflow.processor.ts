@@ -81,9 +81,11 @@ export class WorkflowProcessor extends WorkerHost {
       if (agentDef.outputSchema) {
         const validation = this.outputValidator.validate(result.output, agentDef.outputSchema);
         if (!validation.valid) {
-          this.logger.warn(
-            `Output validation failed for ${stepKey}: ${validation.errors.join(', ')}`,
-          );
+          const message = `Output validation failed for ${stepKey}: ${validation.errors.join(', ')}`;
+          this.logger.warn(message);
+          if (stepKey === 'content-brief') {
+            throw new Error(message);
+          }
         }
       }
 
@@ -329,6 +331,7 @@ export class WorkflowProcessor extends WorkerHost {
       'topical-map': 'topical-map/topical-map.prompt.md',
       'content-brief': 'content/content-brief.prompt.md',
       'content-article': 'articles/content-article.prompt.md',
+      'content-images': 'content-images/content-images.prompt.md',
     };
 
     return stepPromptMap[stepKey] ?? `${stepKey}.prompt.md`;

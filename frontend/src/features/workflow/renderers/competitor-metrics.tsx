@@ -28,7 +28,7 @@ interface CompetitorMetricsData {
   gaps?: Record<string, unknown>;
   summary?: string | { strongestCompetitor?: string; weakestArea?: string; recommendation?: string };
   quickWins?: Record<string, Array<{ target?: string; competitor?: string; difference?: number }>>;
-  benchmarks?: { averageBacklinks?: BacklinkMetrics; averageDomainRating?: number };
+  benchmarks?: { averageBacklinks?: BacklinkMetrics; averageDomainRating?: number; avgDomainRating?: number; avgOrganicKeywords?: number; avgReferringDomains?: number; medianOrganicTraffic?: number };
   /* Legacy flat keys */
   competitors?: CompetitorEntry[];
   ourMetrics?: CompetitorEntry;
@@ -44,21 +44,35 @@ function resolveBacklinks(bl?: BacklinkMetrics | number | null): { live: number;
 }
 
 function flattenGaps(
-  gaps: Record<string, unknown> | undefined,
+  gaps: unknown,
   target: CompetitorEntry | undefined,
   benchmarks: CompetitorMetricsData['benchmarks'],
 ): Array<{ metric: string; value: number; benchmark: number; gap: number }> {
-  if (!gaps || typeof gaps !== 'object') return [];
+  if (!gaps) return [];
+
+  // New shape: gaps is an array of { metric, targetValue, benchmarkValue, gap, priority }
+  if (Array.isArray(gaps)) {
+    return gaps.map((g: Record<string, unknown>) => ({
+      metric: String(g.metric ?? ''),
+      value: Number(g.targetValue ?? 0),
+      benchmark: Number(g.benchmarkValue ?? 0),
+      gap: Number(g.gap ?? 0),
+    }));
+  }
+
+  // Legacy shape: gaps is an object with domainRating, backlinks, etc.
+  if (typeof gaps !== 'object') return [];
+  const gapsObj = gaps as Record<string, unknown>;
   const rows: Array<{ metric: string; value: number; benchmark: number; gap: number }> = [];
 
-  const dr = typeof gaps.domainRating === 'number' ? gaps.domainRating : undefined;
+  const dr = typeof gapsObj.domainRating === 'number' ? gapsObj.domainRating : undefined;
   if (dr !== undefined) {
     const ourDR = target?.domainRating ?? 0;
-    const avgDR = benchmarks?.averageDomainRating ?? ourDR;
+    const avgDR = benchmarks?.averageDomainRating ?? benchmarks?.avgDomainRating ?? ourDR;
     rows.push({ metric: 'Domain Rating', value: ourDR, benchmark: avgDR, gap: dr });
   }
 
-  const bl = gaps.backlinks;
+  const bl = gapsObj.backlinks;
   if (bl && typeof bl === 'object') {
     const blObj = bl as BacklinkMetrics;
     const ourBl = resolveBacklinks(target?.backlinks);
@@ -97,7 +111,8 @@ export function CompetitorMetricsRenderer({ data }: { data: unknown }) {
     for (const qw of quickWins as Array<Record<string, unknown>>) {
       const key = String(qw.metric ?? 'general');
       if (!grouped[key]) grouped[key] = [];
-      grouped[key].push({ target: qw.target as string, competitor: qw.competitor as string, difference: qw.difference as number });
+      const diff = (qw.difference as number) ?? ((Number(qw.targetValue) || 0) - (Number(qw.competitorValue) || 0));
+      grouped[key].push({ target: qw.target as string, competitor: qw.competitor as string, difference: diff });
     }
     quickWins = grouped;
   }

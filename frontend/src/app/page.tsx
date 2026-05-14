@@ -22,9 +22,9 @@ const TESTIMONIALS = [
 
 export default function HomePage() {
   return (
-    <div className="flex min-h-screen flex-col bg-white">
+    <div className="flex min-h-screen flex-col bg-zinc-950">
       {/* Nav */}
-      <nav className="fixed top-0 z-50 w-full border-b border-white/10 bg-[#071932]/90 backdrop-blur-md">
+      <nav className="fixed top-0 z-50 w-full border-b border-white/10 bg-zinc-950/90 backdrop-blur-md">
         <div className="mx-auto flex h-14 max-w-6xl items-center justify-between px-6">
           <Link href="/" className="flex items-center gap-2">
             <span className="flex h-7 w-7 items-center justify-center rounded-lg bg-white/10 text-xs font-bold text-white">C</span>
@@ -69,18 +69,18 @@ export default function HomePage() {
       </section>
 
       {/* How it works */}
-      <section id="how" className="border-b border-[#E8EAF0] bg-white px-6 py-20">
+      <section id="how" className="border-b border-zinc-800 bg-zinc-950 px-6 py-20">
         <div className="mx-auto max-w-4xl">
-          <h2 className="text-center text-[28px] font-bold text-[#111827]">From URL to roadmap in three steps</h2>
-          <p className="mt-3 text-center text-sm text-[#4B5563]">No setup, no integrations. Just paste your domain.</p>
+          <h2 className="text-center text-[28px] font-bold text-zinc-100">From URL to roadmap in three steps</h2>
+          <p className="mt-3 text-center text-sm text-zinc-400">No setup, no integrations. Just paste your domain.</p>
           <div className="mt-14 grid grid-cols-1 gap-8 sm:grid-cols-3">
             {STEPS.map(({ num, title, desc }) => (
               <div key={num} className="text-center">
-                <div className="mx-auto mb-4 flex h-12 w-12 items-center justify-center rounded-2xl bg-[#F8F9FC] text-lg font-bold text-[#DA304F]">
+                <div className="mx-auto mb-4 flex h-12 w-12 items-center justify-center rounded-2xl bg-zinc-800 text-lg font-bold text-[#DA304F]">
                   {num}
                 </div>
-                <h3 className="text-[15px] font-semibold text-[#111827]">{title}</h3>
-                <p className="mt-2 text-sm leading-relaxed text-[#4B5563]">{desc}</p>
+                <h3 className="text-[15px] font-semibold text-zinc-100">{title}</h3>
+                <p className="mt-2 text-sm leading-relaxed text-zinc-400">{desc}</p>
               </div>
             ))}
           </div>
@@ -88,18 +88,18 @@ export default function HomePage() {
       </section>
 
       {/* Features */}
-      <section id="features" className="bg-[#F8F9FC] px-6 py-20">
+      <section id="features" className="bg-zinc-900 px-6 py-20">
         <div className="mx-auto max-w-5xl">
-          <h2 className="text-center text-[28px] font-bold text-[#111827]">Everything a modern SEO team needs</h2>
-          <p className="mt-3 text-center text-sm text-[#4B5563]">A connected workflow — from discovery to publication.</p>
+          <h2 className="text-center text-[28px] font-bold text-zinc-100">Everything a modern SEO team needs</h2>
+          <p className="mt-3 text-center text-sm text-zinc-400">A connected workflow — from discovery to publication.</p>
           <div className="mt-14 grid grid-cols-1 gap-6 sm:grid-cols-2">
             {FEATURES.map(({ icon: Icon, title, desc }) => (
-              <div key={title} className="rounded-xl border border-[#E8EAF0] bg-white p-6 shadow-sm transition-shadow hover:shadow-md">
-                <div className="mb-4 flex h-10 w-10 items-center justify-center rounded-xl bg-[#FCF4F6]">
+              <div key={title} className="rounded-xl border border-zinc-800 bg-zinc-950 p-6 transition-colors hover:border-zinc-700">
+                <div className="mb-4 flex h-10 w-10 items-center justify-center rounded-xl bg-zinc-800">
                   <Icon className="h-5 w-5 text-[#DA304F]" />
                 </div>
-                <h3 className="text-[15px] font-semibold text-[#111827]">{title}</h3>
-                <p className="mt-2 text-sm leading-relaxed text-[#4B5563]">{desc}</p>
+                <h3 className="text-[15px] font-semibold text-zinc-100">{title}</h3>
+                <p className="mt-2 text-sm leading-relaxed text-zinc-400">{desc}</p>
               </div>
             ))}
           </div>
@@ -107,20 +107,20 @@ export default function HomePage() {
       </section>
 
       {/* Testimonials */}
-      <section className="border-t border-[#E8EAF0] bg-white px-6 py-20">
+      <section className="border-t border-zinc-800 bg-zinc-950 px-6 py-20">
         <div className="mx-auto max-w-5xl">
-          <h2 className="text-center text-[28px] font-bold text-[#111827]">Trusted by growth teams</h2>
+          <h2 className="text-center text-[28px] font-bold text-zinc-100">Trusted by growth teams</h2>
           <div className="mt-14 grid grid-cols-1 gap-6 sm:grid-cols-3">
             {TESTIMONIALS.map(({ quote, name, role, initials }) => (
-              <div key={name} className="rounded-xl border border-[#E8EAF0] bg-white p-6 shadow-sm">
-                <p className="text-sm leading-relaxed text-[#4B5563]">&ldquo;{quote}&rdquo;</p>
+              <div key={name} className="rounded-xl border border-zinc-800 bg-zinc-900 p-6">
+                <p className="text-sm leading-relaxed text-zinc-400">&ldquo;{quote}&rdquo;</p>
                 <div className="mt-5 flex items-center gap-3">
-                  <div className="flex h-8 w-8 items-center justify-center rounded-full bg-[#F8F9FC] text-xs font-bold text-[#111827]">
+                  <div className="flex h-8 w-8 items-center justify-center rounded-full bg-zinc-800 text-xs font-bold text-zinc-200">
                     {initials}
                   </div>
                   <div>
-                    <p className="text-sm font-semibold text-[#111827]">{name}</p>
-                    <p className="text-xs text-[#9CA3AF]">{role}</p>
+                    <p className="text-sm font-semibold text-zinc-200">{name}</p>
+                    <p className="text-xs text-zinc-500">{role}</p>
                   </div>
                 </div>
               </div>
@@ -130,7 +130,7 @@ export default function HomePage() {
       </section>
 
       {/* Footer CTA */}
-      <section className="bg-[#071932] px-6 py-20 text-center">
+      <section className="bg-zinc-900 px-6 py-20 text-center">
         <h2 className="text-[28px] font-bold text-white">See where you actually stand. In 2 minutes.</h2>
         <p className="mt-3 text-sm text-white/50">Free, comprehensive, and surprisingly specific.</p>
         <Link
@@ -144,13 +144,13 @@ export default function HomePage() {
       </section>
 
       {/* Footer */}
-      <footer className="border-t border-[#E8EAF0] bg-white px-6 py-8">
+      <footer className="border-t border-zinc-800 bg-zinc-950 px-6 py-8">
         <div className="mx-auto flex max-w-5xl items-center justify-between">
           <div className="flex items-center gap-2">
-            <span className="flex h-6 w-6 items-center justify-center rounded-md bg-[#071932] text-[9px] font-bold text-white">C</span>
-            <span className="text-xs text-[#9CA3AF]">Calibrate Commerce</span>
+            <span className="flex h-6 w-6 items-center justify-center rounded-md bg-zinc-800 text-[9px] font-bold text-white">C</span>
+            <span className="text-xs text-zinc-500">Calibrate Commerce</span>
           </div>
-          <p className="text-xs text-[#9CA3AF]">© {new Date().getFullYear()} Calibrate Commerce. All rights reserved.</p>
+          <p className="text-xs text-zinc-500">© {new Date().getFullYear()} Calibrate Commerce. All rights reserved.</p>
         </div>
       </footer>
     </div>

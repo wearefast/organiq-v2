@@ -34,6 +34,7 @@ const STEP_DEFINITIONS: Array<[string, number, number, string[]]> = [
   ['topical-map', 15, 3, ['verdict-strategy']],
   ['content-brief', 16, 4, ['topical-map']],
   ['content-article', 17, 4, ['content-brief']],
+  ['content-images', 18, 4, ['content-article']],
 ];
 
 @Injectable()
@@ -525,5 +526,49 @@ export class WorkflowService implements OnModuleInit {
     }
 
     return [...visited];
+  }
+
+  /**
+   * Update the latest artifact data for a step (merge partial update).
+   * Only allowed when step is awaiting_approval or completed.
+   */
+  async updateArtifact(
+    workflowRunId: string,
+    stepKey: string,
+    partialData: Record<string, unknown>,
+  ) {
+    const run = await this.getRun(workflowRunId);
+    const step = run.steps.find((s) => s.stepKey === stepKey);
+    if (!step) throw new NotFoundException(`Step "${stepKey}" not found in run ${workflowRunId}`);
+
+    if (step.status !== 'awaiting_approval' && step.status !== 'completed') {
+      throw new BadRequestException(
+        `Cannot edit artifact: step is in "${step.status}" status. Must be awaiting_approval or completed.`,
+      );
+    }
+
+    const latest = step.artifacts?.[0];
+    if (!latest) throw new NotFoundException(`No artifact found for step "${stepKey}"`);
+
+    // Merge new data into existing data
+    const existingData = (latest.data ?? {}) as Record<string, unknown>;
+    const mergedData = { ...existingData, ...partialData };
+
+    // Create a new version with merged data
+    const newVersion = latest.version + 1;
+    const [inserted] = await this.db.db
+      .insert(stepArtifacts)
+      .values({
+        workflowStepId: step.id,
+        workflowRunId,
+        stepKey,
+        version: newVersion,
+        data: mergedData,
+        reasoning: latest.reasoning,
+      })
+      .returning();
+
+    this.logger.log(`Updated artifact for step "${stepKey}" (v${newVersion})`);
+    return { id: inserted.id, version: newVersion };
   }
 }

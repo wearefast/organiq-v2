@@ -55,7 +55,13 @@ export function CountrySelect({ value, onChange, placeholder = 'Select country' 
       >
         {selected ? (
           <>
-            <span className="text-base leading-none">{selected.flag}</span>
+            <img
+              src={`https://flagcdn.com/16x12/${selected.code.toLowerCase()}.png`}
+              width={16}
+              height={12}
+              alt={selected.code}
+              className="shrink-0 rounded-[1px] object-cover"
+            />
             <span className="truncate text-zinc-100">{selected.name}</span>
           </>
         ) : (
@@ -86,7 +92,13 @@ export function CountrySelect({ value, onChange, placeholder = 'Select country' 
                     onClick={() => handleSelect(c)}
                     className={`flex w-full items-center gap-2.5 px-3 py-2 text-left text-sm transition-colors hover:bg-zinc-800 ${c.code === value.toUpperCase() ? 'bg-zinc-800/60 text-zinc-100' : 'text-zinc-300'}`}
                   >
-                    <span className="text-base leading-none">{c.flag}</span>
+                    <img
+                      src={`https://flagcdn.com/16x12/${c.code.toLowerCase()}.png`}
+                      width={16}
+                      height={12}
+                      alt={c.code}
+                      className="shrink-0 rounded-[1px] object-cover"
+                    />
                     <span className="truncate">{c.name}</span>
                     <span className="ml-auto text-[10px] uppercase text-zinc-600">{c.code}</span>
                   </button>

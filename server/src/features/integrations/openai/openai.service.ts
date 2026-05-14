@@ -202,4 +202,66 @@ export class OpenAiService {
 
     return { query, mentioned, position, mentionContext, aiResponse };
   }
+
+  // ─── Image Generation ─────────────────────────────────────────────────────
+
+  async generateImage(
+    prompt: string,
+    size: '1024x1024' | '1792x1024' | '1024x1792' = '1792x1024',
+  ): Promise<{ base64: string; revisedPrompt: string }> {
+    if (!this.apiKey) throw new Error('OPENAI_API_KEY is not configured');
+
+    this.logger.debug(`OpenAI API: images/generations (size=${size})`);
+
+    let lastError: Error | null = null;
+
+    for (let attempt = 0; attempt <= OpenAiService.MAX_RETRIES; attempt++) {
+      const response = await fetch(`${this.baseUrl}/images/generations`, {
+        method: 'POST',
+        headers: {
+          Authorization: `Bearer ${this.apiKey}`,
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          model: 'dall-e-3',
+          prompt,
+          n: 1,
+          size,
+          response_format: 'b64_json',
+          quality: 'standard',
+        }),
+        signal: AbortSignal.timeout(120_000),
+      });
+
+      if (!response.ok) {
+        const errorBody = await response.text();
+        this.logger.error(`OpenAI Images API error: ${response.status}`, errorBody);
+
+        if ((response.status === 429 || response.status >= 500) && attempt < OpenAiService.MAX_RETRIES) {
+          const delay = Math.min(1000 * 2 ** attempt, 8000) + Math.random() * 1000;
+          this.logger.warn(`OpenAI Images retrying in ${Math.round(delay)}ms (attempt ${attempt + 1}/${OpenAiService.MAX_RETRIES})`);
+          await new Promise((r) => setTimeout(r, delay));
+          lastError = new Error(`OpenAI Images API error: ${response.status}`);
+          continue;
+        }
+
+        throw new Error(`OpenAI Images API error: ${response.status} — ${errorBody}`);
+      }
+
+      const data = (await response.json()) as {
+        data: Array<{ b64_json: string; revised_prompt: string }>;
+      };
+
+      if (!data.data?.[0]) {
+        throw new Error('OpenAI Images API returned an invalid response');
+      }
+
+      return {
+        base64: data.data[0].b64_json,
+        revisedPrompt: data.data[0].revised_prompt,
+      };
+    }
+
+    throw lastError ?? new Error('OpenAI Images API request failed after retries');
+  }
 }

@@ -20,6 +20,7 @@ interface AgentDefinition {
   requiresApproval: boolean;
   tools: string[];
   body: string;
+  outputSchema?: Record<string, unknown>;
 }
 
 @Injectable()
@@ -104,6 +105,7 @@ export class PromptService {
 
     const frontmatter = this.parseYamlFrontmatter(fmMatch[1]);
     const body = fmMatch[2].trim();
+    const outputSchema = this.extractOutputSchema(body, fallbackKey);
 
     return {
       name: frontmatter.name ?? fallbackKey,
@@ -116,7 +118,31 @@ export class PromptService {
       requiresApproval: frontmatter.requires_approval === 'true',
       tools: this.parseYamlArray(frontmatter.tools),
       body,
+      outputSchema,
     };
+  }
+
+  private extractOutputSchema(
+    body: string,
+    fallbackKey: string,
+  ): Record<string, unknown> | undefined {
+    const match = body.match(/## Output Schema\s+```(?:json)?\n([\s\S]*?)\n```/);
+    if (!match) return undefined;
+
+    try {
+      const parsed = JSON.parse(match[1].trim());
+      if (!parsed || typeof parsed !== 'object' || Array.isArray(parsed)) {
+        this.logger.warn(
+          `Output schema for ${fallbackKey} must be a top-level JSON object; skipping validation`,
+        );
+        return undefined;
+      }
+      return parsed as Record<string, unknown>;
+    } catch (error) {
+      const message = error instanceof Error ? error.message : String(error);
+      this.logger.warn(`Failed to parse output schema for ${fallbackKey}: ${message}`);
+      return undefined;
+    }
   }
 
   /**

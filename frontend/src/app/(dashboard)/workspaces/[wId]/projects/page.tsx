@@ -173,12 +173,11 @@ export default function ProjectsPage() {
               <span>Language</span>
               <LanguageSelect value={language} onChange={setLanguage} />
             </label>
+            <label className="col-span-full space-y-2 text-sm text-zinc-300">
+              <span>Industry</span>
+              <input value={industry} onChange={(event) => setIndustry(event.target.value)} placeholder="Footwear" className="h-11 w-full rounded-md border border-zinc-700 bg-zinc-900 px-3 text-sm text-zinc-100 outline-none transition-colors focus:border-rose-500" />
+            </label>
           </div>
-
-          <label className="space-y-2 text-sm text-zinc-300">
-            <span>Industry</span>
-            <input value={industry} onChange={(event) => setIndustry(event.target.value)} placeholder="Footwear" className="h-11 w-full rounded-md border border-zinc-700 bg-zinc-900 px-3 text-sm text-zinc-100 outline-none transition-colors focus:border-rose-500" />
-          </label>
 
           <div className="flex items-center justify-between gap-3">
             <p className="text-xs text-zinc-500">New projects open in the workflow runs view after creation.</p>

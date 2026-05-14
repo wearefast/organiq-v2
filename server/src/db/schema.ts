@@ -364,7 +364,9 @@ export const contentPieces = pgTable(
     id: uuid('id').primaryKey().defaultRandom(),
     projectId: uuid('project_id').notNull().references(() => projects.id, { onDelete: 'cascade' }),
     keywordId: uuid('keyword_id').references(() => keywords.id, { onDelete: 'set null' }),
+    topicalMapId: uuid('topical_map_id').references(() => topicalMaps.id, { onDelete: 'set null' }),
     workflowRunId: uuid('workflow_run_id').references(() => workflowRuns.id, { onDelete: 'set null' }),
+    sourceStepKey: text('source_step_key'),
     type: contentTypeEnum('type').notNull(),
     status: contentStatusEnum('status').default('draft').notNull(),
     title: text('title').notNull(),
@@ -378,6 +380,28 @@ export const contentPieces = pgTable(
   (table) => ({
     projectIdx: index('content_pieces_project_idx').on(table.projectId),
     statusIdx: index('content_pieces_status_idx').on(table.projectId, table.status),
+    runStepIdx: uniqueIndex('content_pieces_run_step_idx').on(table.workflowRunId, table.sourceStepKey),
+  }),
+);
+
+// ─── Content Images ──────────────────────────────────────────
+
+export const contentImages = pgTable(
+  'content_images',
+  {
+    id: uuid('id').primaryKey().defaultRandom(),
+    contentPieceId: uuid('content_piece_id').notNull().references(() => contentPieces.id, { onDelete: 'cascade' }),
+    index: integer('index').notNull(),
+    altText: text('alt_text'),
+    prompt: text('prompt'),
+    base64: text('base64').notNull(),
+    revisedPrompt: text('revised_prompt'),
+    size: text('size'),
+    createdAt: timestamp('created_at').defaultNow().notNull(),
+  },
+  (table) => ({
+    pieceIdx: index('content_images_piece_idx').on(table.contentPieceId),
+    pieceIndexIdx: uniqueIndex('content_images_piece_index_idx').on(table.contentPieceId, table.index),
   }),
 );
 
@@ -472,15 +496,22 @@ export const keywordsRelations = relations(keywords, ({ one }) => ({
   workflowRun: one(workflowRuns, { fields: [keywords.workflowRunId], references: [workflowRuns.id] }),
 }));
 
-export const topicalMapsRelations = relations(topicalMaps, ({ one }) => ({
+export const topicalMapsRelations = relations(topicalMaps, ({ one, many }) => ({
   project: one(projects, { fields: [topicalMaps.projectId], references: [projects.id] }),
   workflowRun: one(workflowRuns, { fields: [topicalMaps.workflowRunId], references: [workflowRuns.id] }),
+  contentPieces: many(contentPieces),
 }));
 
-export const contentPiecesRelations = relations(contentPieces, ({ one }) => ({
+export const contentPiecesRelations = relations(contentPieces, ({ one, many }) => ({
   project: one(projects, { fields: [contentPieces.projectId], references: [projects.id] }),
   keyword: one(keywords, { fields: [contentPieces.keywordId], references: [keywords.id] }),
+  topicalMap: one(topicalMaps, { fields: [contentPieces.topicalMapId], references: [topicalMaps.id] }),
   workflowRun: one(workflowRuns, { fields: [contentPieces.workflowRunId], references: [workflowRuns.id] }),
+  images: many(contentImages),
+}));
+
+export const contentImagesRelations = relations(contentImages, ({ one }) => ({
+  contentPiece: one(contentPieces, { fields: [contentImages.contentPieceId], references: [contentPieces.id] }),
 }));
 
 export const reportsRelations = relations(reports, ({ one }) => ({

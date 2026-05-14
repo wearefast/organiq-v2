@@ -13,11 +13,29 @@ interface SerpEntry {
 }
 
 interface NicheSegment {
-  name: string;
-  keywords: string[];
-  totalVolume: number;
-  dominantPlayers: string[];
-  opportunity: string;
+  name?: string;
+  segment?: string;
+  keywords?: string[];
+  totalVolume?: number;
+  dominantPlayers?: string[];
+  dominantContentType?: string;
+  competitionLevel?: string;
+  averageAuthority?: string;
+  opportunity?: string;
+}
+
+interface DominantPlayer {
+  domain: string;
+  estimatedAuthority?: string;
+  contentFocus?: string;
+  serpPresence?: number;
+}
+
+interface Opportunity {
+  type?: string;
+  description: string;
+  keywords?: string[];
+  rationale?: string;
 }
 
 interface SerpNicheMapData {
@@ -35,10 +53,10 @@ interface SerpNicheMapData {
     avgDifficulty: number;
     topOpportunity: string;
   };
-  opportunities?: string[];
-  dominantPlayers?: string[];
-  contentTypeDistribution?: Record<string, string>;
-  serpFeatureDistribution?: Record<string, string>;
+  opportunities?: Array<string | Opportunity>;
+  dominantPlayers?: Array<string | DominantPlayer>;
+  contentTypeDistribution?: Record<string, string | number>;
+  serpFeatureDistribution?: Record<string, string | number>;
   [key: string]: unknown;
 }
 
@@ -85,7 +103,7 @@ export function SerpNicheMapRenderer({ data }: { data: unknown }) {
               return (
                 <div key={i} className="rounded border border-zinc-800 bg-zinc-900/50 p-3">
                   <div className="flex items-center justify-between">
-                    <span className="text-sm font-medium text-zinc-200">{seg.name}</span>
+                    <span className="text-sm font-medium text-zinc-200">{seg.name ?? seg.segment}</span>
                     <div className="flex items-center gap-3 text-xs text-zinc-400">
                       {seg.keywords && <span>{seg.keywords.length} kws</span>}
                       {seg.totalVolume != null && <span>{formatNumber(seg.totalVolume)} vol</span>}
@@ -118,9 +136,12 @@ export function SerpNicheMapRenderer({ data }: { data: unknown }) {
         <div>
           <SectionLabel>Dominant Players ({niche.dominantPlayers.length})</SectionLabel>
           <div className="mt-2 flex flex-wrap gap-1.5">
-            {niche.dominantPlayers.map((p, i) => (
-              <span key={i} className="rounded bg-zinc-800 px-2 py-1 text-xs text-zinc-300">{p}</span>
-            ))}
+            {niche.dominantPlayers.map((p, i) => {
+              const label = typeof p === 'string' ? p : p.domain;
+              return (
+                <span key={i} className="rounded bg-zinc-800 px-2 py-1 text-xs text-zinc-300">{label}</span>
+              );
+            })}
           </div>
         </div>
       )}
@@ -130,11 +151,21 @@ export function SerpNicheMapRenderer({ data }: { data: unknown }) {
         <div>
           <SectionLabel>Opportunities</SectionLabel>
           <div className="mt-2 space-y-1.5">
-            {niche.opportunities.map((opp, i) => (
-              <div key={i} className="rounded border border-zinc-800 bg-zinc-900/50 px-3 py-2">
-                <p className="text-sm text-zinc-300">{opp}</p>
-              </div>
-            ))}
+            {niche.opportunities.map((opp, i) => {
+              const text = typeof opp === 'string' ? opp : opp.description;
+              const type = typeof opp === 'object' ? opp.type : undefined;
+              return (
+                <div key={i} className="rounded border border-zinc-800 bg-zinc-900/50 px-3 py-2">
+                  <div className="flex items-center gap-2">
+                    {type && <span className="rounded bg-violet-500/10 px-1.5 py-0.5 text-[9px] uppercase text-violet-400">{type.replace(/_/g, ' ')}</span>}
+                    <p className="text-sm text-zinc-300">{text}</p>
+                  </div>
+                  {typeof opp === 'object' && opp.rationale && (
+                    <p className="mt-1 text-[11px] text-zinc-500">{opp.rationale}</p>
+                  )}
+                </div>
+              );
+            })}
           </div>
         </div>
       )}
@@ -147,7 +178,7 @@ export function SerpNicheMapRenderer({ data }: { data: unknown }) {
             {Object.entries(niche.contentTypeDistribution).map(([type, level]) => (
               <div key={type} className="rounded border border-zinc-800 bg-zinc-900/50 px-3 py-2 text-center">
                 <p className="text-xs text-zinc-400">{type}</p>
-                <p className="mt-0.5 text-sm font-medium text-zinc-200">{level}</p>
+                <p className="mt-0.5 text-sm font-medium text-zinc-200">{formatDistribution(level)}</p>
               </div>
             ))}
           </div>
@@ -161,8 +192,8 @@ export function SerpNicheMapRenderer({ data }: { data: unknown }) {
           <div className="mt-2 flex flex-wrap gap-2">
             {Object.entries(niche.serpFeatureDistribution).map(([feature, level]) => (
               <div key={feature} className="rounded border border-zinc-800 bg-zinc-900/50 px-3 py-2 text-center">
-                <p className="text-xs text-zinc-400">{feature}</p>
-                <p className="mt-0.5 text-sm font-medium text-zinc-200">{level}</p>
+                <p className="text-xs text-zinc-400">{feature.replace(/_/g, ' ')}</p>
+                <p className="mt-0.5 text-sm font-medium text-zinc-200">{formatDistribution(level)}</p>
               </div>
             ))}
           </div>
@@ -244,6 +275,11 @@ function OpportunityBadge({ level }: { level: string }) {
 
 function SectionLabel({ children }: { children: React.ReactNode }) {
   return <p className="text-[11px] font-semibold uppercase tracking-wider text-zinc-500">{children}</p>;
+}
+
+function formatDistribution(val: string | number): string {
+  if (typeof val === 'number') return `${(val * 100).toFixed(0)}%`;
+  return val;
 }
 
 function formatNumber(n?: number): string {

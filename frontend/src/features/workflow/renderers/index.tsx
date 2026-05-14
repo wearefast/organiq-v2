@@ -15,8 +15,11 @@ import { VerdictStrategyRenderer } from './verdict-strategy';
 import { TopicalMapRenderer } from './topical-map';
 import { ContentBriefRenderer } from './content-brief';
 import { ContentArticleRenderer } from './content-article';
+import { ContentImagesRenderer } from './content-images';
 
-const RENDERERS: Record<string, React.ComponentType<{ data: unknown }>> = {
+import type { WorkflowStep } from '../types';
+
+const RENDERERS: Record<string, React.ComponentType<{ data: unknown; allSteps?: WorkflowStep[] }>> = {
   'business-profile': BusinessProfileRenderer,
   'seed-keywords': SeedKeywordsRenderer,
   'site-audit': SiteAuditRenderer,
@@ -34,15 +37,17 @@ const RENDERERS: Record<string, React.ComponentType<{ data: unknown }>> = {
   'topical-map': TopicalMapRenderer,
   'content-brief': ContentBriefRenderer,
   'content-article': ContentArticleRenderer,
+  'content-images': ContentImagesRenderer,
 };
 
 export function renderArtifact(
   stepKey: string,
   data: unknown,
+  allSteps?: WorkflowStep[],
 ): React.ReactNode {
   const Renderer = RENDERERS[stepKey];
   if (Renderer) {
-    return <Renderer data={data} />;
+    return <Renderer data={data} allSteps={allSteps} />;
   }
   return undefined;
 }

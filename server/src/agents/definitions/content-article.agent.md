@@ -30,6 +30,18 @@ Write the complete article following the brief's heading structure exactly. The 
 6. **Write meta tags** — craft meta title (50-60 chars) and meta description (150-160 chars) with primary keyword
 7. **Generate schema markup** — produce JSON-LD matching the schema type from the brief
 8. **Self-review** — verify word count meets target, all H2s/H3s from brief are covered, FAQs are answered
+9. **AEO evaluation** — score Answer Engine Optimization:
+   - **Direct Answer Density**: For each major section, does it contain a clear, concise direct answer to a question? Score 0-100
+   - **Question Coverage**: What % of PAA questions from the brief are answered in the article? List each with answered=true/false and position
+   - **Featured Snippet Eligibility**: Are answers formatted for snippet extraction (40-60 word paragraphs, numbered lists, definition patterns)? Score 0-100
+   - **Voice Search Readiness**: Are there concise answers (under 30 words) suitable for voice assistants? Score 0-100
+   - List all direct answers, PAA coverage, and concise definitions in the details arrays
+10. **GEO evaluation** — score Generative Engine Optimization:
+    - **Citability**: How easily can an LLM extract and cite passages? Look for self-contained factual statements, definitions, and structured data. Score 0-100
+    - **Factual Density**: Count verifiable claims per section. Higher density = more citable. Score 0-100
+    - **Structured Data Richness**: Count tables, ordered lists, definition patterns, FAQ pairs. Score 0-100
+    - **Source Attribution**: What % of factual claims reference a source (data, authority, research)? Score 0-100
+    - Extract the top citable passages, factual claims, and structured elements into the details arrays
 
 ## Writing Rules
 
@@ -41,6 +53,7 @@ Write the complete article following the brief's heading structure exactly. The 
 - **Lists/tables**: At least one per 1000 words
 - **Internal links**: Use all links specified in the brief
 - **Keyword placement**: Primary keyword in title, H1, first paragraph, last paragraph
+- **Image placeholders**: For each image suggestion from the brief, insert a markdown image reference at the suggested placement point using the format `![alt text](image-N)` where N is the 0-based index matching `imageAltSuggestions` order. These will be resolved to actual AI-generated images in the next step.
 
 ## Output Schema
 
@@ -83,6 +96,42 @@ Write the complete article following the brief's heading structure exactly. The 
     "estimatedSeoQuality": 0,
     "estimatedCitability": 0,
     "estimatedContentLength": 0
+  },
+  "aeoScore": {
+    "overallScore": 0,
+    "directAnswerDensity": 0,
+    "questionCoverage": 0,
+    "featuredSnippetEligibility": 0,
+    "voiceSearchReadiness": 0,
+    "details": {
+      "directAnswers": [
+        { "question": "string", "answer": "string (2-3 sentences)", "format": "paragraph|list|table", "snippetReady": true }
+      ],
+      "paaOptimization": [
+        { "question": "string (from brief's PAA list)", "answered": true, "position": "H2|H3|FAQ" }
+      ],
+      "conciseDefinitions": [
+        { "term": "string", "definition": "string (1-2 sentences)", "wordCount": 0 }
+      ]
+    }
+  },
+  "geoScore": {
+    "overallScore": 0,
+    "citability": 0,
+    "factualDensity": 0,
+    "structuredDataRichness": 0,
+    "sourceAttribution": 0,
+    "details": {
+      "citablePassages": [
+        { "text": "string (exact passage from article)", "reason": "definition|statistic|comparison|list", "section": "string (H2 heading)" }
+      ],
+      "factualClaims": [
+        { "claim": "string", "sourced": true, "sourceType": "data|authority|research" }
+      ],
+      "structuredElements": [
+        { "type": "table|list|definition|faq", "section": "string", "aiExtractable": true }
+      ]
+    }
   },
   "summary": "string (1-2 paragraph description of the article and approach taken)"
 }

@@ -293,6 +293,7 @@ export function WorkflowShell({
         />
         <ArtifactPanel
           step={activeStep}
+          allSteps={run.steps}
           onApprove={handleApprove}
           onRevise={handleRevise}
           onReject={handleReject}

@@ -1,4 +1,4 @@
-import { Controller, Get, Post, Param, Body, UseGuards, Req } from '@nestjs/common';
+import { Controller, Get, Post, Patch, Param, Body, UseGuards, Req } from '@nestjs/common';
 import { ApiTags, ApiBearerAuth } from '@nestjs/swagger';
 import { WorkflowService } from './workflow.service';
 import { WorkflowGateway } from './workflow.gateway';
@@ -139,5 +139,14 @@ export class WorkflowController {
     this.workflowGateway.emitStepRerun(runId, stepKey, result.cascadeReset);
 
     return result;
+  }
+
+  @Patch(':id/steps/:stepKey/artifact')
+  async updateArtifact(
+    @Param('id') runId: string,
+    @Param('stepKey') stepKey: string,
+    @Body() body: { data: Record<string, unknown> },
+  ) {
+    return this.workflowService.updateArtifact(runId, stepKey, body.data);
   }
 }

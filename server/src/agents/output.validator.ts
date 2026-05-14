@@ -10,8 +10,8 @@ export class OutputValidator {
   private readonly logger = new Logger(OutputValidator.name);
 
   /**
-   * Validate an agent's output against a JSON Schema.
-   * Uses a lightweight approach: checks required fields, types, and basic constraints.
+   * Validate an agent's output against the structured example declared in the
+   * agent definition's "Output Schema" block.
    */
   validate(output: unknown, schema: Record<string, unknown>): ValidationResult {
     const errors: string[] = [];
@@ -20,57 +20,87 @@ export class OutputValidator {
       return { valid: false, errors: ['Output is null or undefined'] };
     }
 
-    if (schema.type === 'object' && typeof output !== 'object') {
-      return { valid: false, errors: [`Expected object, got ${typeof output}`] };
-    }
-
-    if (schema.type === 'array' && !Array.isArray(output)) {
-      return { valid: false, errors: [`Expected array, got ${typeof output}`] };
-    }
-
-    // Check required fields
-    if (schema.required && Array.isArray(schema.required) && typeof output === 'object') {
-      const obj = output as Record<string, unknown>;
-      for (const field of schema.required as string[]) {
-        if (!(field in obj) || obj[field] === undefined || obj[field] === null) {
-          errors.push(`Missing required field: "${field}"`);
-        }
-      }
-    }
-
-    // Check property types
-    if (schema.properties && typeof output === 'object') {
-      const obj = output as Record<string, unknown>;
-      const properties = schema.properties as Record<string, Record<string, unknown>>;
-
-      for (const [key, propSchema] of Object.entries(properties)) {
-        if (key in obj && obj[key] !== null && obj[key] !== undefined) {
-          const expectedType = propSchema.type as string;
-          const actualValue = obj[key];
-
-          if (expectedType === 'string' && typeof actualValue !== 'string') {
-            errors.push(`Field "${key}": expected string, got ${typeof actualValue}`);
-          }
-          if (expectedType === 'number' && typeof actualValue !== 'number') {
-            errors.push(`Field "${key}": expected number, got ${typeof actualValue}`);
-          }
-          if (expectedType === 'boolean' && typeof actualValue !== 'boolean') {
-            errors.push(`Field "${key}": expected boolean, got ${typeof actualValue}`);
-          }
-          if (expectedType === 'array' && !Array.isArray(actualValue)) {
-            errors.push(`Field "${key}": expected array, got ${typeof actualValue}`);
-          }
-          if (expectedType === 'object' && (typeof actualValue !== 'object' || Array.isArray(actualValue))) {
-            errors.push(`Field "${key}": expected object, got ${Array.isArray(actualValue) ? 'array' : typeof actualValue}`);
-          }
-        }
-      }
-    }
+    this.validateValue(output, schema, 'output', errors);
 
     if (errors.length > 0) {
       this.logger.debug(`Validation failed with ${errors.length} errors`);
     }
 
     return { valid: errors.length === 0, errors };
+  }
+
+  private validateValue(
+    value: unknown,
+    schemaExample: unknown,
+    path: string,
+    errors: string[],
+  ): void {
+    if (schemaExample === null) {
+      if (value === undefined) {
+        errors.push(`${path}: missing required field`);
+      }
+      return;
+    }
+
+    if (typeof schemaExample === 'string') {
+      const allowsNull = schemaExample.includes('null');
+      if (value === null && allowsNull) return;
+      if (typeof value !== 'string') {
+        errors.push(`${path}: expected string, got ${this.describeValue(value)}`);
+      }
+      return;
+    }
+
+    if (typeof schemaExample === 'number') {
+      if (typeof value !== 'number') {
+        errors.push(`${path}: expected number, got ${this.describeValue(value)}`);
+      }
+      return;
+    }
+
+    if (typeof schemaExample === 'boolean') {
+      if (typeof value !== 'boolean') {
+        errors.push(`${path}: expected boolean, got ${this.describeValue(value)}`);
+      }
+      return;
+    }
+
+    if (Array.isArray(schemaExample)) {
+      if (!Array.isArray(value)) {
+        errors.push(`${path}: expected array, got ${this.describeValue(value)}`);
+        return;
+      }
+
+      if (schemaExample.length === 0) return;
+
+      const itemSchema = schemaExample[0];
+      for (let index = 0; index < value.length; index += 1) {
+        this.validateValue(value[index], itemSchema, `${path}[${index}]`, errors);
+      }
+      return;
+    }
+
+    if (typeof schemaExample === 'object') {
+      if (value === null || typeof value !== 'object' || Array.isArray(value)) {
+        errors.push(`${path}: expected object, got ${this.describeValue(value)}`);
+        return;
+      }
+
+      const valueObject = value as Record<string, unknown>;
+      for (const [key, childSchema] of Object.entries(schemaExample as Record<string, unknown>)) {
+        if (!(key in valueObject)) {
+          errors.push(`${path}.${key}: missing required field`);
+          continue;
+        }
+
+        this.validateValue(valueObject[key], childSchema, `${path}.${key}`, errors);
+      }
+    }
+  }
+
+  private describeValue(value: unknown): string {
+    if (value === null) return 'null';
+    if (Array.isArray(value)) return 'array';
+    return typeof value;
   }
 }

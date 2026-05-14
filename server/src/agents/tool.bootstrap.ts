@@ -247,6 +247,28 @@ export class ToolBootstrap implements OnModuleInit {
         },
         execute: (input: any) => this.openai.inferAiBrandMention(input.query, input.brand),
       },
+      // --- OpenAI Image Generation ---
+      {
+        name: 'generate_image',
+        description:
+          'Generate an image using DALL-E 3 from a text prompt. Returns the image as a base64-encoded PNG string and the revised prompt used by the model. Use detailed, descriptive prompts for best results.',
+        inputSchema: {
+          type: 'object',
+          properties: {
+            prompt: {
+              type: 'string',
+              description: 'Detailed text description of the image to generate. Be specific about style, composition, colors, and subject matter.',
+            },
+            size: {
+              type: 'string',
+              enum: ['1024x1024', '1792x1024', '1024x1792'],
+              description: 'Image dimensions. Default is 1792x1024 (landscape). Use 1024x1792 for portrait.',
+            },
+          },
+          required: ['prompt'],
+        },
+        execute: (input: any) => this.openai.generateImage(input.prompt, input.size),
+      },
     ];
 
     for (const tool of tools) {

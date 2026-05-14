@@ -57,6 +57,7 @@ brief (draft) → brief (review) → brief (approved) → article (draft) → ar
 ### Brief Generation (content-brief agent)
 - Input: Approved keyword + topical map context
 - Output: `briefData` with outline, target word count, E-E-A-T signals, competing content analysis
+- Enforced contract: `paaQuestions`, `internalLinks`, and `ctaRecommendations` are persisted as structured object arrays, not string lists; malformed Step 16 outputs now fail validation before artifact persistence
 
 ### Article Generation (content-article agent)
 - Input: Approved brief

@@ -12,15 +12,17 @@ import { ToolCallTrail } from './tool-call-trail';
 
 interface ArtifactPanelProps {
   step: WorkflowStep | null;
+  allSteps?: WorkflowStep[];
   onApprove: (stepKey: string, notes?: string) => void;
   onRevise: (stepKey: string, notes: string) => void;
   onReject: (stepKey: string, notes: string) => void;
   onRerun?: (stepKey: string) => void;
-  renderArtifact?: (stepKey: string, data: unknown) => React.ReactNode;
+  renderArtifact?: (stepKey: string, data: unknown, allSteps?: WorkflowStep[]) => React.ReactNode;
 }
 
 export function ArtifactPanel({
   step,
+  allSteps,
   onApprove,
   onRevise,
   onReject,
@@ -141,7 +143,7 @@ export function ArtifactPanel({
             {/* Rendered artifact */}
             <div>
               {renderArtifact ? (
-                renderArtifact(step.stepKey, latestArtifact.data)
+                renderArtifact(step.stepKey, latestArtifact.data, allSteps)
               ) : (
                 <DefaultArtifactView data={latestArtifact.data} />
               )}

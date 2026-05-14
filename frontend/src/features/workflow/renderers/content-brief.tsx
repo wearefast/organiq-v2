@@ -128,7 +128,7 @@ export function ContentBriefRenderer({ data }: { data: unknown }) {
               <div key={i} className="rounded border border-zinc-700 bg-zinc-800/30 p-3">
                 <div className="flex items-center gap-2">
                   <span className="flex h-6 w-6 items-center justify-center rounded-full bg-zinc-700 text-xs text-zinc-300">
-                    {r.position}
+                    {r.position ?? i + 1}
                   </span>
                   <span className="truncate text-sm text-white">{r.title}</span>
                 </div>

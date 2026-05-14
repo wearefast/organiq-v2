@@ -6,7 +6,7 @@ interface BusinessProfileData {
   businessName?: string;
   industry?: string;
   description?: string;
-  targetAudience?: string;
+  targetAudience?: string | string[];
   goals?: string[];
   competitors?: Array<string | { name: string; link?: string }>;
   primaryMarket?: string;
@@ -42,7 +42,15 @@ export function BusinessProfileRenderer({ data }: { data: unknown }) {
       {profile.targetAudience && (
         <div>
           <Label>Target Audience</Label>
-          <p className="mt-1 text-sm text-zinc-300">{profile.targetAudience}</p>
+          {Array.isArray(profile.targetAudience) ? (
+            <div className="mt-1 flex flex-wrap gap-1.5">
+              {profile.targetAudience.map((a, i) => (
+                <span key={i} className="rounded-md bg-zinc-800 px-2 py-1 text-[12px] text-zinc-300">{a}</span>
+              ))}
+            </div>
+          ) : (
+            <p className="mt-1 text-sm text-zinc-300">{profile.targetAudience}</p>
+          )}
         </div>
       )}
 
