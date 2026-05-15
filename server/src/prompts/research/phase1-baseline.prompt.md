@@ -20,12 +20,68 @@ Domain: {{domain}}
 Country: {{country}}
 
 Site audit data:
-{{site-audit}}
+{{site-audit.overallScore}}
+
+Site audit top issues:
+{{site-audit.issues}}
 
 Competitor metrics:
-{{competitor-metrics}}
+{{competitor-metrics.competitorMetrics}}
+
+Competitor gaps:
+{{competitor-metrics.gaps}}
 
 Search demand data:
-{{search-demand}}
+{{search-demand.enrichedKeywords}}
 
-Establish the Phase 1 keyword baseline. Return as structured JSON matching the output schema.
+High-opportunity keywords:
+{{search-demand.highOpportunity}}
+
+Establish the Phase 1 keyword baseline.
+
+## CRITICAL: Output Schema Enforcement
+
+You MUST return a flat JSON object with EXACTLY these top-level keys: `currentRankings`, `keywordGaps`, `quickWins`, `competitorOverlap`, `intentDistribution`, `summary`.
+
+Do NOT use `quickWinOpportunities`, `quickWinKeywords`, or any other variant — the key is `quickWins`, exactly.
+Do NOT populate `topKeywords` or `keywordGaps` with metadata field names (e.g. `domainRating`, `liveRefDomains`, `crawledPages`). Every entry must be an actual keyword string returned by the tool calls.
+Do NOT invent or infer keywords that were not explicitly returned by tool output. If a tool returned no data, return an empty array for that field.
+
+Return ONLY valid JSON with this exact structure:
+
+```json
+{
+  "currentRankings": {
+    "total": 0,
+    "top3": 0,
+    "top10": 0,
+    "top20": 0,
+    "top100": 0,
+    "topKeywords": [
+      { "keyword": "", "position": 0, "volume": 0, "difficulty": 0, "url": "", "intent": "" }
+    ]
+  },
+  "keywordGaps": [
+    { "keyword": "", "competitor": "", "volume": 0, "difficulty": 0, "intent": "", "potentialTraffic": 0 }
+  ],
+  "quickWins": [
+    { "keyword": "", "currentPosition": 0, "volume": 0, "difficulty": 0, "url": "", "estimatedTrafficGain": 0, "action": "" }
+  ],
+  "competitorOverlap": [
+    { "competitor": "", "sharedKeywords": 0, "uniqueToCompetitor": 0, "uniqueToUs": 0, "overlapPercentage": 0 }
+  ],
+  "intentDistribution": {
+    "informational": { "count": 0, "volume": 0 },
+    "commercial": { "count": 0, "volume": 0 },
+    "transactional": { "count": 0, "volume": 0 },
+    "navigational": { "count": 0, "volume": 0 }
+  },
+  "summary": {
+    "totalKeywordUniverse": 0,
+    "currentVisibility": 0,
+    "estimatedTraffic": 0,
+    "quickWinPotential": 0,
+    "gapOpportunity": 0
+  }
+}
+```

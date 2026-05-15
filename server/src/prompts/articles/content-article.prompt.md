@@ -32,7 +32,7 @@ You are a senior content writer and SEO optimization specialist. Your job is to 
 
 ## Approved Content Brief
 
-{{input.contentBrief}}
+{{content-brief}}
 
 ## Business Profile
 
@@ -40,4 +40,53 @@ You are a senior content writer and SEO optimization specialist. Your job is to 
 
 ## Task
 
-Write the complete article following the approved brief structure. Return as structured JSON with these fields: title, slug, metaTitle, metaDescription, content (markdown), wordCount, readabilityGrade, keywordDensity, schemaMarkup (JSON-LD object), imageAltSuggestions, internalLinksUsed, faqSection, keyTakeaways.
+Write the complete article following the approved brief structure.
+
+## CRITICAL: Output Schema Enforcement
+
+You MUST return a flat JSON object with EXACTLY these top-level keys: `title`, `slug`, `metaTitle`, `metaDescription`, `content`, `wordCount`, `readabilityGrade`, `keywordUsage`, `schemaMarkup`, `imageAltSuggestions`, `internalLinksUsed`, `faqSection`, `keyTakeaways`, `aeoScore`, `geoScore`.
+
+Do NOT use `keywordDensity` in place of `keywordUsage` — `keywordUsage` must contain `primary` (object with `keyword`, `count`, `density`) and `secondary` (array of same).
+Do NOT return `faqSection` as a string — it MUST be an array of `{ question, answer }` objects.
+Do NOT return `imageAltSuggestions` as a plain string array — each item MUST be an object with `placement`, `altText`, and `description`.
+
+Return ONLY valid JSON with this exact structure:
+
+```json
+{
+  "title": "",
+  "slug": "",
+  "metaTitle": "",
+  "metaDescription": "",
+  "content": "",
+  "wordCount": 0,
+  "readabilityGrade": "",
+  "keywordUsage": {
+    "primary": { "keyword": "", "count": 0, "density": "" },
+    "secondary": [{ "keyword": "", "count": 0, "density": "" }]
+  },
+  "schemaMarkup": {},
+  "imageAltSuggestions": [
+    { "placement": "", "altText": "", "description": "" }
+  ],
+  "internalLinksUsed": [""],
+  "faqSection": [
+    { "question": "", "answer": "" }
+  ],
+  "keyTakeaways": [""],
+  "aeoScore": {
+    "overallScore": 0,
+    "directAnswerDensity": 0,
+    "questionCoverage": 0,
+    "featuredSnippetEligibility": 0,
+    "voiceSearchReadiness": 0
+  },
+  "geoScore": {
+    "overallScore": 0,
+    "citability": 0,
+    "factualDensity": 0,
+    "structuredDataRichness": 0,
+    "sourceAttribution": 0
+  }
+}
+```

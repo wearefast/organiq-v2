@@ -322,6 +322,26 @@ export class WorkflowService implements OnModuleInit {
 
     const successfullyEnqueued = enqueued.filter((k) => !enqueueFailures.includes(k));
     this.logger.log(`Enqueued steps for run ${workflowRunId}: [${successfullyEnqueued.join(', ')}]`);
+
+    // If nothing was enqueued, check whether all steps are terminal (no pending/running left).
+    // If so, mark the workflow run itself as completed.
+    if (successfullyEnqueued.length === 0) {
+      const allSteps = await this.db.db.query.workflowSteps.findMany({
+        where: eq(workflowSteps.workflowRunId, workflowRunId),
+        columns: { status: true },
+      });
+      const hasActive = allSteps.some(
+        (s) => s.status === 'pending' || s.status === 'running',
+      );
+      if (!hasActive && allSteps.length > 0) {
+        await this.db.db
+          .update(workflowRuns)
+          .set({ status: 'completed', completedAt: new Date(), updatedAt: new Date() })
+          .where(eq(workflowRuns.id, workflowRunId));
+        this.logger.log(`Workflow run ${workflowRunId} marked as completed`);
+      }
+    }
+
     return successfullyEnqueued;
   }
 

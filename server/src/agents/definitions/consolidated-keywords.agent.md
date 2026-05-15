@@ -3,7 +3,7 @@ name: Keyword Consolidation
 step_key: consolidated-keywords
 model: gpt-4o
 temperature: 0.2
-max_iterations: 4
+max_iterations: 10
 credit_cost: 40
 depends_on:
   - phase1-baseline
@@ -48,8 +48,8 @@ Produce the final consolidated keyword ledger — deduplicated, scored, classifi
       "difficulty": 0,
       "cpc": 0.00,
       "intent": "informational|navigational|commercial|transactional",
-      "funnelStage": "tofu|mofu|bofu",
-      "opportunityScore": 0.0,
+      "funnelStage": "TOFU|MOFU|BOFU",
+      "opportunityScore": 0,
       "currentPosition": null,
       "source": "baseline|method01|method02|method03|multiple",
       "parentTopic": "string|null",
@@ -64,8 +64,8 @@ Produce the final consolidated keyword ledger — deduplicated, scored, classifi
       "totalVolume": 0,
       "avgDifficulty": 0,
       "avgOpportunity": 0.0,
-      "primaryIntent": "string",
-      "funnelStage": "string",
+      "primaryIntent": "informational|navigational|commercial|transactional",
+      "funnelStage": "TOFU|MOFU|BOFU",
       "topKeywords": ["string"],
       "priority": "high|medium|low"
     }

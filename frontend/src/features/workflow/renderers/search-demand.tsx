@@ -219,9 +219,9 @@ function MetricCard({ label, value, subtitle, tip }: { label: string; value: str
   );
 }
 
-function DifficultyBadge({ value }: { value: number }) {
+function DifficultyBadge({ value, showLabel }: { value: number; showLabel?: boolean }) {
   const color = value <= 30 ? 'text-green-400' : value <= 60 ? 'text-yellow-400' : 'text-red-400';
-  return <span className={`text-xs font-medium ${color}`}>{value}</span>;
+  return <span className={`text-xs font-medium ${color}`}>{showLabel ? 'KD: ' : ''}{Math.round(value)}</span>;
 }
 
 function SectionLabel({ children }: { children: React.ReactNode }) {

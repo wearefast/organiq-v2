@@ -14,13 +14,57 @@ Steps:
 Imported keywords:
 {{imported-keywords}}
 
-Phase 1 baseline:
-{{phase1-baseline}}
+Phase 1 baseline (current rankings for dedup):
+{{phase1-baseline.currentRankings}}
 
-Method 01 results:
-{{method01-competitor-pages}}
+Phase 1 baseline (keyword gaps for dedup):
+{{phase1-baseline.keywordGaps}}
 
-Method 02 results:
-{{method02-seed-expansion}}
+Method 01 results (for dedup):
+{{method01-competitor-pages.discoveredKeywords}}
 
-Process the content gap import. Return as structured JSON matching the output schema.
+Method 02 results (for dedup):
+{{method02-seed-expansion.expandedKeywords}}
+
+Process the content gap import.
+
+## CRITICAL: Output Schema Enforcement
+
+You MUST return a flat JSON object with EXACTLY these top-level keys: `importedKeywords`, `importStats`, `bySource`, `topicClusters`, `summary`.
+
+Do NOT use `keywords`, `keywordList`, or any other name in place of `importedKeywords` — the key is `importedKeywords`, exactly.
+Do NOT use snake_case field names anywhere in the output. The correct camelCase names are: `funnelStage` (not `funnel_stage`), `opportunityScore` (not `opportunity_score`), `isNew` (not `is_new`).
+`importedKeywords[].funnelStage` MUST be exactly one of: `"TOFU"`, `"MOFU"`, `"BOFU"`. Do NOT use lowercase (`tofu`, `mofu`, `bofu`) or any other variant. Canonical mapping: Awareness/informational → `"TOFU"`, Consideration/commercial → `"MOFU"`, Decision/transactional/navigational → `"BOFU"`.
+Do NOT add top-level keys beyond the five listed above.
+
+Return ONLY valid JSON with this exact structure:
+
+```json
+{
+  "importedKeywords": [
+    { "keyword": "", "volume": 0, "difficulty": 0, "intent": "", "funnelStage": "TOFU|MOFU|BOFU", "source": "", "opportunityScore": 0, "isNew": true }
+  ],
+  "importStats": {
+    "totalImported": 0,
+    "afterCleaning": 0,
+    "afterDedup": 0,
+    "newUnique": 0,
+    "duplicatesRemoved": 0,
+    "enriched": 0
+  },
+  "bySource": [
+    { "source": "", "count": 0, "totalVolume": 0, "avgDifficulty": 0 }
+  ],
+  "topicClusters": [
+    { "topic": "", "keywordCount": 0, "totalVolume": 0, "avgDifficulty": 0, "topKeywords": [] }
+  ],
+  "summary": {
+    "totalNewKeywords": 0,
+    "totalVolume": 0,
+    "avgDifficulty": 0,
+    "avgOpportunityScore": 0,
+    "topSource": "",
+    "recommendation": ""
+  }
+}
+```

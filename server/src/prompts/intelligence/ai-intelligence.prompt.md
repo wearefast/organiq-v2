@@ -50,4 +50,37 @@ Overall Score: {{site-audit.overallScore}}
 
 ## Task
 
-Analyze this domain's AI/GEO/AEO readiness. Scrape key pages, run relevant searches, and produce a comprehensive AI intelligence report. Return JSON with: aiReadinessScore, dimensions (5 scored areas), aiMentions, opportunities, competitorComparison, and summary.
+Analyze this domain's AI/GEO/AEO readiness. Scrape key pages, run relevant searches, and produce a comprehensive AI intelligence report.
+
+## CRITICAL: Output Schema Enforcement
+
+You MUST return a flat JSON object with EXACTLY these top-level keys: `aiReadinessScore`, `dimensions`, `aiMentions`, `opportunities`, `competitorComparison`, `summary`.
+
+Do NOT return `dimensions` as a flat `{ dimensionName: number }` map — each dimension MUST be an object with `score` (number 0–100) and `findings` (string array).
+Do NOT return `aiMentions` as a `{ category: [...] }` grouped object — it MUST be a flat array where each item has `query`, `mentioned` (boolean), `position`, and `context`.
+Do NOT fabricate or estimate `aiMentions` — each entry MUST come from actual `openai_ai_inference` tool results.
+
+Return ONLY valid JSON with this exact structure:
+
+```json
+{
+  "aiReadinessScore": 0,
+  "dimensions": {
+    "structuredData": { "score": 0, "findings": [] },
+    "contentClarity": { "score": 0, "findings": [] },
+    "authoritySignals": { "score": 0, "findings": [] },
+    "citabilityFormat": { "score": 0, "findings": [] },
+    "brandPresence": { "score": 0, "findings": [] }
+  },
+  "aiMentions": [
+    { "query": "", "mentioned": false, "context": null, "position": "featured|cited|listed|absent" }
+  ],
+  "opportunities": [
+    { "priority": "high|medium|low", "title": "", "description": "", "expectedImpact": "" }
+  ],
+  "competitorComparison": [
+    { "competitor": "", "aiReadinessEstimate": 0, "advantage": "" }
+  ],
+  "summary": ""
+}
+```

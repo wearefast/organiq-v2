@@ -3,6 +3,7 @@
 import { useEffect, useState } from 'react';
 import { useParams } from 'next/navigation';
 import { apiFetch } from '@/shared/utils/api';
+import { fetchContent, type ContentPiece } from '@/features/content/services/content.service';
 
 interface PageItem {
   title: string;
@@ -76,6 +77,7 @@ export default function TopicalMapPage() {
   const [expandedCluster, setExpandedCluster] = useState<string | null>(null);
   const [view, setView] = useState<'tree' | 'calendar'>('tree');
   const [loading, setLoading] = useState(true);
+  const [contentByKeyword, setContentByKeyword] = useState<Map<string, ContentPiece>>(new Map());
 
   useEffect(() => {
     loadData();
@@ -84,9 +86,10 @@ export default function TopicalMapPage() {
   async function loadData() {
     setLoading(true);
     try {
-      const [mapsData, statsData] = await Promise.all([
+      const [mapsData, statsData, contentData] = await Promise.all([
         apiFetch(`/projects/${projectId}/topical-maps`),
         apiFetch(`/projects/${projectId}/topical-maps/stats`),
+        fetchContent(projectId).catch(() => [] as ContentPiece[]),
       ]);
       const mapsList = mapsData as TopicalMap[];
       setMaps(mapsList);
@@ -94,6 +97,17 @@ export default function TopicalMapPage() {
       if (mapsList.length > 0 && !selectedMap) {
         setSelectedMap(mapsList[0]);
       }
+      // Build keyword → content piece lookup (articles preferred over briefs)
+      const lookup = new Map<string, ContentPiece>();
+      for (const piece of contentData) {
+        const kw = extractKeyword(piece);
+        if (!kw) continue;
+        const existing = lookup.get(kw);
+        if (!existing || piece.type === 'article') {
+          lookup.set(kw, piece);
+        }
+      }
+      setContentByKeyword(lookup);
     } catch (e) {
       console.error('Failed to load topical maps', e);
     } finally {
@@ -246,7 +260,9 @@ export default function TopicalMapPage() {
                           {/* Pages */}
                           {clusterExpanded && cluster.pages && (
                             <div className="ml-8 space-y-1 px-4 pb-3">
-                              {cluster.pages.map((page, i) => (
+                              {cluster.pages.map((page, i) => {
+                                const matchedContent = contentByKeyword.get(page.keyword?.toLowerCase().trim());
+                                return (
                                 <div
                                   key={i}
                                   className="flex items-center justify-between rounded bg-zinc-900/60 px-3 py-2"
@@ -266,6 +282,12 @@ export default function TopicalMapPage() {
                                     </div>
                                   </div>
                                   <div className="flex items-center gap-4 text-[10px] text-zinc-500">
+                                    {matchedContent && (
+                                      <ContentStatusBadge
+                                        type={matchedContent.type}
+                                        status={matchedContent.status}
+                                      />
+                                    )}
                                     {page.volume !== undefined && (
                                       <span>{formatNumber(page.volume)} vol</span>
                                     )}
@@ -279,7 +301,8 @@ export default function TopicalMapPage() {
                                     )}
                                   </div>
                                 </div>
-                              ))}
+                                );
+                              })}
                             </div>
                           )}
                         </div>
@@ -424,4 +447,28 @@ function formatNumber(n?: number): string {
   if (n >= 1_000_000) return `${(n / 1_000_000).toFixed(1)}M`;
   if (n >= 1_000) return `${(n / 1_000).toFixed(1)}K`;
   return n.toLocaleString();
+}
+
+function ContentStatusBadge({ type, status }: { type: string; status: string }) {
+  const colors: Record<string, string> = {
+    draft: 'bg-zinc-600 text-zinc-200',
+    review: 'bg-yellow-600/80 text-yellow-100',
+    approved: 'bg-green-600/80 text-green-100',
+    published: 'bg-blue-600/80 text-blue-100',
+  };
+  const label = type === 'article' ? `Article: ${status}` : `Brief: ${status}`;
+  return (
+    <span className={`rounded px-1.5 py-0.5 text-[9px] font-medium ${colors[status] ?? colors.draft}`}>
+      {label}
+    </span>
+  );
+}
+
+function extractKeyword(piece: ContentPiece): string | undefined {
+  // Try briefData.targetKeyword first, then title
+  const brief = piece.briefData as Record<string, unknown> | undefined;
+  if (brief && typeof brief.targetKeyword === 'string') {
+    return brief.targetKeyword.toLowerCase().trim();
+  }
+  return undefined;
 }

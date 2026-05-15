@@ -207,11 +207,17 @@ export class OpenAiService {
 
   async generateImage(
     prompt: string,
-    size: '1024x1024' | '1792x1024' | '1024x1792' = '1792x1024',
+    size: '1024x1024' | '1536x1024' | '1024x1536' | '1792x1024' | '1024x1792' = '1536x1024',
   ): Promise<{ base64: string; revisedPrompt: string }> {
     if (!this.apiKey) throw new Error('OPENAI_API_KEY is not configured');
 
-    this.logger.debug(`OpenAI API: images/generations (size=${size})`);
+    // Map legacy dall-e-3 sizes to gpt-image-1 equivalents
+    const normalizedSize =
+      size === '1792x1024' ? '1536x1024' :
+      size === '1024x1792' ? '1024x1536' :
+      size;
+
+    this.logger.debug(`OpenAI API: images/generations (size=${normalizedSize})`);
 
     let lastError: Error | null = null;
 
@@ -223,12 +229,10 @@ export class OpenAiService {
           'Content-Type': 'application/json',
         },
         body: JSON.stringify({
-          model: 'dall-e-3',
+          model: 'gpt-image-1',
           prompt,
           n: 1,
-          size,
-          response_format: 'b64_json',
-          quality: 'standard',
+          size: normalizedSize,
         }),
         signal: AbortSignal.timeout(120_000),
       });
@@ -249,17 +253,33 @@ export class OpenAiService {
       }
 
       const data = (await response.json()) as {
-        data: Array<{ b64_json: string; revised_prompt: string }>;
+        data: Array<{ url?: string; b64_json?: string; revised_prompt: string }>;
       };
 
       if (!data.data?.[0]) {
         throw new Error('OpenAI Images API returned an invalid response');
       }
 
-      return {
-        base64: data.data[0].b64_json,
-        revisedPrompt: data.data[0].revised_prompt,
-      };
+      const item = data.data[0];
+      const revisedPrompt = item.revised_prompt ?? '';
+
+      // API now returns a URL by default — fetch it and convert to base64
+      if (item.url) {
+        const imgResponse = await fetch(item.url, { signal: AbortSignal.timeout(60_000) });
+        if (!imgResponse.ok) {
+          throw new Error(`Failed to download generated image: ${imgResponse.status}`);
+        }
+        const arrayBuffer = await imgResponse.arrayBuffer();
+        const base64 = Buffer.from(arrayBuffer).toString('base64');
+        return { base64, revisedPrompt };
+      }
+
+      // Fallback: b64_json still present (older API versions)
+      if (item.b64_json) {
+        return { base64: item.b64_json, revisedPrompt };
+      }
+
+      throw new Error('OpenAI Images API returned neither url nor b64_json');
     }
 
     throw lastError ?? new Error('OpenAI Images API request failed after retries');

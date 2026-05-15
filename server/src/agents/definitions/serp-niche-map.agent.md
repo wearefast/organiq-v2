@@ -3,7 +3,7 @@ name: SERP Niche Mapper
 step_key: serp-niche-map
 model: gpt-4o
 temperature: 0.3
-max_iterations: 4
+max_iterations: 10
 credit_cost: 45
 depends_on:
   - seed-keywords

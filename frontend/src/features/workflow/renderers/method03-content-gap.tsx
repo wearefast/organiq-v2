@@ -58,16 +58,35 @@ function normalizeMethod03(raw: Record<string, unknown>): Method03Data {
   // Map 'keywords' → 'importedKeywords' if needed
   const kwSource = (result.importedKeywords ?? (raw as Record<string, unknown>).keywords) as Array<Record<string, unknown>> | undefined;
   if (Array.isArray(kwSource) && kwSource.length > 0 && !result.importedKeywords) {
-    result.importedKeywords = kwSource.map((kw) => ({
-      keyword: String(kw.keyword ?? ''),
-      volume: Number(kw.volume ?? 0),
-      difficulty: Number(kw.difficulty ?? 0),
-      intent: String(kw.intent ?? ''),
-      funnelStage: String(kw.funnelStage ?? kw.funnel_stage ?? ''),
-      source: String(kw.source ?? 'content-gap'),
-      opportunityScore: Number(kw.opportunityScore ?? kw.opportunity_score ?? 0),
-      isNew: Boolean(kw.isNew ?? kw.is_new ?? true),
-    }));
+    result.importedKeywords = kwSource.map((kw) => {
+      const volume = Number(kw.volume ?? 0);
+      const difficulty = Number(kw.difficulty ?? 0);
+      const rawScore = Number(kw.opportunityScore ?? kw.opportunity_score ?? 0);
+      // If agent returned a 0–1 decimal, compute the raw integer score instead
+      const opportunityScore = rawScore > 0 && rawScore <= 1
+        ? Math.round(volume * (100 - difficulty) / 100)
+        : rawScore;
+      return {
+        keyword: String(kw.keyword ?? ''),
+        volume,
+        difficulty,
+        intent: String(kw.intent ?? ''),
+        funnelStage: String(kw.funnelStage ?? kw.funnel_stage ?? ''),
+        source: String(kw.source ?? 'content-gap'),
+        opportunityScore,
+        isNew: Boolean(kw.isNew ?? kw.is_new ?? true),
+      };
+    });
+  }
+
+  // Also recompute scores on already-mapped importedKeywords when decimal range
+  if (Array.isArray(result.importedKeywords)) {
+    result.importedKeywords = result.importedKeywords.map((kw) => {
+      if (kw.opportunityScore > 0 && kw.opportunityScore <= 1) {
+        return { ...kw, opportunityScore: Math.round(kw.volume * (100 - kw.difficulty) / 100) };
+      }
+      return kw;
+    });
   }
 
   return result;
@@ -151,7 +170,7 @@ export function Method03Renderer({ data }: { data: unknown }) {
                 </div>
                 <div className="flex items-center gap-3 text-xs text-zinc-400">
                   <span>{cluster.keywordCount} kws</span>
-                  <span>{formatNumber(cluster.totalVolume)}</span>
+                  <span>{formatNumber(cluster.totalVolume)} vol</span>
                 </div>
               </div>
             ))}
@@ -204,7 +223,7 @@ function SortableImportedKeywordsTable({ keywords }: { keywords: ImportedKeyword
               <th className={th('text-right')} onClick={() => handleSort('volume')}><InfoTip tip="Monthly search volume">Volume{arrow('volume')}</InfoTip></th>
               <th className={th('text-right')} onClick={() => handleSort('difficulty')}><InfoTip tip="Keyword Difficulty (0–100)">KD{arrow('difficulty')}</InfoTip></th>
               <th className={th('text-left')} onClick={() => handleSort('source')}><InfoTip tip="Where this keyword originated">Source{arrow('source')}</InfoTip></th>
-              <th className={th('text-right')} onClick={() => handleSort('opportunityScore')}><InfoTip tip="Opportunity score (0–100%)">Score{arrow('opportunityScore')}</InfoTip></th>
+              <th className={th('text-right')} onClick={() => handleSort('opportunityScore')}><InfoTip tip="Opp. Score = volume × (100 − difficulty) / 100. Higher = more traffic potential with less competition.">Opp. Score{arrow('opportunityScore')}</InfoTip></th>
             </tr>
           </thead>
           <tbody>
@@ -218,7 +237,7 @@ function SortableImportedKeywordsTable({ keywords }: { keywords: ImportedKeyword
                 </td>
                 <td className="px-3 py-2 text-right">
                   <span className="rounded bg-violet-500/20 px-1.5 py-0.5 text-[10px] font-medium text-violet-400">
-                    {(kw.opportunityScore * 100).toFixed(0)}%
+                    {Math.round(kw.opportunityScore).toLocaleString()}
                   </span>
                 </td>
               </tr>
@@ -243,9 +262,9 @@ function Arrow() {
   return <span className="text-zinc-600">→</span>;
 }
 
-function DifficultyBadge({ value }: { value: number }) {
+function DifficultyBadge({ value, showLabel }: { value: number; showLabel?: boolean }) {
   const color = value <= 30 ? 'text-green-400' : value <= 60 ? 'text-yellow-400' : 'text-red-400';
-  return <span className={`text-xs font-medium ${color}`}>{value}</span>;
+  return <span className={`text-xs font-medium ${color}`}>{showLabel ? 'KD: ' : ''}{Math.round(value)}</span>;
 }
 
 function SectionLabel({ children }: { children: React.ReactNode }) {

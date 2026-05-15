@@ -4,8 +4,16 @@ import { WorkflowController } from './workflow.controller';
 import { WorkflowService } from './workflow.service';
 import { WorkflowProcessor } from './workflow.processor';
 import { WorkflowGateway } from './workflow.gateway';
+import { WorkflowMaterializerService } from './workflow-materializer.service';
 import { CreditsModule } from '../credits/credits.module';
+import { KeywordsModule } from '../keywords/keywords.module';
+import { TopicalMapsModule } from '../topical-maps/topical-maps.module';
+import { ContentModule } from '../content/content.module';
 
+/**
+ * Dependency direction: WorkflowsModule → feature modules (Keywords, TopicalMaps, Content).
+ * This is strictly one-directional. Feature modules must NEVER import WorkflowsModule.
+ */
 @Module({
   imports: [
     BullModule.registerQueue({
@@ -18,9 +26,12 @@ import { CreditsModule } from '../credits/credits.module';
       },
     }),
     CreditsModule,
+    KeywordsModule,
+    TopicalMapsModule,
+    ContentModule,
   ],
   controllers: [WorkflowController],
-  providers: [WorkflowService, WorkflowProcessor, WorkflowGateway],
+  providers: [WorkflowService, WorkflowProcessor, WorkflowGateway, WorkflowMaterializerService],
   exports: [WorkflowService, WorkflowGateway],
 })
 export class WorkflowsModule {}

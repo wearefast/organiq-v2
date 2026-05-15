@@ -57,9 +57,11 @@ Valid examples:
 
 ---
 
-## Content Piece
+## Content Target
 
-{{input.contentPiece}}
+Select the single highest-priority item from the topical map calendar (month 1, position 1) as the target keyword for this brief. All SERP research, the outline, and the output JSON must be tightly scoped to that one keyword. Do not spread the brief across multiple keywords.
+
+{{topical-map.calendar}}
 
 ## Business Profile
 
@@ -67,10 +69,115 @@ Valid examples:
 
 ## Topical Map Context
 
-{{topical-map}}
+{{topical-map.pillars}}
+
+## Linking Architecture
+
+{{topical-map.linkingArchitecture}}
 
 ## Task
 
 Research the target keyword using the available tools. Analyze the SERP landscape and top-ranking content. Then produce a comprehensive content brief as structured JSON.
 
-Return a JSON object with these top-level fields: targetKeyword, secondaryKeywords, searchIntent, serpAnalysis, contentStructure, wordCountTarget, schemaMarkup, internalLinks, externalReferences, competitiveGaps, paaQuestions, ctaRecommendations, metaTitle, metaDescription, summary.
+## CRITICAL: Output Schema Enforcement
+
+You MUST return a flat JSON object with EXACTLY these top-level keys: `targetKeyword`, `secondaryKeywords`, `searchIntent`, `serpAnalysis`, `contentStructure`, `wordCountTarget`, `keywordTargets`, `schemaMarkup`, `internalLinks`, `externalReferences`, `competitiveGaps`, `paaQuestions`, `ctaRecommendations`, `metaTitle`, `metaDescription`, `summary`.
+
+Do NOT omit any field — use empty arrays, empty strings, or 0 for fields you cannot determine.
+Do NOT return `serpAnalysis` as an array — it MUST be an object.
+Do NOT return `wordCountTarget` as a plain number — it MUST be an object with `minimum`, `target`, `maximum`.
+Do NOT return `schemaMarkup` as a plain string — it MUST be an object with `type` and `properties`.
+Do NOT return `contentStructure` without `h1` and `sections` — both are required.
+Do NOT return `externalReferences` items without `url`, `description`, `useCase` — all three are required per item.
+`paaQuestions` MUST be an array of `{ "question": "...", "suggestedAnswer": "..." }` objects.
+`internalLinks` MUST be an array of `{ "targetPage": "...", "anchorText": "...", "context": "..." }` objects.
+`ctaRecommendations` MUST be an array of `{ "placement": "...", "type": "...", "text": "..." }` objects.
+
+Return ONLY valid JSON with this exact structure:
+
+```json
+{
+  "targetKeyword": "",
+  "secondaryKeywords": [""],
+  "searchIntent": "informational|commercial|transactional|navigational",
+  "serpAnalysis": {
+    "totalResults": 0,
+    "featuredSnippetType": null,
+    "paaQuestions": [""],
+    "topResults": [
+      {
+        "position": 0,
+        "url": "",
+        "title": "",
+        "estimatedWordCount": 0,
+        "contentType": "",
+        "strengths": [""],
+        "gaps": [""]
+      }
+    ],
+    "averageWordCount": 0,
+    "dominantContentFormat": ""
+  },
+  "contentStructure": {
+    "h1": "",
+    "sections": [
+      {
+        "h2": "",
+        "guidance": "",
+        "estimatedWords": 0,
+        "subsections": [
+          {
+            "h3": "",
+            "guidance": "",
+            "estimatedWords": 0
+          }
+        ]
+      }
+    ]
+  },
+  "wordCountTarget": {
+    "minimum": 0,
+    "target": 0,
+    "maximum": 0
+  },
+  "keywordTargets": {
+    "primary": { "keyword": "", "density": "1-2%" },
+    "secondary": [{ "keyword": "", "density": "0.5-1%" }]
+  },
+  "schemaMarkup": {
+    "type": "",
+    "properties": [""]
+  },
+  "internalLinks": [
+    {
+      "targetPage": "",
+      "anchorText": "",
+      "context": ""
+    }
+  ],
+  "externalReferences": [
+    {
+      "url": "",
+      "description": "",
+      "useCase": ""
+    }
+  ],
+  "competitiveGaps": [""],
+  "paaQuestions": [
+    {
+      "question": "",
+      "suggestedAnswer": ""
+    }
+  ],
+  "ctaRecommendations": [
+    {
+      "placement": "intro|mid|conclusion",
+      "type": "newsletter|product|resource",
+      "text": ""
+    }
+  ],
+  "metaTitle": "",
+  "metaDescription": "",
+  "summary": ""
+}
+```

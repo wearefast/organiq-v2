@@ -3,7 +3,7 @@ name: "Method 03: Content Gap Import"
 step_key: method03-content-gap-import
 model: gpt-4o
 temperature: 0.2
-max_iterations: 3
+max_iterations: 8
 credit_cost: 30
 depends_on:
   - phase1-baseline
@@ -43,7 +43,7 @@ Process user-provided keyword data, clean and deduplicate it against existing re
       "volume": 0,
       "difficulty": 0,
       "intent": "informational|navigational|commercial|transactional",
-      "funnelStage": "tofu|mofu|bofu",
+      "funnelStage": "TOFU|MOFU|BOFU",
       "source": "content_gap|gsc|manual|ahrefs_export",
       "sourceDetail": "string|null",
       "opportunityScore": 0.0,

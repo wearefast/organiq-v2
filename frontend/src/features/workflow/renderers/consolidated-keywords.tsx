@@ -59,6 +59,66 @@ interface ConsolidatedData {
 }
 
 /**
+ * Canonical funnel stage normalizer.
+ * Collapses all agent-returned aliases to TOFU | MOFU | BOFU.
+ */
+const FUNNEL_STAGE_MAP: Record<string, string> = {
+  // TOFU aliases
+  tofu: 'TOFU', awareness: 'TOFU', informational: 'TOFU', 'top-of-funnel': 'TOFU', 'top_of_funnel': 'TOFU',
+  'problem-aware': 'TOFU', problem_aware: 'TOFU',
+  // MOFU aliases
+  mofu: 'MOFU', consideration: 'MOFU', commercial: 'MOFU', research: 'MOFU',
+  'middle-of-funnel': 'MOFU', 'middle_of_funnel': 'MOFU', 'solution-aware': 'MOFU', solution_aware: 'MOFU',
+  // BOFU aliases
+  bofu: 'BOFU', decision: 'BOFU', transactional: 'BOFU', conversion: 'BOFU',
+  navigational: 'BOFU', 'bottom-of-funnel': 'BOFU', 'bottom_of_funnel': 'BOFU',
+  purchase: 'BOFU', 'product-aware': 'BOFU', product_aware: 'BOFU',
+};
+
+function normalizeFunnelStage(raw: string): string {
+  if (!raw) return '';
+  const key = raw.toLowerCase().replace(/[^a-z_-]/g, '');
+  return FUNNEL_STAGE_MAP[key] ?? raw;
+}
+
+/**
+ * Canonical source normalizer.
+ * Collapses all agent-returned aliases to baseline | method01 | method02 | method03 | multiple.
+ */
+const SOURCE_ALIAS_MAP: Record<string, string> = {
+  // baseline
+  'phase1-baseline': 'baseline', 'phase-1-baseline': 'baseline', 'phase1_baseline': 'baseline',
+  'phase1': 'baseline', 'phase-1': 'baseline', 'audit-baseline': 'baseline',
+  'baseline-audit': 'baseline', 'site-audit': 'baseline', 'site_audit': 'baseline',
+  'current-rankings': 'baseline', 'current_rankings': 'baseline',
+  // method01
+  'method01-competitor-pages': 'method01', 'method-01-competitor-pages': 'method01',
+  'method01_competitor_pages': 'method01', 'method-01': 'method01',
+  'competitor-pages': 'method01', 'competitor_pages': 'method01', 'competitors': 'method01',
+  // method02
+  'method02-seed-expansion': 'method02', 'method-02-seed-expansion': 'method02',
+  'method02_seed_expansion': 'method02', 'method-02': 'method02',
+  'seed-expansion': 'method02', 'seed_expansion': 'method02',
+  'seed-keywords': 'method02', 'seed_keywords': 'method02',
+  // method03
+  'method03-content-gap-import': 'method03', 'method-03-content-gap-import': 'method03',
+  'method03_content_gap_import': 'method03', 'method-03': 'method03',
+  'content-gap-import': 'method03', 'content_gap_import': 'method03',
+  'content-gap': 'method03', 'content_gap': 'method03',
+  // multiple
+  'multiple-sources': 'multiple', 'multiple_sources': 'multiple',
+  'multi-source': 'multiple', 'multi_source': 'multiple', 'multi': 'multiple',
+};
+const VALID_SOURCES = new Set(['baseline', 'method01', 'method02', 'method03', 'multiple']);
+
+function normalizeSource(raw: string): string {
+  if (!raw) return '';
+  const key = raw.trim().toLowerCase();
+  if (VALID_SOURCES.has(key)) return key;
+  return SOURCE_ALIAS_MAP[key] ?? raw;
+}
+
+/**
  * Normalize agent output: keywords may use snake_case fields,
  * and stats/clusters/quickWins may be missing.
  */
@@ -70,18 +130,62 @@ function normalizeConsolidated(raw: Record<string, unknown>): ConsolidatedData {
     const first = result.keywords[0] as unknown as Record<string, unknown>;
     // Check if snake_case fields need mapping
     if ('funnel_stage' in first || 'opportunity_score' in first || 'quick_win' in first) {
-      result.keywords = (result.keywords as unknown as Array<Record<string, unknown>>).map((kw) => ({
-        keyword: String(kw.keyword ?? ''),
-        volume: Number(kw.volume ?? 0),
-        difficulty: Number(kw.difficulty ?? 0),
-        intent: String(kw.intent ?? ''),
-        funnelStage: String(kw.funnelStage ?? kw.funnel_stage ?? ''),
-        opportunityScore: Number(kw.opportunityScore ?? kw.opportunity_score ?? 0),
-        currentPosition: kw.currentPosition as number ?? kw.current_position as number ?? null,
-        source: String(kw.source ?? ''),
-        isQuickWin: Boolean(kw.isQuickWin ?? kw.quick_win ?? false),
-      }));
+      result.keywords = (result.keywords as unknown as Array<Record<string, unknown>>).map((kw) => {
+        const volume = Number(kw.volume ?? 0);
+        const difficulty = Number(kw.difficulty ?? 0);
+        return {
+          keyword: String(kw.keyword ?? ''),
+          volume,
+          difficulty,
+          intent: String(kw.intent ?? ''),
+          funnelStage: normalizeFunnelStage(String(kw.funnelStage ?? kw.funnel_stage ?? '')),
+          opportunityScore: Math.round(volume * (100 - difficulty) / 100),
+          currentPosition: kw.currentPosition as number ?? kw.current_position as number ?? null,
+          source: normalizeSource(String(kw.source ?? '')),
+          isQuickWin: Boolean(kw.isQuickWin ?? kw.quick_win ?? false),
+        };
+      });
     }
+  }
+
+  // Recompute opportunityScore for already-camelCase keywords where agent stored a decimal (0–1)
+  // Also normalize funnelStage on camelCase keywords that bypassed the snake_case branch
+  if (Array.isArray(result.keywords)) {
+    result.keywords = (result.keywords as ConsolidatedKeyword[]).map((kw) => {
+      const normalized: ConsolidatedKeyword = {
+        ...kw,
+        funnelStage: normalizeFunnelStage(kw.funnelStage),
+        source: normalizeSource(kw.source),
+      };
+      if (kw.opportunityScore > 0 && kw.opportunityScore <= 1) {
+        normalized.opportunityScore = Math.round(kw.volume * (100 - kw.difficulty) / 100);
+      }
+      return normalized;
+    });
+  }
+
+  // Normalize pre-existing stats.bySource (agent may use long-form aliases or empty strings)
+  if (result.stats?.bySource) {
+    const normalizedSource: Record<string, number> = {};
+    for (const [src, count] of Object.entries(result.stats.bySource)) {
+      const canonical = normalizeSource(src);
+      if (canonical) {
+        normalizedSource[canonical] = (normalizedSource[canonical] ?? 0) + count;
+      }
+    }
+    result.stats.bySource = normalizedSource;
+  }
+
+  // Normalize pre-existing stats.byFunnel (agent may have provided it with mixed naming)
+  if (result.stats?.byFunnel) {
+    const normalized: Record<string, number> = {};
+    for (const [stage, count] of Object.entries(result.stats.byFunnel)) {
+      const canonical = normalizeFunnelStage(stage);
+      if (canonical) {
+        normalized[canonical] = (normalized[canonical] ?? 0) + count;
+      }
+    }
+    result.stats.byFunnel = normalized;
   }
 
   // Auto-generate stats from keywords if missing
@@ -141,7 +245,9 @@ export function ConsolidatedKeywordsRenderer({ data }: { data: unknown }) {
         <div>
           <SectionLabel>By Source</SectionLabel>
           <div className="mt-2 flex gap-2">
-            {Object.entries(kw.stats.bySource).map(([source, count]) => (
+            {Object.entries(kw.stats.bySource)
+              .filter(([source]) => source !== '')
+              .map(([source, count]) => (
               <div key={source} className="rounded border border-zinc-800 bg-zinc-900/50 px-3 py-2 text-center">
                 <p className="text-sm font-semibold text-zinc-100">{count}</p>
                 <p className="text-[9px] uppercase text-zinc-500">{source}</p>
@@ -156,22 +262,24 @@ export function ConsolidatedKeywordsRenderer({ data }: { data: unknown }) {
         <div>
           <SectionLabel>Funnel Distribution</SectionLabel>
           <div className="mt-2 flex gap-3">
-            {Object.entries(kw.stats.byFunnel).map(([stage, count]) => {
-              const colors: Record<string, string> = { tofu: 'bg-blue-500', mofu: 'bg-amber-500', bofu: 'bg-emerald-500' };
-              const total = Object.values(kw.stats!.byFunnel).reduce((a, b) => a + b, 0);
-              const pct = total > 0 ? ((count / total) * 100).toFixed(0) : '0';
-              return (
-                <div key={stage} className="flex-1">
-                  <div className="flex items-center justify-between">
-                    <span className="text-[10px] uppercase text-zinc-500">{stage}</span>
-                    <span className="text-[10px] text-zinc-400">{count} ({pct}%)</span>
+            {Object.entries(kw.stats.byFunnel)
+              .filter(([stage]) => stage !== '')
+              .map(([stage, count]) => {
+                const colors: Record<string, string> = { TOFU: 'bg-blue-500', MOFU: 'bg-amber-500', BOFU: 'bg-emerald-500' };
+                const total = Object.values(kw.stats!.byFunnel).reduce((a, b) => a + b, 0);
+                const pct = total > 0 ? ((count / total) * 100).toFixed(0) : '0';
+                return (
+                  <div key={stage} className="flex-1">
+                    <div className="flex items-center justify-between">
+                      <span className="text-[10px] uppercase text-zinc-500">{stage}</span>
+                      <span className="text-[10px] text-zinc-400">{count} ({pct}%)</span>
+                    </div>
+                    <div className="mt-1 h-2 w-full rounded-full bg-zinc-800">
+                      <div className={`h-2 rounded-full ${colors[stage] ?? 'bg-zinc-600'}`} style={{ width: `${pct}%` }} />
+                    </div>
                   </div>
-                  <div className="mt-1 h-2 w-full rounded-full bg-zinc-800">
-                    <div className={`h-2 rounded-full ${colors[stage.toLowerCase()] ?? 'bg-zinc-600'}`} style={{ width: `${pct}%` }} />
-                  </div>
-                </div>
-              );
-            })}
+                );
+              })}
           </div>
         </div>
       )}
@@ -194,7 +302,7 @@ export function ConsolidatedKeywordsRenderer({ data }: { data: unknown }) {
                     <div className="flex items-center gap-3 text-xs text-zinc-400">
                       <span>{cluster.keywordCount} kws</span>
                       <span>{formatNumber(cluster.totalVolume)} vol</span>
-                      <DifficultyBadge value={cluster.avgDifficulty} />
+                      <DifficultyBadge value={cluster.avgDifficulty} showLabel />
                     </div>
                   </div>
                   {cluster.topKeywords.length > 0 && (
@@ -308,7 +416,7 @@ function SortableKeywordsTable({ keywords }: { keywords: ConsolidatedKeyword[] }
     { key: 'difficulty', label: 'KD', align: 'text-right', tip: 'Keyword Difficulty (0–100)' },
     { key: 'intent', label: 'Intent', align: 'text-left', tip: 'User search intent type' },
     { key: 'funnelStage', label: 'Funnel', align: 'text-left', tip: 'Sales funnel stage (TOFU/MOFU/BOFU)' },
-    { key: 'opportunityScore', label: 'Score', align: 'text-right', tip: 'Opportunity score (0–100%)' },
+    { key: 'opportunityScore', label: 'Opp. Score', align: 'text-right', tip: 'Opp. Score = volume × (100 − difficulty) / 100. Higher = more traffic potential with less competition.' },
   ];
 
   return (
@@ -346,7 +454,7 @@ function SortableKeywordsTable({ keywords }: { keywords: ConsolidatedKeyword[] }
                 </td>
                 <td className="px-3 py-2 text-right">
                   <span className="rounded bg-violet-500/20 px-1.5 py-0.5 text-[10px] font-medium text-violet-400">
-                    {(k.opportunityScore * 100).toFixed(0)}%
+                    {Math.round(k.opportunityScore).toLocaleString()}
                   </span>
                 </td>
               </tr>
@@ -381,9 +489,9 @@ function PriorityBadge({ priority }: { priority: string }) {
   return <span className={`rounded px-1.5 py-0.5 text-[9px] uppercase ${colors[priority] ?? colors.low}`}>{priority}</span>;
 }
 
-function DifficultyBadge({ value }: { value: number }) {
+function DifficultyBadge({ value, showLabel }: { value: number; showLabel?: boolean }) {
   const color = value <= 30 ? 'text-green-400' : value <= 60 ? 'text-yellow-400' : 'text-red-400';
-  return <span className={`text-xs font-medium ${color}`}>{value}</span>;
+  return <span className={`text-xs font-medium ${color}`}>{showLabel ? 'KD: ' : ''}{Math.round(value)}</span>;
 }
 
 function SectionLabel({ children }: { children: React.ReactNode }) {

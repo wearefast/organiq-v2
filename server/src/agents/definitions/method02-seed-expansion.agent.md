@@ -3,7 +3,7 @@ name: "Method 02: Seed Keyword Expansion"
 step_key: method02-seed-expansion
 model: gpt-4o
 temperature: 0.4
-max_iterations: 4
+max_iterations: 15
 credit_cost: 50
 depends_on:
   - phase1-baseline
@@ -45,7 +45,7 @@ Take the seed keywords from Step 2 and expand them using question modifiers, lon
       "volume": 0,
       "difficulty": 0,
       "intent": "informational|navigational|commercial|transactional",
-      "funnelStage": "tofu|mofu|bofu",
+      "funnelStage": "TOFU|MOFU|BOFU",
       "expansionMethod": "question|related|suggestion|modifier|semantic",
       "sourceSeed": "string",
       "parentTopic": "string|null",

@@ -1,7 +1,7 @@
 import { Injectable, Logger, NotFoundException, BadRequestException } from '@nestjs/common';
 import { eq, and, sql, desc } from 'drizzle-orm';
 import { DatabaseService } from '../../shared/database/database.service';
-import { contentPieces } from '../../db/schema';
+import { contentPieces, contentImages } from '../../db/schema';
 import { TopicalMapsService } from '../topical-maps/topical-maps.service';
 
 @Injectable()
@@ -219,5 +219,18 @@ export class ContentService {
     const created = await this.db.db.insert(contentPieces).values(items).returning();
     this.logger.log(`Generated ${created.length} content pieces from topical map ${topicalMapId}`);
     return created;
+  }
+
+  /**
+   * Find images for a content piece (loaded separately to keep list queries fast).
+   */
+  async findImagesByContentPiece(contentPieceId: string, projectId: string) {
+    // Verify the content piece exists and belongs to the project
+    await this.findById(contentPieceId, projectId);
+
+    return this.db.db.query.contentImages.findMany({
+      where: eq(contentImages.contentPieceId, contentPieceId),
+      orderBy: (img, { asc }) => [asc(img.index)],
+    });
   }
 }

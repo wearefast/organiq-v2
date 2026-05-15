@@ -147,6 +147,44 @@ function toSwotItems(raw: unknown): SwotItem[] {
 const EFFORT_MAP: Record<string, number> = { low: 3, medium: 5, high: 8 };
 const IMPACT_MAP: Record<string, number> = { low: 3, medium: 5, high: 8 };
 
+/** Map free-text quadrant labels OR numeric scores to canonical quadrant keys.
+ *  Derivation rule (mirrors prompt constraint):
+ *    impactScore ≥ 7 AND effortScore ≤ 4  → quick-win
+ *    impactScore ≥ 7 AND effortScore ≥ 7  → strategic-bet
+ *    impactScore ≤ 4 AND effortScore ≤ 4  → fill-in
+ *    impactScore ≤ 4 AND effortScore ≥ 7  → deprioritize
+ *    5–6 range: dominant characteristic decides
+ */
+function normaliseQuadrant(raw: string, effortScore: number, impactScore: number): string {
+  const lower = raw.toLowerCase().replace(/[-_]/g, ' ').trim();
+  // Exact canonical matches first
+  if (lower === 'quick win' || lower === 'quickwin') return 'quick-win';
+  if (lower === 'strategic bet' || lower === 'strategicbet') return 'strategic-bet';
+  if (lower === 'fill in' || lower === 'fillin') return 'fill-in';
+  if (lower === 'deprioritize' || lower === 'deprioritise' || lower === 'de prioritize') return 'deprioritize';
+  // Infer from free-text phrases like "High Impact, Medium Effort"
+  const textHighImpact = /high\s*impact/i.test(raw);
+  const textLowImpact  = /low\s*impact/i.test(raw);
+  const textHighEffort = /high\s*effort/i.test(raw);
+  const textLowEffort  = /low\s*effort/i.test(raw) || /medium\s*effort/i.test(raw);
+  if (textHighImpact && textLowEffort)  return 'quick-win';
+  if (textHighImpact && textHighEffort) return 'strategic-bet';
+  if (textLowImpact  && textLowEffort)  return 'fill-in';
+  if (textLowImpact  && textHighEffort) return 'deprioritize';
+  // Mechanical derivation from numeric scores (matches prompt rule exactly)
+  const highImpact = impactScore >= 7;
+  const lowEffort  = effortScore <= 4;
+  const highEffort = effortScore >= 7;
+  const lowImpact  = impactScore <= 4;
+  if (highImpact && lowEffort)  return 'quick-win';
+  if (highImpact && highEffort) return 'strategic-bet';
+  if (lowImpact  && lowEffort)  return 'fill-in';
+  if (lowImpact  && highEffort) return 'deprioritize';
+  // Mid-range (5–6): resolve by dominant axis
+  if (impactScore >= effortScore) return impactScore >= 6 ? 'quick-win' : 'fill-in';
+  return 'deprioritize';
+}
+
 function normalise(data: unknown): NormalizedData {
   const d = (data && typeof data === 'object' ? data : {}) as Record<string, unknown>;
 
@@ -205,7 +243,7 @@ function normalise(data: unknown): NormalizedData {
     const rawDiff = rawVerdict.differentiateWith ?? rawVerdict.differentiate;
     if (Array.isArray(rawDiff)) {
       differentiateWith = rawDiff.map((a: Record<string, unknown>) => ({
-        angle: String(a.angle ?? a.name ?? ''),
+        angle: String(a.angle ?? a.cluster ?? a.name ?? ''),
         rationale: String(a.rationale ?? ''),
         uniqueAdvantage: a.uniqueAdvantage ? String(a.uniqueAdvantage) : undefined,
         contentGap: a.contentGap ? String(a.contentGap) : undefined,
@@ -243,15 +281,19 @@ function normalise(data: unknown): NormalizedData {
   const rawMatrix = get(d, 'priorityMatrix');
   let priorityMatrix: PriorityItem[] = [];
   if (Array.isArray(rawMatrix)) {
-    priorityMatrix = rawMatrix.map((p: Record<string, unknown>) => ({
-      cluster: String(p.cluster ?? ''),
-      effortScore: Number(p.effortScore) || EFFORT_MAP[String(p.effort ?? '')] || 5,
-      impactScore: Number(p.impactScore) || IMPACT_MAP[String(p.impact ?? '')] || 5,
-      quadrant: String(p.quadrant ?? 'fill-in'),
-      keywordCount: Number(p.keywordCount) || undefined,
-      totalVolume: Number(p.totalVolume) || undefined,
-      avgDifficulty: Number(p.avgDifficulty) || undefined,
-    }));
+    priorityMatrix = rawMatrix.map((p: Record<string, unknown>) => {
+      const effortScore = Number(p.effortScore) || EFFORT_MAP[String(p.effort ?? '')] || 5;
+      const impactScore = Number(p.impactScore) || IMPACT_MAP[String(p.impact ?? '')] || 5;
+      return {
+        cluster: String(p.cluster ?? ''),
+        effortScore,
+        impactScore,
+        quadrant: normaliseQuadrant(String(p.quadrant ?? ''), effortScore, impactScore),
+        keywordCount: Number(p.keywordCount) || undefined,
+        totalVolume: Number(p.totalVolume) || undefined,
+        avgDifficulty: Number(p.avgDifficulty) || undefined,
+      };
+    });
   } else if (rawMatrix && typeof rawMatrix === 'object') {
     // Old shape: { lowEffortHighImpact: string[], highEffortHighImpact: string[], ... }
     const qMap: Record<string, { quadrant: string; effort: number; impact: number }> = {
@@ -278,13 +320,30 @@ function normalise(data: unknown): NormalizedData {
   // --- Action Plan ---
   const rawPlan = get(d, 'actionPlan', '90DayActionPlan') as Record<string, unknown> | undefined;
   let actionPlan: NormalizedData['actionPlan'] = null;
+  const toMilestones = (raw: unknown): Milestone[] => {
+    if (!Array.isArray(raw)) return [];
+    return raw.map((ms: unknown) => {
+      if (typeof ms === 'string') return { task: ms, priority: 'medium', expectedOutcome: '' };
+      const o = ms as Record<string, unknown>;
+      return {
+        task: String(o.task ?? o.action ?? o.milestone ?? ''),
+        priority: String(o.priority ?? 'medium'),
+        expectedOutcome: o.expectedOutcome ? String(o.expectedOutcome) : '',
+      };
+    });
+  };
+  const toMonthPlan = (raw: unknown): MonthPlan | undefined => {
+    if (!raw || typeof raw !== 'object') return undefined;
+    const o = raw as Record<string, unknown>;
+    return { theme: String(o.theme ?? ''), milestones: toMilestones(o.milestones) };
+  };
   if (rawPlan) {
     if (rawPlan.month1) {
       // New shape: { month1: { theme, milestones }, ... }
       actionPlan = {
-        month1: rawPlan.month1 as MonthPlan | undefined,
-        month2: rawPlan.month2 as MonthPlan | undefined,
-        month3: rawPlan.month3 as MonthPlan | undefined,
+        month1: toMonthPlan(rawPlan.month1),
+        month2: toMonthPlan(rawPlan.month2),
+        month3: toMonthPlan(rawPlan.month3),
       };
     } else if (Array.isArray(rawPlan.milestones)) {
       // Old shape: { milestones: [{ month: 1, tasks: string[] }] }
@@ -367,12 +426,16 @@ function normalise(data: unknown): NormalizedData {
   if (rawAgi && typeof rawAgi === 'object') {
     const toOpps = (raw: unknown): AiGeoOpportunity[] => {
       if (!Array.isArray(raw)) return [];
-      return raw.map((item: Record<string, unknown>) => ({
-        title: String(item.title ?? ''),
-        description: String(item.description ?? ''),
-        impact: String(item.impact ?? 'medium'),
-        effort: String(item.effort ?? 'medium'),
-      }));
+      return raw.map((item: unknown) => {
+        if (typeof item === 'string') return { title: item, description: '', impact: 'medium', effort: 'medium' };
+        const o = item as Record<string, unknown>;
+        return {
+          title: String(o.title ?? o.name ?? ''),
+          description: String(o.description ?? ''),
+          impact: String(o.impact ?? 'medium'),
+          effort: String(o.effort ?? 'medium'),
+        };
+      });
     };
     aiGeoReadiness = {
       aiReadinessScore: Number(rawAgi.aiReadinessScore) || 0,
@@ -644,7 +707,7 @@ function AiGeoReadinessPanel({ data }: { data: AiGeoReadiness }) {
                         <p className="text-[11px] font-semibold text-zinc-200">{opp.title}</p>
                         <div className="flex shrink-0 gap-1">
                           <span className={`rounded px-1.5 py-0.5 text-[9px] font-semibold uppercase ${impactColors[opp.impact] ?? impactColors.medium}`}>
-                            {opp.impact}
+                            {opp.impact} impact
                           </span>
                           <span className={`rounded px-1.5 py-0.5 text-[9px] font-semibold uppercase ${effortColors[opp.effort] ?? effortColors.medium}`}>
                             {opp.effort} effort
@@ -669,7 +732,7 @@ function AiGeoReadinessPanel({ data }: { data: AiGeoReadiness }) {
                         <p className="text-[11px] font-semibold text-zinc-200">{opp.title}</p>
                         <div className="flex shrink-0 gap-1">
                           <span className={`rounded px-1.5 py-0.5 text-[9px] font-semibold uppercase ${impactColors[opp.impact] ?? impactColors.medium}`}>
-                            {opp.impact}
+                            {opp.impact} impact
                           </span>
                           <span className={`rounded px-1.5 py-0.5 text-[9px] font-semibold uppercase ${effortColors[opp.effort] ?? effortColors.medium}`}>
                             {opp.effort} effort

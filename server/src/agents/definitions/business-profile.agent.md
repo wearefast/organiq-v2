@@ -3,7 +3,7 @@ name: Business Profile Analyst
 step_key: business-profile
 model: gpt-4o
 temperature: 0.3
-max_iterations: 3
+max_iterations: 8
 credit_cost: 30
 depends_on: []
 requires_approval: true

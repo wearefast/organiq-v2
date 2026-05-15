@@ -114,9 +114,9 @@ For the given content piece, produce a production-ready content brief that inclu
       "text": "string"
     }
   ],
-  "metaTitle": "string (50-60 chars)",
-  "metaDescription": "string (150-160 chars)",
-  "summary": "string (2-3 paragraph overview of the brief strategy)"
+  "metaTitle": "string",
+  "metaDescription": "string",
+  "summary": "string"
 }
 ```
 

@@ -21,13 +21,91 @@ Build the topical map:
 
 ---
 
-Strategy:
-{{verdict-strategy}}
+Strategy — Compete In These Clusters:
+{{verdict-strategy.verdict.competeIn}}
 
-Consolidated keywords:
-{{consolidated-keywords}}
+Strategy — Avoid These Clusters:
+{{verdict-strategy.verdict.avoid}}
+
+Cluster Effort/Impact Scores (priority matrix):
+{{verdict-strategy.priorityMatrix}}
+
+90-Day Content Sequencing Guide:
+{{verdict-strategy.actionPlan}}
+
+---
+
+Keyword Clusters — EVERY cluster listed here MUST be assigned to a content pillar. Count them now and hold that number:
+{{consolidated-keywords.clusters}}
+
+Quick Win Keywords (prioritise these as first content pieces):
+{{consolidated-keywords.quickWins}}
+
+Full Keyword Ledger (assign every keyword to a specific content piece):
+{{consolidated-keywords.keywords}}
 
 Domain: {{domain}}
 Industry: {{industry}}
 
-Build the complete topical map. Return as structured JSON matching the output schema.
+---
+
+Before writing any JSON: write out every cluster from the clusters list above as a numbered list (e.g. 1. ATM Location, 2. Digital Banking, ...). Count them. Your `pillars[].clusters[]` combined MUST contain at least one entry for every cluster in that list — verify the count matches before writing JSON. If a cluster appears in the "Avoid" list, still include it as a note in the relevant pillar rather than silently dropping it.
+
+Build the complete topical map.
+
+## CRITICAL: Output Schema Enforcement
+
+You MUST return a flat JSON object with EXACTLY these top-level keys: `pillars`, `calendar`, `linkingArchitecture`, `stats`, `summary`.
+
+Do NOT use `contentPillars` in place of `pillars` or `contentCalendar` in place of `calendar` — these exact key names are required.
+Do NOT represent clusters as a string key or as a keyed object. `clusters` inside each pillar MUST be an array of objects, each with a `name` string field — never a plain string label used as an object key.
+Do NOT omit `linksTo` and `linksFrom` on page objects — use empty arrays `[]` if no links have been determined yet.
+`funnelStage` on each page object MUST be exactly one of: `"TOFU"`, `"MOFU"`, `"BOFU"`. Do NOT use lowercase (`tofu`, `mofu`, `bofu`) or any other variant.
+
+Return ONLY valid JSON with this exact structure:
+
+```json
+{
+  "pillars": [
+    {
+      "id": "",
+      "name": "",
+      "description": "",
+      "pillarPageKeyword": "",
+      "pillarPageUrl": "",
+      "estimatedTotalVolume": 0,
+      "clusters": [
+        {
+          "id": "",
+          "name": "",
+          "hubKeyword": "",
+          "intent": "",
+          "priority": "",
+          "pages": [
+            { "title": "", "keyword": "", "volume": 0, "difficulty": 0, "intent": "", "funnelStage": "TOFU|MOFU|BOFU", "contentType": "", "estimatedWordCount": 0, "effort": "", "suggestedUrl": "", "linksTo": [], "linksFrom": [] }
+          ]
+        }
+      ]
+    }
+  ],
+  "calendar": [
+    {
+      "month": 1,
+      "label": "",
+      "pieces": [
+        { "title": "", "keyword": "", "pillar": "", "cluster": "", "contentType": "", "priority": "" }
+      ]
+    }
+  ],
+  "linkingArchitecture": {
+    "strategy": "",
+    "rules": []
+  },
+  "stats": {
+    "totalPillars": 0,
+    "totalClusters": 0,
+    "totalPages": 0
+  },
+  "summary": ""
+}
+```

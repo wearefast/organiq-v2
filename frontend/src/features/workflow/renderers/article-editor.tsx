@@ -68,7 +68,7 @@ export function ArticleEditor({ content, imageMap, onSave, onCancel }: ArticleEd
         </div>
 
         {/* Live preview */}
-        <div className="max-h-[500px] overflow-y-auto p-4">
+        <div className="max-h-[500px] overflow-y-auto px-5 py-4">
           <MarkdownPreview content={value} imageMap={imageMap} />
         </div>
       </div>

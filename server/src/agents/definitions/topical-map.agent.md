@@ -3,7 +3,7 @@ name: Topical Map Architect
 step_key: topical-map
 model: gpt-4o
 temperature: 0.3
-max_iterations: 3
+max_iterations: 8
 credit_cost: 40
 depends_on:
   - verdict-strategy
@@ -23,7 +23,10 @@ Build the definitive topical map: 3-7 content pillars, each with 5-15 topic clus
 
 ## Process
 
-1. **Review the strategic verdict** — understand which clusters are Quick Wins, Strategic Bets, Fill-Ins, and which to Avoid
+1. **Review the strategic verdict and enumerate every cluster** — extract the full picture before building anything:
+   - **Step 1a — Extract:** Read the `clusters` array from the consolidated keyword input. Write out every cluster `name` as a numbered list (e.g. 1. ATM Location, 2. Digital Banking, ...). Count them.
+   - **Step 1b — Assign:** For each cluster in that list, determine which content pillar it belongs to. Every cluster must be assigned to a pillar — none may be silently dropped. Clusters in the "Avoid" list still require a note in the relevant pillar.
+   - **Step 1c — Verify:** Confirm that the total number of `clusters[]` entries across all pillars equals the cluster count from Step 1a. If they don’t match, find the missing clusters and assign them before proceeding.
 2. **Define content pillars** — identify 3-7 broad topic areas that align with the verdict's "compete in" clusters
 3. **Build topic clusters** — for each pillar, create 5-15 clusters grouping related keywords
 4. **Map keywords to content pieces** — assign each keyword from the consolidated ledger to a specific content piece
@@ -60,7 +63,7 @@ Build the definitive topical map: 3-7 content pillars, each with 5-15 topic clus
               "volume": 0,
               "difficulty": 0,
               "intent": "informational|navigational|commercial|transactional",
-              "funnelStage": "tofu|mofu|bofu",
+              "funnelStage": "TOFU|MOFU|BOFU",
               "contentType": "pillar|cluster-hub|supporting|resource",
               "estimatedWordCount": 0,
               "effort": "low|medium|high",

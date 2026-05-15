@@ -5,6 +5,8 @@ export interface ContentPiece {
   projectId: string;
   workflowRunId?: string;
   keywordId?: string;
+  topicalMapId?: string;
+  sourceStepKey?: string;
   type: 'brief' | 'article';
   status: 'draft' | 'review' | 'approved' | 'published';
   title: string;
@@ -104,4 +106,20 @@ export function bulkCreateContent(
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({ items }),
   });
+}
+
+export interface ContentImage {
+  id: string;
+  contentPieceId: string;
+  index: number;
+  altText?: string;
+  prompt?: string;
+  base64?: string;
+  revisedPrompt?: string;
+  size?: string;
+  createdAt: string;
+}
+
+export function fetchContentImages(projectId: string, contentPieceId: string): Promise<ContentImage[]> {
+  return apiFetch(`/projects/${projectId}/content/${contentPieceId}/images`);
 }

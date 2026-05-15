@@ -3,7 +3,7 @@ name: Technical SEO Auditor
 step_key: site-audit
 model: gpt-4o
 temperature: 0.2
-max_iterations: 5
+max_iterations: 12
 credit_cost: 60
 depends_on:
   - business-profile
@@ -89,8 +89,8 @@ Apply the site audit scoring rubric:
 
 ## Constraints
 
-- Maximum 5 iterations (the crawl + analysis is intensive)
 - Focus on actionable findings — skip low-impact cosmetic issues
 - Issues list should be sorted by severity (critical first)
 - Maximum 20 issues reported (top priority only)
 - Always include CWV data even if estimated from lab data
+- Distribute tool calls across all 12 available iterations: use iterations 1-2 for site mapping + crawl, 3-4 for PageSpeed + CrUX, 5-8 for DataForSEO on-page task creation + retrieval, 9-12 for scoring synthesis and issue prioritization. Do not stop early.

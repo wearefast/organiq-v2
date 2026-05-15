@@ -44,4 +44,37 @@ High opportunity = score > 0.6
 
 ## Task
 
-Enrich all seed keywords with volume, difficulty, CPC, and trend data. Calculate opportunity scores. Return JSON with: enrichedKeywords array, demandByCategory, demandByIntent, highOpportunity, totalAddressableVolume, realisticTargetVolume, and summary.
+Enrich all seed keywords with volume, difficulty, CPC, and trend data. Calculate opportunity scores.
+
+## CRITICAL: Output Schema Enforcement
+
+You MUST return a flat JSON object with EXACTLY these top-level keys: `enrichedKeywords`, `demandByCategory`, `demandByIntent`, `highOpportunity`, `totalAddressableVolume`, `realisticTargetVolume`, `summary`.
+
+Do NOT nest enriched keywords under category names — `enrichedKeywords` MUST be a single flat array.
+Do NOT return `demandByCategory` as a `{ category: number }` plain object — it MUST be an array of objects, each with `category`, `totalVolume`, `avgDifficulty`, `keywordCount`, `topKeyword`.
+Do NOT return `highOpportunity` as a string array — each item MUST be an object with `keyword`, `volume`, `difficulty`, `opportunityScore`, `rationale`.
+
+Return ONLY valid JSON with this exact structure:
+
+```json
+{
+  "enrichedKeywords": [
+    { "keyword": "", "category": "", "intent": "", "metrics": { "searchVolume": 0, "keywordDifficulty": 0, "cpc": 0.0, "competition": "low|medium|high", "trend": "rising|stable|declining" }, "opportunityScore": 0.0 }
+  ],
+  "demandByCategory": [
+    { "category": "", "totalVolume": 0, "avgDifficulty": 0, "keywordCount": 0, "topKeyword": "" }
+  ],
+  "demandByIntent": {
+    "informational": { "volume": 0, "count": 0, "avgDifficulty": 0 },
+    "navigational": { "volume": 0, "count": 0, "avgDifficulty": 0 },
+    "commercial": { "volume": 0, "count": 0, "avgDifficulty": 0 },
+    "transactional": { "volume": 0, "count": 0, "avgDifficulty": 0 }
+  },
+  "highOpportunity": [
+    { "keyword": "", "volume": 0, "difficulty": 0, "opportunityScore": 0.0, "rationale": "" }
+  ],
+  "totalAddressableVolume": 0,
+  "realisticTargetVolume": 0,
+  "summary": ""
+}
+```

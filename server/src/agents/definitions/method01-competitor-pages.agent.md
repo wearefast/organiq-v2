@@ -3,7 +3,7 @@ name: "Method 01: Competitor Page Analysis"
 step_key: method01-competitor-pages
 model: gpt-4o
 temperature: 0.3
-max_iterations: 5
+max_iterations: 15
 credit_cost: 55
 depends_on:
   - phase1-baseline
@@ -55,7 +55,7 @@ Extract high-value keywords from competitor pages that the target domain does NO
       "volume": 0,
       "difficulty": 0,
       "intent": "informational|navigational|commercial|transactional",
-      "funnelStage": "tofu|mofu|bofu",
+      "funnelStage": "TOFU|MOFU|BOFU",
       "source": "string",
       "sourceCompetitor": "string",
       "sourceUrl": "string",

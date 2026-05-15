@@ -68,7 +68,7 @@ export default function WorkflowRunsPage() {
           </div>
           <h3 className="text-sm font-medium text-zinc-300">No workflow runs yet</h3>
           <p className="mt-1 text-sm text-zinc-500">
-            Start a new run to begin your SEO strategy workflow.
+            Start a new run to begin your SEO, AEO and GEO strategy workflow.
           </p>
         </div>
       ) : (
@@ -93,6 +93,11 @@ export default function WorkflowRunsPage() {
                     {run.startedAt
                       ? new Date(run.startedAt).toLocaleDateString()
                       : 'Not started'}
+                    {run.completedAt && (
+                      <span className="ml-2 text-green-500/70">
+                        · Completed {new Date(run.completedAt).toLocaleDateString()}
+                      </span>
+                    )}
                   </p>
                 </div>
               </div>

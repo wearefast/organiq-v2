@@ -2,12 +2,17 @@
 
 import { useEffect, useState } from 'react';
 import { useParams } from 'next/navigation';
+import { useAuth } from '@clerk/nextjs';
+import { MarkdownPreview } from '@/shared/components/markdown-preview';
+import { setAuthToken } from '@/shared/utils/api';
 import {
   fetchContent,
   fetchContentStats,
+  fetchContentImages,
   updateContentStatus,
   type ContentPiece,
   type ContentStats,
+  type ContentImage,
 } from '@/features/content/services/content.service';
 
 const STATUS_COLORS: Record<string, string> = {
@@ -36,6 +41,7 @@ function ScoreBar({ value, size = 'sm' }: { value: number; size?: 'sm' | 'lg' })
 export default function ContentPage() {
   const params = useParams();
   const projectId = params.pId as string;
+  const { getToken } = useAuth();
 
   const [pieces, setPieces] = useState<ContentPiece[]>([]);
   const [stats, setStats] = useState<ContentStats | null>(null);
@@ -51,6 +57,7 @@ export default function ContentPage() {
   async function loadData() {
     setLoading(true);
     try {
+      setAuthToken(await getToken());
       const [piecesData, statsData] = await Promise.all([
         fetchContent(projectId),
         fetchContentStats(projectId),
@@ -66,6 +73,7 @@ export default function ContentPage() {
 
   async function handleStatusChange(id: string, status: ContentPiece['status']) {
     try {
+      setAuthToken(await getToken());
       const updated = await updateContentStatus(projectId, id, status);
       setPieces((prev) => prev.map((p) => (p.id === id ? { ...p, ...updated } : p)));
       setStats((prev) =>
@@ -310,25 +318,16 @@ export default function ContentPage() {
 
             {/* Brief Data Preview */}
             {selected.briefData ? (
-              <div className="rounded-lg border border-zinc-700 bg-zinc-800/50 p-4">
-                <h3 className="mb-2 text-sm font-medium text-zinc-400">Brief Data</h3>
-                <pre className="max-h-64 overflow-y-auto text-xs text-zinc-300">
-                  {JSON.stringify(selected.briefData, null, 2)}
-                </pre>
-              </div>
+              <BriefDataPanel briefData={selected.briefData} />
             ) : null}
 
             {/* Article Data Preview */}
             {selected.articleData ? (
-              <div className="rounded-lg border border-zinc-700 bg-zinc-800/50 p-4">
-                <h3 className="mb-2 text-sm font-medium text-zinc-400">Article Content</h3>
-                <div className="max-h-64 overflow-y-auto text-sm text-zinc-300 whitespace-pre-wrap">
-                  {typeof selected.articleData === 'object' &&
-                  (selected.articleData as any)?.content
-                    ? (selected.articleData as any).content
-                    : JSON.stringify(selected.articleData, null, 2)}
-                </div>
-              </div>
+              <ArticleDataPanel
+                articleData={selected.articleData}
+                projectId={projectId}
+                contentPieceId={selected.id}
+              />
             ) : null}
           </div>
         )}
@@ -336,3 +335,168 @@ export default function ContentPage() {
     </div>
   );
 }
+
+/* ── Brief Data Structured Panel ───────────────────────────────── */
+function BriefDataPanel({ briefData }: { briefData: unknown }) {
+  const d = briefData && typeof briefData === 'object' ? (briefData as Record<string, unknown>) : {};
+  const targetKeyword = typeof d.targetKeyword === 'string' ? d.targetKeyword : null;
+  const metaTitle = typeof d.metaTitle === 'string' ? d.metaTitle : null;
+  const metaDescription = typeof d.metaDescription === 'string' ? d.metaDescription : null;
+  const searchIntent = typeof d.searchIntent === 'string' ? d.searchIntent : null;
+  const wordCountTarget = typeof d.wordCountTarget === 'number' ? d.wordCountTarget : null;
+  const paaQuestions = Array.isArray(d.paaQuestions) ? d.paaQuestions.filter((q): q is string => typeof q === 'string') : [];
+  const secondaryKeywords = Array.isArray(d.secondaryKeywords) ? d.secondaryKeywords.filter((k): k is string => typeof k === 'string') : [];
+  const summary = typeof d.summary === 'string' ? d.summary : null;
+  const contentStructure = d.contentStructure;
+
+  return (
+    <div className="rounded-lg border border-zinc-700 bg-zinc-800/50 p-4 space-y-4">
+      <h3 className="text-sm font-medium text-zinc-400">Content Brief</h3>
+
+      {/* Key info row */}
+      <div className="flex flex-wrap gap-2">
+        {targetKeyword && (
+          <span className="rounded bg-blue-900/40 px-2 py-0.5 text-xs text-blue-300">
+            🎯 {targetKeyword}
+          </span>
+        )}
+        {searchIntent && (
+          <span className="rounded bg-purple-900/40 px-2 py-0.5 text-xs text-purple-300">
+            {searchIntent}
+          </span>
+        )}
+        {wordCountTarget && (
+          <span className="rounded bg-zinc-700 px-2 py-0.5 text-xs text-zinc-300">
+            Target: {wordCountTarget.toLocaleString()} words
+          </span>
+        )}
+      </div>
+
+      {/* Meta */}
+      {(metaTitle || metaDescription) && (
+        <div className="rounded border border-zinc-700 bg-zinc-900/50 p-3 space-y-1">
+          {metaTitle && <p className="text-sm font-medium text-green-400">{metaTitle}</p>}
+          {metaDescription && <p className="text-xs text-zinc-400 leading-5">{metaDescription}</p>}
+        </div>
+      )}
+
+      {/* Summary */}
+      {summary && (
+        <div>
+          <p className="text-[11px] font-semibold uppercase tracking-wide text-zinc-500">Summary</p>
+          <p className="mt-1 text-sm leading-6 text-zinc-300">{summary}</p>
+        </div>
+      )}
+
+      {/* Content Structure */}
+      {contentStructure && typeof contentStructure === 'object' && (
+        <div>
+          <p className="text-[11px] font-semibold uppercase tracking-wide text-zinc-500">Content Structure</p>
+          <div className="mt-1 max-h-48 overflow-y-auto text-xs text-zinc-400">
+            <ReactMarkdown remarkPlugins={[remarkGfm]}>
+              {typeof contentStructure === 'string' ? contentStructure : JSON.stringify(contentStructure, null, 2)}
+            </ReactMarkdown>
+          </div>
+        </div>
+      )}
+
+      {/* Secondary Keywords */}
+      {secondaryKeywords.length > 0 && (
+        <div>
+          <p className="text-[11px] font-semibold uppercase tracking-wide text-zinc-500">Secondary Keywords</p>
+          <div className="mt-1 flex flex-wrap gap-1">
+            {secondaryKeywords.map((kw) => (
+              <span key={kw} className="rounded bg-zinc-700 px-2 py-0.5 text-xs text-zinc-300">{kw}</span>
+            ))}
+          </div>
+        </div>
+      )}
+
+      {/* PAA Questions */}
+      {paaQuestions.length > 0 && (
+        <div>
+          <p className="text-[11px] font-semibold uppercase tracking-wide text-zinc-500">People Also Ask</p>
+          <ul className="mt-1 space-y-1">
+            {paaQuestions.map((q) => (
+              <li key={q} className="text-xs text-zinc-300 leading-5">• {q}</li>
+            ))}
+          </ul>
+        </div>
+      )}
+    </div>
+  );
+}
+
+/* ── Article Content Panel with Markdown ───────────────────────── */
+function ArticleDataPanel({
+  articleData,
+  projectId,
+  contentPieceId,
+}: {
+  articleData: unknown;
+  projectId: string;
+  contentPieceId: string;
+}) {
+  const d = articleData && typeof articleData === 'object' ? (articleData as Record<string, unknown>) : {};
+  const rawContent = typeof d.content === 'string' ? d.content : null;
+  const metaTitle = typeof d.metaTitle === 'string' ? d.metaTitle : null;
+  const metaDescription = typeof d.metaDescription === 'string' ? d.metaDescription : null;
+  const keyTakeaways = Array.isArray(d.keyTakeaways) ? d.keyTakeaways.filter((t): t is string => typeof t === 'string') : [];
+
+  const [images, setImages] = useState<ContentImage[]>([]);
+
+  useEffect(() => {
+    if (!projectId || !contentPieceId) return;
+    fetchContentImages(projectId, contentPieceId)
+      .then(setImages)
+      .catch(() => {});
+  }, [projectId, contentPieceId]);
+
+  // Build imageMap: { 'image-0': 'data:image/png;base64,...', ... }
+  const imageMap = images.length
+    ? Object.fromEntries(
+        images
+          .filter((img) => img.base64)
+          .map((img) => [`image-${img.index}`, `data:image/png;base64,${img.base64}`]),
+      )
+    : undefined;
+
+  return (
+    <div className="rounded-lg border border-zinc-700 bg-zinc-800/50 p-4 space-y-4">
+      <h3 className="text-sm font-medium text-zinc-400">Article Content</h3>
+
+      {/* Meta preview */}
+      {(metaTitle || metaDescription) && (
+        <div className="rounded border border-zinc-700 bg-zinc-900/50 p-3 space-y-1">
+          {metaTitle && <p className="text-sm font-medium text-green-400">{metaTitle}</p>}
+          {metaDescription && <p className="text-xs text-zinc-400 leading-5">{metaDescription}</p>}
+        </div>
+      )}
+
+      {/* Key Takeaways */}
+      {keyTakeaways.length > 0 && (
+        <div className="rounded border border-zinc-700 bg-zinc-900/30 p-3">
+          <p className="text-[11px] font-semibold uppercase tracking-wide text-zinc-500 mb-2">Key Takeaways</p>
+          <ul className="space-y-1">
+            {keyTakeaways.map((t) => (
+              <li key={t} className="text-xs text-zinc-300 leading-5">✓ {t}</li>
+            ))}
+          </ul>
+        </div>
+      )}
+
+      {/* Markdown body with inline images */}
+      {rawContent ? (
+        <div className="max-h-[56rem] overflow-y-auto">
+          <MarkdownPreview content={rawContent} imageMap={imageMap} />
+        </div>
+      ) : (
+        <pre className="max-h-64 overflow-y-auto text-xs text-zinc-300">
+          {JSON.stringify(articleData, null, 2)}
+        </pre>
+      )}
+    </div>
+  );
+}
+
+

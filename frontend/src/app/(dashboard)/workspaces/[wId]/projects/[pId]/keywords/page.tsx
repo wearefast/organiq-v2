@@ -4,6 +4,7 @@ import { useEffect, useState } from 'react';
 import { useParams } from 'next/navigation';
 import { useAuth } from '@clerk/nextjs';
 import { apiFetch } from '@/shared/utils/api';
+import { fetchContent, type ContentPiece } from '@/features/content/services/content.service';
 
 interface Keyword {
   id: string;
@@ -39,6 +40,7 @@ export default function KeywordsPage() {
   const [statusFilter, setStatusFilter] = useState<StatusFilter>('all');
   const [loading, setLoading] = useState(true);
   const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
+  const [contentByKeywordId, setContentByKeywordId] = useState<Map<string, ContentPiece>>(new Map());
 
   useEffect(() => {
     loadData();
@@ -48,12 +50,23 @@ export default function KeywordsPage() {
     setLoading(true);
     try {
       const statusQuery = statusFilter !== 'all' ? `?status=${statusFilter}` : '';
-      const [kwData, statsData] = await Promise.all([
+      const [kwData, statsData, contentData] = await Promise.all([
         apiFetch(`/projects/${projectId}/keywords${statusQuery}`),
         apiFetch(`/projects/${projectId}/keywords/stats`),
+        fetchContent(projectId).catch(() => [] as ContentPiece[]),
       ]);
       setKeywords(kwData as Keyword[]);
       setStats(statsData as KeywordStats);
+      // Build keywordId → content piece lookup (articles preferred over briefs)
+      const lookup = new Map<string, ContentPiece>();
+      for (const piece of contentData) {
+        if (!piece.keywordId) continue;
+        const existing = lookup.get(piece.keywordId);
+        if (!existing || piece.type === 'article') {
+          lookup.set(piece.keywordId, piece);
+        }
+      }
+      setContentByKeywordId(lookup);
     } catch (e) {
       console.error('Failed to load keywords', e);
     } finally {
@@ -173,6 +186,7 @@ export default function KeywordsPage() {
                 <th className="px-3 py-2 text-left text-[10px] uppercase text-zinc-500">Intent</th>
                 <th className="px-3 py-2 text-left text-[10px] uppercase text-zinc-500">Funnel</th>
                 <th className="px-3 py-2 text-left text-[10px] uppercase text-zinc-500">Status</th>
+                <th className="px-3 py-2 text-left text-[10px] uppercase text-zinc-500">Content</th>
                 <th className="px-3 py-2 text-left text-[10px] uppercase text-zinc-500">Topic</th>
               </tr>
             </thead>
@@ -202,6 +216,21 @@ export default function KeywordsPage() {
                   </td>
                   <td className="px-3 py-2">
                     <StatusBadge status={kw.status} />
+                  </td>
+                  <td className="px-3 py-2">
+                    {(() => {
+                      const linked = contentByKeywordId.get(kw.id);
+                      if (!linked) return <span className="text-zinc-600">—</span>;
+                      return (
+                        <span className={`rounded px-1.5 py-0.5 text-[10px] ${
+                          linked.type === 'article'
+                            ? 'bg-emerald-500/10 text-emerald-400'
+                            : 'bg-blue-500/10 text-blue-400'
+                        }`}>
+                          {linked.type === 'article' ? '📄 Article' : '📋 Brief'}
+                        </span>
+                      );
+                    })()}
                   </td>
                   <td className="px-3 py-2 text-[11px] text-zinc-500">{kw.parentTopic ?? '—'}</td>
                 </tr>

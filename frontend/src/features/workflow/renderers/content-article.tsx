@@ -181,6 +181,11 @@ function normalize(raw: Record<string, unknown>): ContentArticleData {
     }));
   }
 
+  // faqSection: string[] → {question, answer}[]
+  if (Array.isArray(d.faqSection) && d.faqSection.length > 0 && typeof d.faqSection[0] === 'string') {
+    d.faqSection = (d.faqSection as unknown as string[]).map((s) => ({ question: s, answer: '' }));
+  }
+
   // aeoScore: accept variant keys
   if (!d.aeoScore) {
     const a = (raw.aeoScore ?? raw.aeo ?? raw.answerEngineScore) as AeoScore | undefined;
@@ -320,11 +325,8 @@ export function ContentArticleRenderer({ data, allSteps }: { data: unknown; allS
 
             {/* Article Content — rendered HTML */}
             {articleContent && (
-              <div className="rounded border border-zinc-700 bg-zinc-800/30 p-4">
-                <h4 className="mb-2 text-sm font-medium text-zinc-400">Article Content</h4>
-                <div className="max-h-[600px] overflow-y-auto">
-                  <MarkdownPreview content={articleContent} imageMap={imageMap} />
-                </div>
+              <div className="rounded border border-zinc-700 bg-zinc-800/30 px-6 py-5">
+                <MarkdownPreview content={articleContent} imageMap={imageMap} />
               </div>
             )}
 

@@ -10,6 +10,7 @@ import { OutputValidator } from '../../agents/output.validator';
 import { CreditsService } from '../credits/credits.service';
 import { WorkflowService } from './workflow.service';
 import { WorkflowGateway } from './workflow.gateway';
+import { WorkflowMaterializerService } from './workflow-materializer.service';
 import {
   workflowSteps,
   stepArtifacts,
@@ -36,6 +37,7 @@ export class WorkflowProcessor extends WorkerHost {
     private readonly creditsService: CreditsService,
     private readonly workflowService: WorkflowService,
     private readonly workflowGateway: WorkflowGateway,
+    private readonly materializer: WorkflowMaterializerService,
   ) {
     super();
   }
@@ -180,6 +182,8 @@ export class WorkflowProcessor extends WorkerHost {
 
       // 14. Enqueue downstream steps if auto-approved
       if (!agentDef.requiresApproval) {
+        // Materialize auto-approved steps into project feature tables
+        await this.materializer.materialize(workflowRunId, stepKey);
         await this.workflowService.enqueuePendingSteps(workflowRunId);
       }
 

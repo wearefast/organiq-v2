@@ -3,7 +3,7 @@ name: Competitor Bucket Classifier
 step_key: competitor-buckets
 model: gpt-4o
 temperature: 0.3
-max_iterations: 3
+max_iterations: 8
 credit_cost: 35
 depends_on:
   - serp-niche-map

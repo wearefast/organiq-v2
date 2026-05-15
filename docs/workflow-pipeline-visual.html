@@ -1,0 +1,1628 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Pulse OS — SEO Workflow Pipeline</title>
+<style>
+  :root {
+    --bg: #0f0f13;
+    --card: #1a1a24;
+    --border: #2a2a3a;
+    --accent-blue: #4f8ff7;
+    --accent-green: #34d399;
+    --accent-purple: #a78bfa;
+    --accent-amber: #fbbf24;
+    --accent-rose: #fb7185;
+    --accent-teal: #2dd4bf;
+    --text: #e2e8f0;
+    --text-dim: #94a3b8;
+    --text-muted: #64748b;
+  }
+
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+
+  body {
+    font-family: 'Segoe UI', system-ui, -apple-system, sans-serif;
+    background: var(--bg);
+    color: var(--text);
+    line-height: 1.6;
+    padding: 2rem;
+  }
+
+  h1 {
+    text-align: center;
+    font-size: 2.2rem;
+    font-weight: 700;
+    background: linear-gradient(135deg, var(--accent-blue), var(--accent-purple));
+    -webkit-background-clip: text;
+    -webkit-text-fill-color: transparent;
+    margin-bottom: 0.5rem;
+  }
+
+  .subtitle {
+    text-align: center;
+    color: var(--text-dim);
+    font-size: 1.1rem;
+    margin-bottom: 2.5rem;
+  }
+
+  /* ─── Big Picture Section ─── */
+  .big-picture {
+    max-width: 1100px;
+    margin: 0 auto 3rem;
+    background: var(--card);
+    border: 1px solid var(--border);
+    border-radius: 16px;
+    padding: 2rem;
+  }
+
+  .big-picture h2 {
+    font-size: 1.5rem;
+    margin-bottom: 1rem;
+    color: var(--accent-blue);
+  }
+
+  .analogy {
+    background: #1e1e2e;
+    border-left: 4px solid var(--accent-purple);
+    border-radius: 0 12px 12px 0;
+    padding: 1.25rem 1.5rem;
+    margin-bottom: 1.5rem;
+    font-size: 1.05rem;
+  }
+
+  .analogy strong { color: var(--accent-purple); }
+
+  .how-it-works {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 1rem;
+    margin-top: 1rem;
+  }
+
+  .how-card {
+    background: #16162266;
+    border: 1px solid var(--border);
+    border-radius: 12px;
+    padding: 1rem 1.25rem;
+  }
+
+  .how-card h4 {
+    font-size: 0.95rem;
+    color: var(--accent-teal);
+    margin-bottom: 0.4rem;
+  }
+
+  .how-card p {
+    font-size: 0.88rem;
+    color: var(--text-dim);
+  }
+
+  /* ─── Phase Headers ─── */
+  .phase {
+    max-width: 1100px;
+    margin: 0 auto 2rem;
+  }
+
+  .phase-header {
+    display: flex;
+    align-items: center;
+    gap: 1rem;
+    margin-bottom: 1.5rem;
+    padding: 1rem 1.5rem;
+    border-radius: 14px;
+  }
+
+  .phase-header.discovery { background: linear-gradient(135deg, #1e293b, #0f172a); border: 1px solid #334155; }
+  .phase-header.research  { background: linear-gradient(135deg, #1a2e1a, #0f1f0f); border: 1px solid #2d5a2d; }
+  .phase-header.strategy  { background: linear-gradient(135deg, #2a1a2e, #1a0f22); border: 1px solid #5a2d6a; }
+
+  .phase-number {
+    font-size: 2rem;
+    font-weight: 800;
+    min-width: 3rem;
+    text-align: center;
+    line-height: 1;
+  }
+
+  .phase-header.discovery .phase-number { color: var(--accent-blue); }
+  .phase-header.research .phase-number  { color: var(--accent-green); }
+  .phase-header.strategy .phase-number  { color: var(--accent-purple); }
+
+  .phase-info h3 { font-size: 1.25rem; }
+  .phase-info p { color: var(--text-dim); font-size: 0.92rem; }
+
+  /* ─── Step Cards ─── */
+  .steps-grid {
+    display: grid;
+    grid-template-columns: 1fr;
+    gap: 1.25rem;
+  }
+
+  .step-card {
+    background: var(--card);
+    border: 1px solid var(--border);
+    border-radius: 14px;
+    overflow: hidden;
+    transition: border-color 0.2s;
+  }
+
+  .step-card:hover {
+    border-color: var(--accent-blue);
+  }
+
+  .step-top {
+    display: grid;
+    grid-template-columns: 80px 1fr auto;
+    align-items: center;
+    padding: 1.25rem 1.5rem;
+    gap: 1.25rem;
+    cursor: pointer;
+    user-select: none;
+  }
+
+  .step-num {
+    font-size: 2rem;
+    font-weight: 800;
+    text-align: center;
+    line-height: 1;
+    opacity: 0.7;
+  }
+
+  .step-meta h4 {
+    font-size: 1.05rem;
+    font-weight: 600;
+    margin-bottom: 0.25rem;
+  }
+
+  .step-meta .depends {
+    font-size: 0.82rem;
+    color: var(--text-muted);
+  }
+
+  .step-badges {
+    display: flex;
+    gap: 0.5rem;
+    flex-wrap: wrap;
+    justify-content: flex-end;
+  }
+
+  .badge {
+    font-size: 0.72rem;
+    font-weight: 600;
+    padding: 0.25rem 0.65rem;
+    border-radius: 999px;
+    white-space: nowrap;
+  }
+
+  .badge-approval {
+    background: #fbbf2420;
+    color: var(--accent-amber);
+    border: 1px solid #fbbf2440;
+  }
+
+  .badge-auto {
+    background: #34d39920;
+    color: var(--accent-green);
+    border: 1px solid #34d39940;
+  }
+
+  .badge-cost {
+    background: #4f8ff720;
+    color: var(--accent-blue);
+    border: 1px solid #4f8ff740;
+  }
+
+  /* ─── Expandable Detail ─── */
+  .step-detail {
+    max-height: 0;
+    overflow: hidden;
+    transition: max-height 0.4s ease;
+  }
+
+  .step-card.open .step-detail {
+    max-height: 3000px;
+  }
+
+  .step-body {
+    padding: 0 1.5rem 1.5rem;
+    border-top: 1px solid var(--border);
+  }
+
+  .section-grid {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 1rem;
+    margin-top: 1rem;
+  }
+
+  .section-box {
+    background: #12121c;
+    border: 1px solid #222233;
+    border-radius: 10px;
+    padding: 1rem;
+  }
+
+  .section-box h5 {
+    font-size: 0.82rem;
+    text-transform: uppercase;
+    letter-spacing: 0.05em;
+    margin-bottom: 0.5rem;
+  }
+
+  .section-box h5.input-h  { color: var(--accent-teal); }
+  .section-box h5.tools-h  { color: var(--accent-amber); }
+  .section-box h5.output-h { color: var(--accent-green); }
+  .section-box h5.flow-h   { color: var(--accent-rose); }
+
+  .section-box ul {
+    list-style: none;
+    padding: 0;
+  }
+
+  .section-box li {
+    font-size: 0.85rem;
+    color: var(--text-dim);
+    padding: 0.2rem 0;
+    padding-left: 1.2rem;
+    position: relative;
+  }
+
+  .section-box li::before {
+    content: '→';
+    position: absolute;
+    left: 0;
+    color: var(--text-muted);
+  }
+
+  .tool-tag {
+    display: inline-block;
+    font-size: 0.78rem;
+    background: #fbbf2415;
+    color: var(--accent-amber);
+    border: 1px solid #fbbf2430;
+    border-radius: 6px;
+    padding: 0.15rem 0.5rem;
+    margin: 0.15rem 0.25rem 0.15rem 0;
+  }
+
+  .output-key {
+    display: inline-block;
+    font-family: 'Cascadia Code', 'Fira Code', monospace;
+    font-size: 0.78rem;
+    background: #34d39915;
+    color: var(--accent-green);
+    border-radius: 4px;
+    padding: 0.1rem 0.4rem;
+    margin: 0.1rem 0.2rem 0.1rem 0;
+  }
+
+  .full-width { grid-column: 1 / -1; }
+
+  /* ─── Connector Arrows ─── */
+  .connector {
+    display: flex;
+    justify-content: center;
+    padding: 0.5rem 0;
+    color: var(--text-muted);
+    font-size: 1.4rem;
+    opacity: 0.5;
+  }
+
+  /* ─── Tools Inventory ─── */
+  .tools-section {
+    max-width: 1100px;
+    margin: 3rem auto 2rem;
+    background: var(--card);
+    border: 1px solid var(--border);
+    border-radius: 16px;
+    padding: 2rem;
+  }
+
+  .tools-section h2 {
+    font-size: 1.5rem;
+    margin-bottom: 1rem;
+    color: var(--accent-amber);
+  }
+
+  .tools-grid {
+    display: grid;
+    grid-template-columns: 1fr 1fr 1fr;
+    gap: 1rem;
+  }
+
+  .tool-group {
+    background: #12121c;
+    border: 1px solid #222233;
+    border-radius: 10px;
+    padding: 1rem;
+  }
+
+  .tool-group h4 {
+    font-size: 0.9rem;
+    color: var(--accent-amber);
+    margin-bottom: 0.6rem;
+    display: flex;
+    align-items: center;
+    gap: 0.4rem;
+  }
+
+  .tool-group .tool-item {
+    padding: 0.3rem 0;
+    border-bottom: 1px solid #1a1a2a;
+  }
+
+  .tool-group .tool-item:last-child { border-bottom: none; }
+
+  .tool-name {
+    font-family: 'Cascadia Code', 'Fira Code', monospace;
+    font-size: 0.8rem;
+    color: var(--text);
+  }
+
+  .tool-desc {
+    font-size: 0.76rem;
+    color: var(--text-muted);
+  }
+
+  /* ─── Dependency Graph ─── */
+  .dep-graph {
+    max-width: 1100px;
+    margin: 2rem auto 3rem;
+    background: var(--card);
+    border: 1px solid var(--border);
+    border-radius: 16px;
+    padding: 2rem;
+    overflow-x: auto;
+  }
+
+  .dep-graph h2 {
+    font-size: 1.5rem;
+    margin-bottom: 1rem;
+    color: var(--accent-rose);
+  }
+
+  .dep-visual {
+    display: flex;
+    flex-direction: column;
+    gap: 0.5rem;
+    font-family: 'Cascadia Code', 'Fira Code', monospace;
+    font-size: 0.82rem;
+    line-height: 1.5;
+    color: var(--text-dim);
+    padding: 1rem;
+    background: #0a0a12;
+    border-radius: 10px;
+    overflow-x: auto;
+    white-space: pre;
+  }
+
+  .dep-visual .node { color: var(--accent-blue); font-weight: 600; }
+  .dep-visual .arrow { color: var(--text-muted); }
+  .dep-visual .gate { color: var(--accent-amber); }
+  .dep-visual .auto { color: var(--accent-green); }
+
+  /* ─── Summary Table ─── */
+  .summary-table {
+    max-width: 1100px;
+    margin: 2rem auto;
+    overflow-x: auto;
+  }
+
+  .summary-table table {
+    width: 100%;
+    border-collapse: collapse;
+    font-size: 0.88rem;
+  }
+
+  .summary-table th {
+    background: #1a1a28;
+    padding: 0.75rem 1rem;
+    text-align: left;
+    font-weight: 600;
+    color: var(--text);
+    border-bottom: 2px solid var(--border);
+  }
+
+  .summary-table td {
+    padding: 0.65rem 1rem;
+    border-bottom: 1px solid #1a1a24;
+    color: var(--text-dim);
+  }
+
+  .summary-table tr:hover td {
+    background: #16162266;
+  }
+
+  /* ─── Legend ─── */
+  .legend {
+    max-width: 1100px;
+    margin: 2rem auto;
+    display: flex;
+    flex-wrap: wrap;
+    gap: 1.5rem;
+    padding: 1rem 1.5rem;
+    background: var(--card);
+    border: 1px solid var(--border);
+    border-radius: 12px;
+    font-size: 0.85rem;
+  }
+
+  .legend-item {
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+    color: var(--text-dim);
+  }
+
+  .legend-dot {
+    width: 12px;
+    height: 12px;
+    border-radius: 50%;
+  }
+
+  @media (max-width: 768px) {
+    body { padding: 1rem; }
+    .section-grid { grid-template-columns: 1fr; }
+    .tools-grid { grid-template-columns: 1fr; }
+    .how-it-works { grid-template-columns: 1fr; }
+    .step-top { grid-template-columns: 50px 1fr; }
+    .step-badges { grid-column: 1 / -1; }
+  }
+</style>
+</head>
+<body>
+
+<h1>Pulse OS — SEO Intelligence Pipeline</h1>
+<p class="subtitle">18-step AI-powered workflow: from business profile to published content</p>
+
+<!-- ─── BIG PICTURE ─── -->
+<div class="big-picture">
+  <h2>🎯 What Is This?</h2>
+  <div class="analogy">
+    Think of this as an <strong>assembly line for SEO strategy</strong>. Raw materials (your website URL and business info) enter at one end. At each station, a specialized AI worker does one job — researching competitors, analyzing keywords, building a content plan, writing articles, generating images. At the end, you have <strong>a complete SEO strategy with ready-to-publish content</strong>.
+  </div>
+
+  <h3 style="margin-bottom: 0.75rem; font-size: 1.1rem;">How It Works</h3>
+  <div class="how-it-works">
+    <div class="how-card">
+      <h4>🤖 AI Agents</h4>
+      <p>Each step is run by a specialized AI (GPT-4o) with a specific job description and a set of tools it's allowed to use — like a specialized employee.</p>
+    </div>
+    <div class="how-card">
+      <h4>🔧 Tools = Real Data</h4>
+      <p>Agents don't guess — they call real SEO tools (Ahrefs, Google PageSpeed, Serper, etc.) to get actual data: rankings, traffic, keyword volumes, competitor pages.</p>
+    </div>
+    <div class="how-card">
+      <h4>✅ Approval Gates</h4>
+      <p>11 of 18 steps pause for your review before continuing. You approve, edit, or reject the output. Nothing proceeds without your sign-off on critical decisions.</p>
+    </div>
+    <div class="how-card">
+      <h4>🔗 Chain of Context</h4>
+      <p>Every step's output becomes input for the next step. Step 17 (article writing) knows everything from steps 1–16. Context accumulates like a snowball.</p>
+    </div>
+  </div>
+</div>
+
+<!-- ─── LEGEND ─── -->
+<div class="legend">
+  <div class="legend-item"><div class="legend-dot" style="background: var(--accent-amber);"></div> Requires your approval</div>
+  <div class="legend-item"><div class="legend-dot" style="background: var(--accent-green);"></div> Runs automatically</div>
+  <div class="legend-item"><div class="legend-dot" style="background: var(--accent-blue);"></div> Credit cost per run</div>
+  <div class="legend-item"><div class="legend-dot" style="background: var(--accent-rose);"></div> Depends on prior step(s)</div>
+</div>
+
+<!-- ═══════════════════════════════════════════════════════ -->
+<!-- PHASE 1: DISCOVERY & AUDIT -->
+<!-- ═══════════════════════════════════════════════════════ -->
+<div class="phase">
+  <div class="phase-header discovery">
+    <div class="phase-number">1</div>
+    <div class="phase-info">
+      <h3>Discovery &amp; Audit</h3>
+      <p>Understand the business, audit the website, map the competitive landscape, and establish a keyword baseline.</p>
+    </div>
+  </div>
+
+  <div class="steps-grid">
+
+    <!-- STEP 1 -->
+    <div class="step-card" onclick="this.classList.toggle('open')">
+      <div class="step-top">
+        <div class="step-num" style="color: var(--accent-blue);">01</div>
+        <div class="step-meta">
+          <h4>Business Profile Analyst</h4>
+          <div class="depends">Entry point — no dependencies</div>
+        </div>
+        <div class="step-badges">
+          <span class="badge badge-approval">✋ Approval</span>
+          <span class="badge badge-cost">30 credits</span>
+        </div>
+      </div>
+      <div class="step-detail">
+        <div class="step-body">
+          <div class="section-grid">
+            <div class="section-box">
+              <h5 class="input-h">📥 What It Receives</h5>
+              <ul>
+                <li>Website URL (from project setup)</li>
+                <li>Any notes you provided about the business</li>
+              </ul>
+            </div>
+            <div class="section-box">
+              <h5 class="tools-h">🔧 Tools It Uses</h5>
+              <div>
+                <span class="tool-tag">firecrawl_scrape</span> Reads your website pages<br>
+                <span class="tool-tag">firecrawl_map_site</span> Maps your site structure<br>
+                <span class="tool-tag">serper_search</span> Searches Google for your brand<br>
+                <span class="tool-tag">ahrefs_organic_keywords</span> Checks what you already rank for
+              </div>
+            </div>
+            <div class="section-box full-width">
+              <h5 class="output-h">📤 What It Produces</h5>
+              <div>
+                <span class="output-key">businessName</span>
+                <span class="output-key">industry</span>
+                <span class="output-key">subIndustry</span>
+                <span class="output-key">targetMarket</span>
+                <span class="output-key">competitors[]</span>
+                <span class="output-key">services[]</span>
+                <span class="output-key">uniqueSellingPoints[]</span>
+                <span class="output-key">positioning</span>
+                <span class="output-key">contentThemes[]</span>
+              </div>
+              <p style="margin-top: 0.5rem; font-size: 0.82rem; color: var(--text-muted);">
+                <strong>Plain English:</strong> A profile of who you are, what you sell, who your competitors are, and how you position yourself in the market.
+              </p>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <div class="connector">↓</div>
+
+    <!-- STEP 2 -->
+    <div class="step-card" onclick="this.classList.toggle('open')">
+      <div class="step-top">
+        <div class="step-num" style="color: var(--accent-blue);">02</div>
+        <div class="step-meta">
+          <h4>Seed Keywords Generator</h4>
+          <div class="depends">Needs: Business Profile ✅</div>
+        </div>
+        <div class="step-badges">
+          <span class="badge badge-approval">✋ Approval</span>
+          <span class="badge badge-cost">40 credits</span>
+        </div>
+      </div>
+      <div class="step-detail">
+        <div class="step-body">
+          <div class="section-grid">
+            <div class="section-box">
+              <h5 class="input-h">📥 What It Receives</h5>
+              <ul>
+                <li>Your business profile (industry, services, competitors)</li>
+                <li>Your existing rankings from Ahrefs</li>
+              </ul>
+            </div>
+            <div class="section-box">
+              <h5 class="tools-h">🔧 Tools It Uses</h5>
+              <div>
+                <span class="tool-tag">ahrefs_related_keywords</span> Finds keyword variations<br>
+                <span class="tool-tag">dataforseo_keyword_suggestions</span> Gets keyword ideas<br>
+                <span class="tool-tag">serper_search</span> Checks what Google shows
+              </div>
+            </div>
+            <div class="section-box full-width">
+              <h5 class="output-h">📤 What It Produces</h5>
+              <div>
+                <span class="output-key">seedKeywords[]</span>
+                <span class="output-key">categories{}</span>
+                <span class="output-key">totalCount</span>
+              </div>
+              <p style="margin-top: 0.5rem; font-size: 0.82rem; color: var(--text-muted);">
+                <strong>Plain English:</strong> 50–150 starter keywords organized by category (branded, product, informational, etc.) — the raw material for all keyword research that follows.
+              </p>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <div class="connector">↓</div>
+
+    <!-- STEP 3 -->
+    <div class="step-card" onclick="this.classList.toggle('open')">
+      <div class="step-top">
+        <div class="step-num" style="color: var(--accent-blue);">03</div>
+        <div class="step-meta">
+          <h4>Technical SEO Auditor</h4>
+          <div class="depends">Needs: Business Profile ✅</div>
+        </div>
+        <div class="step-badges">
+          <span class="badge badge-approval">✋ Approval</span>
+          <span class="badge badge-cost">60 credits</span>
+        </div>
+      </div>
+      <div class="step-detail">
+        <div class="step-body">
+          <div class="section-grid">
+            <div class="section-box">
+              <h5 class="input-h">📥 What It Receives</h5>
+              <ul>
+                <li>Your website URL from business profile</li>
+                <li>Site structure from Firecrawl</li>
+              </ul>
+            </div>
+            <div class="section-box">
+              <h5 class="tools-h">🔧 Tools It Uses</h5>
+              <div>
+                <span class="tool-tag">pagespeed_analyze</span> Google PageSpeed scores<br>
+                <span class="tool-tag">pagespeed_crux</span> Real user performance data<br>
+                <span class="tool-tag">dataforseo_onpage_task</span> Creates SEO audit<br>
+                <span class="tool-tag">dataforseo_onpage_summary</span> Gets audit results<br>
+                <span class="tool-tag">firecrawl_scrape</span> Reads key pages
+              </div>
+            </div>
+            <div class="section-box full-width">
+              <h5 class="output-h">📤 What It Produces</h5>
+              <div>
+                <span class="output-key">overallScore</span>
+                <span class="output-key">scores{performance, seo, accessibility}</span>
+                <span class="output-key">coreWebVitals{LCP, FID, CLS, INP}</span>
+                <span class="output-key">issues[]</span>
+                <span class="output-key">topPages[]</span>
+                <span class="output-key">recommendations[]</span>
+              </div>
+              <p style="margin-top: 0.5rem; font-size: 0.82rem; color: var(--text-muted);">
+                <strong>Plain English:</strong> A health check of your website — speed scores, broken things, mobile-friendliness, and a prioritized list of what to fix.
+              </p>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <div class="connector">↓ branches into parallel tracks</div>
+
+    <!-- STEP 4 -->
+    <div class="step-card" onclick="this.classList.toggle('open')">
+      <div class="step-top">
+        <div class="step-num" style="color: var(--accent-blue);">04</div>
+        <div class="step-meta">
+          <h4>Search Demand Analyst</h4>
+          <div class="depends">Needs: Seed Keywords ✅</div>
+        </div>
+        <div class="step-badges">
+          <span class="badge badge-auto">⚡ Auto</span>
+          <span class="badge badge-cost">50 credits</span>
+        </div>
+      </div>
+      <div class="step-detail">
+        <div class="step-body">
+          <div class="section-grid">
+            <div class="section-box">
+              <h5 class="input-h">📥 What It Receives</h5>
+              <ul>
+                <li>The 50–150 seed keywords from Step 2</li>
+              </ul>
+            </div>
+            <div class="section-box">
+              <h5 class="tools-h">🔧 Tools It Uses</h5>
+              <div>
+                <span class="tool-tag">ahrefs_keyword_volume</span> Monthly search volumes<br>
+                <span class="tool-tag">ahrefs_keyword_difficulty</span> Competition scores<br>
+                <span class="tool-tag">dataforseo_keyword_volume</span> Cross-references volumes
+              </div>
+            </div>
+            <div class="section-box full-width">
+              <h5 class="output-h">📤 What It Produces</h5>
+              <div>
+                <span class="output-key">enrichedKeywords[]</span> with volume, difficulty, opportunity score<br>
+                <span class="output-key">demandByIntent{}</span>
+                <span class="output-key">highOpportunity[]</span>
+                <span class="output-key">totalAddressableVolume</span>
+              </div>
+              <p style="margin-top: 0.5rem; font-size: 0.82rem; color: var(--text-muted);">
+                <strong>Plain English:</strong> Takes each seed keyword and adds real data — how many people search for it monthly, how hard it is to rank, and an opportunity score.
+              </p>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <div class="connector">↓</div>
+
+    <!-- STEP 5 -->
+    <div class="step-card" onclick="this.classList.toggle('open')">
+      <div class="step-top">
+        <div class="step-num" style="color: var(--accent-blue);">05</div>
+        <div class="step-meta">
+          <h4>SERP Niche Mapper</h4>
+          <div class="depends">Needs: Seed Keywords ✅</div>
+        </div>
+        <div class="step-badges">
+          <span class="badge badge-auto">⚡ Auto</span>
+          <span class="badge badge-cost">45 credits</span>
+        </div>
+      </div>
+      <div class="step-detail">
+        <div class="step-body">
+          <div class="section-grid">
+            <div class="section-box">
+              <h5 class="input-h">📥 What It Receives</h5>
+              <ul>
+                <li>Seed keywords from Step 2</li>
+              </ul>
+            </div>
+            <div class="section-box">
+              <h5 class="tools-h">🔧 Tools It Uses</h5>
+              <div>
+                <span class="tool-tag">serper_search_batch</span> Bulk Google searches<br>
+                <span class="tool-tag">dataforseo_serp</span> Detailed SERP features
+              </div>
+            </div>
+            <div class="section-box full-width">
+              <h5 class="output-h">📤 What It Produces</h5>
+              <div>
+                <span class="output-key">nicheSegments[]</span>
+                <span class="output-key">serpFeatureDistribution{}</span>
+                <span class="output-key">contentTypeDistribution{}</span>
+                <span class="output-key">dominantPlayers[]</span>
+              </div>
+              <p style="margin-top: 0.5rem; font-size: 0.82rem; color: var(--text-muted);">
+                <strong>Plain English:</strong> Maps what types of content rank on Google for your keywords — blog posts, videos, product pages — and identifies who dominates each niche.
+              </p>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <div class="connector">↓</div>
+
+    <!-- STEP 6 -->
+    <div class="step-card" onclick="this.classList.toggle('open')">
+      <div class="step-top">
+        <div class="step-num" style="color: var(--accent-blue);">06</div>
+        <div class="step-meta">
+          <h4>Competitor Bucket Classifier</h4>
+          <div class="depends">Needs: SERP Niche Map ✅</div>
+        </div>
+        <div class="step-badges">
+          <span class="badge badge-auto">⚡ Auto</span>
+          <span class="badge badge-cost">35 credits</span>
+        </div>
+      </div>
+      <div class="step-detail">
+        <div class="step-body">
+          <div class="section-grid">
+            <div class="section-box">
+              <h5 class="input-h">📥 What It Receives</h5>
+              <ul>
+                <li>SERP niche map (who ranks where)</li>
+                <li>Business profile (your declared competitors)</li>
+              </ul>
+            </div>
+            <div class="section-box">
+              <h5 class="tools-h">🔧 Tools It Uses</h5>
+              <div>
+                <span class="tool-tag">ahrefs_competing_domains</span> Finds organic competitors<br>
+                <span class="tool-tag">serper_search</span> Validates competitors
+              </div>
+            </div>
+            <div class="section-box full-width">
+              <h5 class="output-h">📤 What It Produces</h5>
+              <div>
+                <span class="output-key">directCompetitors[]</span>
+                <span class="output-key">indirectCompetitors[]</span>
+                <span class="output-key">contentCompetitors[]</span>
+                <span class="output-key">aspirationalCompetitors[]</span>
+              </div>
+              <p style="margin-top: 0.5rem; font-size: 0.82rem; color: var(--text-muted);">
+                <strong>Plain English:</strong> Sorts all competitors into buckets: direct (same product), indirect (same audience), content (same topics), and aspirational (leaders to learn from).
+              </p>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <div class="connector">↓</div>
+
+    <!-- STEP 7 -->
+    <div class="step-card" onclick="this.classList.toggle('open')">
+      <div class="step-top">
+        <div class="step-num" style="color: var(--accent-blue);">07</div>
+        <div class="step-meta">
+          <h4>AI Intelligence Analyst</h4>
+          <div class="depends">Needs: Site Audit ✅</div>
+        </div>
+        <div class="step-badges">
+          <span class="badge badge-auto">⚡ Auto</span>
+          <span class="badge badge-cost">50 credits</span>
+        </div>
+      </div>
+      <div class="step-detail">
+        <div class="step-body">
+          <div class="section-grid">
+            <div class="section-box">
+              <h5 class="input-h">📥 What It Receives</h5>
+              <ul>
+                <li>Site audit results (structure, content quality)</li>
+                <li>Business profile (brand name, industry)</li>
+              </ul>
+            </div>
+            <div class="section-box">
+              <h5 class="tools-h">🔧 Tools It Uses</h5>
+              <div>
+                <span class="tool-tag">openai_ai_inference</span> Asks ChatGPT about your brand<br>
+                <span class="tool-tag">serper_search</span> Checks brand presence<br>
+                <span class="tool-tag">firecrawl_scrape</span> Analyzes content structure
+              </div>
+            </div>
+            <div class="section-box full-width">
+              <h5 class="output-h">📤 What It Produces</h5>
+              <div>
+                <span class="output-key">aiReadinessScore</span>
+                <span class="output-key">aeoAnalysis{}</span> Answer Engine Optimization
+                <span class="output-key">geoAnalysis{}</span> Generative Engine Optimization
+                <span class="output-key">opportunities[]</span>
+                <span class="output-key">recommendations[]</span>
+              </div>
+              <p style="margin-top: 0.5rem; font-size: 0.82rem; color: var(--text-muted);">
+                <strong>Plain English:</strong> Tests whether AI assistants (ChatGPT, etc.) mention your brand. Scores how ready your content is to appear in AI-generated answers.
+              </p>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <div class="connector">↓</div>
+
+    <!-- STEP 8 -->
+    <div class="step-card" onclick="this.classList.toggle('open')">
+      <div class="step-top">
+        <div class="step-num" style="color: var(--accent-blue);">08</div>
+        <div class="step-meta">
+          <h4>Competitor Metrics Analyst</h4>
+          <div class="depends">Needs: AI Intelligence ✅ + Competitor Buckets ✅</div>
+        </div>
+        <div class="step-badges">
+          <span class="badge badge-auto">⚡ Auto</span>
+          <span class="badge badge-cost">55 credits</span>
+        </div>
+      </div>
+      <div class="step-detail">
+        <div class="step-body">
+          <div class="section-grid">
+            <div class="section-box">
+              <h5 class="input-h">📥 What It Receives</h5>
+              <ul>
+                <li>All 4 competitor buckets from Step 6</li>
+                <li>AI readiness data from Step 7</li>
+              </ul>
+            </div>
+            <div class="section-box">
+              <h5 class="tools-h">🔧 Tools It Uses</h5>
+              <div>
+                <span class="tool-tag">ahrefs_domain_rating</span> Domain authority scores<br>
+                <span class="tool-tag">ahrefs_organic_keywords</span> What competitors rank for<br>
+                <span class="tool-tag">ahrefs_backlinks_stats</span> Backlink strength<br>
+                <span class="tool-tag">ahrefs_organic_pages</span> Their top pages<br>
+                <span class="tool-tag">dataforseo_backlinks_summary</span> Cross-reference backlinks
+              </div>
+            </div>
+            <div class="section-box full-width">
+              <h5 class="output-h">📤 What It Produces</h5>
+              <div>
+                <span class="output-key">competitors[]</span> each with DR, keywords, traffic, backlinks, top pages
+              </div>
+              <p style="margin-top: 0.5rem; font-size: 0.82rem; color: var(--text-muted);">
+                <strong>Plain English:</strong> A detailed scorecard for every competitor — their domain strength, how many keywords they rank for, their backlink profile, and top-performing pages.
+              </p>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <div class="connector">↓</div>
+
+    <!-- STEP 9 -->
+    <div class="step-card" onclick="this.classList.toggle('open')">
+      <div class="step-top">
+        <div class="step-num" style="color: var(--accent-blue);">09</div>
+        <div class="step-meta">
+          <h4>Phase 1 Keyword Baseline</h4>
+          <div class="depends">Needs: Seeds ✅ + Audit ✅ + Competitor Metrics ✅ + Search Demand ✅</div>
+        </div>
+        <div class="step-badges">
+          <span class="badge badge-approval">✋ Approval</span>
+          <span class="badge badge-cost">45 credits</span>
+        </div>
+      </div>
+      <div class="step-detail">
+        <div class="step-body">
+          <div class="section-grid">
+            <div class="section-box">
+              <h5 class="input-h">📥 What It Receives</h5>
+              <ul>
+                <li>Enriched seed keywords with volumes &amp; difficulty</li>
+                <li>Competitor metrics (who ranks where)</li>
+                <li>Site audit (current site health)</li>
+              </ul>
+            </div>
+            <div class="section-box">
+              <h5 class="tools-h">🔧 Tools It Uses</h5>
+              <div>
+                <span class="tool-tag">ahrefs_organic_keywords</span> Your current rankings<br>
+                <span class="tool-tag">dataforseo_serp</span> Where you stand in SERPs
+              </div>
+            </div>
+            <div class="section-box full-width">
+              <h5 class="output-h">📤 What It Produces</h5>
+              <div>
+                <span class="output-key">currentRankings[]</span>
+                <span class="output-key">gaps[]</span>
+                <span class="output-key">quickWins[]</span>
+                <span class="output-key">competitiveOverlap{}</span>
+              </div>
+              <p style="margin-top: 0.5rem; font-size: 0.82rem; color: var(--text-muted);">
+                <strong>Plain English:</strong> Your SEO starting point — what keywords you already rank for, where the gaps are, and "quick wins" (keywords where you're close to page 1 with little effort).
+              </p>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+  </div>
+</div>
+
+<!-- ═══════════════════════════════════════════════════════ -->
+<!-- PHASE 2: KEYWORD RESEARCH -->
+<!-- ═══════════════════════════════════════════════════════ -->
+<div class="phase">
+  <div class="phase-header research">
+    <div class="phase-number">2</div>
+    <div class="phase-info">
+      <h3>Keyword Research (4 Methods)</h3>
+      <p>Four parallel research methods discover keywords from different angles, then merge into one master list.</p>
+    </div>
+  </div>
+
+  <div class="steps-grid">
+
+    <!-- STEP 10 -->
+    <div class="step-card" onclick="this.classList.toggle('open')">
+      <div class="step-top">
+        <div class="step-num" style="color: var(--accent-green);">10</div>
+        <div class="step-meta">
+          <h4>Method 1: Competitor Page Analysis</h4>
+          <div class="depends">Needs: Baseline ✅ + Competitor Metrics ✅</div>
+        </div>
+        <div class="step-badges">
+          <span class="badge badge-auto">⚡ Auto</span>
+          <span class="badge badge-cost">55 credits</span>
+        </div>
+      </div>
+      <div class="step-detail">
+        <div class="step-body">
+          <div class="section-grid">
+            <div class="section-box">
+              <h5 class="input-h">📥 What It Receives</h5>
+              <ul>
+                <li>Top competitor pages (from Step 8)</li>
+                <li>Your baseline keywords (from Step 9)</li>
+              </ul>
+            </div>
+            <div class="section-box">
+              <h5 class="tools-h">🔧 Tools It Uses</h5>
+              <div>
+                <span class="tool-tag">ahrefs_organic_keywords</span> Keywords per competitor page<br>
+                <span class="tool-tag">ahrefs_organic_pages</span> Their best pages<br>
+                <span class="tool-tag">firecrawl_scrape</span> Read competitor content
+              </div>
+            </div>
+            <div class="section-box full-width">
+              <h5 class="output-h">📤 What It Produces</h5>
+              <p style="font-size: 0.85rem; color: var(--text-dim);">Keywords your competitors rank for but you don't — the "competitive gap" keywords.</p>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- STEP 11 -->
+    <div class="step-card" onclick="this.classList.toggle('open')">
+      <div class="step-top">
+        <div class="step-num" style="color: var(--accent-green);">11</div>
+        <div class="step-meta">
+          <h4>Method 2: Seed Expansion</h4>
+          <div class="depends">Needs: Baseline ✅ + Seed Keywords ✅</div>
+        </div>
+        <div class="step-badges">
+          <span class="badge badge-auto">⚡ Auto</span>
+          <span class="badge badge-cost">50 credits</span>
+        </div>
+      </div>
+      <div class="step-detail">
+        <div class="step-body">
+          <div class="section-grid">
+            <div class="section-box">
+              <h5 class="input-h">📥 What It Receives</h5>
+              <ul>
+                <li>Original seed keywords</li>
+                <li>Baseline (what you already have)</li>
+              </ul>
+            </div>
+            <div class="section-box">
+              <h5 class="tools-h">🔧 Tools It Uses</h5>
+              <div>
+                <span class="tool-tag">ahrefs_related_keywords</span> Related terms<br>
+                <span class="tool-tag">dataforseo_keyword_suggestions</span> Autocomplete ideas<br>
+                <span class="tool-tag">serper_search</span> "People Also Ask" questions
+              </div>
+            </div>
+            <div class="section-box full-width">
+              <h5 class="output-h">📤 What It Produces</h5>
+              <p style="font-size: 0.85rem; color: var(--text-dim);">Long-tail keywords, question-based keywords, and related terms — expanding your seed list by 5–10×.</p>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- STEP 12 -->
+    <div class="step-card" onclick="this.classList.toggle('open')">
+      <div class="step-top">
+        <div class="step-num" style="color: var(--accent-green);">12</div>
+        <div class="step-meta">
+          <h4>Method 3: Content Gap Import</h4>
+          <div class="depends">Needs: Baseline ✅ + Method 1 ✅ + Method 2 ✅</div>
+        </div>
+        <div class="step-badges">
+          <span class="badge badge-approval">✋ Approval</span>
+          <span class="badge badge-cost">30 credits</span>
+        </div>
+      </div>
+      <div class="step-detail">
+        <div class="step-body">
+          <div class="section-grid">
+            <div class="section-box full-width">
+              <h5 class="input-h">📥 What It Receives</h5>
+              <ul>
+                <li>All keywords from Methods 1 &amp; 2</li>
+                <li>Your baseline rankings</li>
+                <li>Optional: Keywords you manually import (CSV, etc.)</li>
+              </ul>
+            </div>
+            <div class="section-box full-width">
+              <h5 class="output-h">📤 What It Produces</h5>
+              <p style="font-size: 0.85rem; color: var(--text-dim);">User-imported keywords cleaned, deduplicated, and enriched with volume/difficulty data. This is your chance to inject domain expertise.</p>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <div class="connector">↓ All 4 methods merge</div>
+
+    <!-- STEP 13 -->
+    <div class="step-card" onclick="this.classList.toggle('open')">
+      <div class="step-top">
+        <div class="step-num" style="color: var(--accent-green);">13</div>
+        <div class="step-meta">
+          <h4>Keyword Consolidation</h4>
+          <div class="depends">Needs: All 4 research methods ✅</div>
+        </div>
+        <div class="step-badges">
+          <span class="badge badge-approval">✋ Approval</span>
+          <span class="badge badge-cost">40 credits</span>
+        </div>
+      </div>
+      <div class="step-detail">
+        <div class="step-body">
+          <div class="section-grid">
+            <div class="section-box">
+              <h5 class="input-h">📥 What It Receives</h5>
+              <ul>
+                <li>Keywords from Method 1 (competitor gaps)</li>
+                <li>Keywords from Method 2 (expansions)</li>
+                <li>Keywords from Method 3 (imports)</li>
+                <li>Baseline keywords (Step 9)</li>
+              </ul>
+            </div>
+            <div class="section-box">
+              <h5 class="tools-h">🔧 Tools It Uses</h5>
+              <div>
+                <span class="tool-tag">ahrefs_keyword_volume</span> Final volume check<br>
+                <span class="tool-tag">ahrefs_keyword_difficulty</span> Final difficulty check
+              </div>
+            </div>
+            <div class="section-box full-width">
+              <h5 class="output-h">📤 What It Produces</h5>
+              <div>
+                <span class="output-key">keywords[]</span> Top 1,000 by opportunity score<br>
+                <span class="output-key">clusters[]</span>
+                <span class="output-key">quickWins[]</span>
+                <span class="output-key">stats{}</span>
+              </div>
+              <p style="margin-top: 0.5rem; font-size: 0.82rem; color: var(--text-muted);">
+                <strong>Plain English:</strong> The master keyword list — all duplicates removed, all keywords scored and ranked, top 1,000 selected. This is the foundation for your entire content strategy.
+              </p>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+  </div>
+</div>
+
+<!-- ═══════════════════════════════════════════════════════ -->
+<!-- PHASE 3: STRATEGY & CONTENT -->
+<!-- ═══════════════════════════════════════════════════════ -->
+<div class="phase">
+  <div class="phase-header strategy">
+    <div class="phase-number">3</div>
+    <div class="phase-info">
+      <h3>Strategy &amp; Content Creation</h3>
+      <p>Synthesize all intelligence into a strategy, build a content roadmap, then generate actual content pieces.</p>
+    </div>
+  </div>
+
+  <div class="steps-grid">
+
+    <!-- STEP 14 -->
+    <div class="step-card" onclick="this.classList.toggle('open')">
+      <div class="step-top">
+        <div class="step-num" style="color: var(--accent-purple);">14</div>
+        <div class="step-meta">
+          <h4>Verdict &amp; Strategy</h4>
+          <div class="depends">Needs: Consolidated Keywords ✅</div>
+        </div>
+        <div class="step-badges">
+          <span class="badge badge-approval">✋ Approval</span>
+          <span class="badge badge-cost">35 credits</span>
+        </div>
+      </div>
+      <div class="step-detail">
+        <div class="step-body">
+          <div class="section-grid">
+            <div class="section-box">
+              <h5 class="input-h">📥 What It Receives</h5>
+              <ul>
+                <li>Full context from ALL prior steps (1–13)</li>
+                <li>1,000 consolidated keywords</li>
+                <li>Competitor analysis, site audit, AI readiness</li>
+              </ul>
+            </div>
+            <div class="section-box">
+              <h5 class="tools-h">🔧 Tools It Uses</h5>
+              <div>
+                <span class="tool-tag">serper_search</span> Validates strategic assumptions<br>
+                (Mostly synthesis — less tool-heavy, more AI reasoning)
+              </div>
+            </div>
+            <div class="section-box full-width">
+              <h5 class="output-h">📤 What It Produces</h5>
+              <div>
+                <span class="output-key">executiveSummary</span>
+                <span class="output-key">swot{}</span> Strengths, Weaknesses, Opportunities, Threats
+                <span class="output-key">verdict{}</span> compete / differentiate / avoid
+                <span class="output-key">priorityMatrix[]</span>
+                <span class="output-key">actionPlan{}</span> 30/60/90-day plan
+                <span class="output-key">kpis{}</span>
+                <span class="output-key">budgetAllocation[]</span>
+              </div>
+              <p style="margin-top: 0.5rem; font-size: 0.82rem; color: var(--text-muted);">
+                <strong>Plain English:</strong> The strategic verdict — a SWOT analysis, which battles to fight vs. avoid, a 90-day action plan, and KPIs to track success.
+              </p>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <div class="connector">↓</div>
+
+    <!-- STEP 15 -->
+    <div class="step-card" onclick="this.classList.toggle('open')">
+      <div class="step-top">
+        <div class="step-num" style="color: var(--accent-purple);">15</div>
+        <div class="step-meta">
+          <h4>Topical Map Architect</h4>
+          <div class="depends">Needs: Verdict &amp; Strategy ✅</div>
+        </div>
+        <div class="step-badges">
+          <span class="badge badge-approval">✋ Approval</span>
+          <span class="badge badge-cost">40 credits</span>
+        </div>
+      </div>
+      <div class="step-detail">
+        <div class="step-body">
+          <div class="section-grid">
+            <div class="section-box">
+              <h5 class="input-h">📥 What It Receives</h5>
+              <ul>
+                <li>Strategy verdict (priorities, focus areas)</li>
+                <li>Consolidated keywords (filtered — competitor brands auto-removed)</li>
+                <li>Site structure from audit</li>
+              </ul>
+            </div>
+            <div class="section-box">
+              <h5 class="tools-h">🔧 Tools It Uses</h5>
+              <div>
+                <span class="tool-tag">serper_search</span> Validates topic coverage<br>
+                <span class="tool-tag">ahrefs_keyword_volume</span> Volume for cluster keywords
+              </div>
+            </div>
+            <div class="section-box full-width">
+              <h5 class="output-h">📤 What It Produces</h5>
+              <div>
+                <span class="output-key">pillars[]</span> 3–7 main topic areas<br>
+                <span class="output-key">each pillar → clusters[]</span> 5–15 sub-topics<br>
+                <span class="output-key">each cluster → pages[]</span> Individual content pieces<br>
+                <span class="output-key">calendar[]</span> 12-month publishing schedule<br>
+                <span class="output-key">linkingArchitecture{}</span> How pages link together
+              </div>
+              <p style="margin-top: 0.5rem; font-size: 0.82rem; color: var(--text-muted);">
+                <strong>Plain English:</strong> A complete content roadmap — organized into pillars (big themes) → clusters (sub-themes) → individual pages. Plus a 12-month calendar showing what to publish and when.
+              </p>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <div class="connector">↓ For each content piece in the topical map:</div>
+
+    <!-- STEP 16 -->
+    <div class="step-card" onclick="this.classList.toggle('open')">
+      <div class="step-top">
+        <div class="step-num" style="color: var(--accent-purple);">16</div>
+        <div class="step-meta">
+          <h4>Content Brief Strategist</h4>
+          <div class="depends">Needs: Topical Map ✅</div>
+        </div>
+        <div class="step-badges">
+          <span class="badge badge-approval">✋ Approval</span>
+          <span class="badge badge-cost">25 credits</span>
+        </div>
+      </div>
+      <div class="step-detail">
+        <div class="step-body">
+          <div class="section-grid">
+            <div class="section-box">
+              <h5 class="input-h">📥 What It Receives</h5>
+              <ul>
+                <li>A specific content piece from the topical map</li>
+                <li>Target keyword, cluster context, pillar theme</li>
+                <li>Internal linking plan (which pages to link to/from)</li>
+              </ul>
+            </div>
+            <div class="section-box">
+              <h5 class="tools-h">🔧 Tools It Uses</h5>
+              <div>
+                <span class="tool-tag">serper_search</span> SERP analysis for target keyword<br>
+                <span class="tool-tag">firecrawl_scrape</span> Reads top 3 competing articles
+              </div>
+            </div>
+            <div class="section-box full-width">
+              <h5 class="output-h">📤 What It Produces</h5>
+              <div>
+                <span class="output-key">targetKeyword</span>
+                <span class="output-key">serpAnalysis[]</span> What currently ranks on Google
+                <span class="output-key">contentStructure{}</span> Full heading outline (H1→H3)
+                <span class="output-key">wordCountTarget</span> e.g. 2,500 words
+                <span class="output-key">schemaMarkup</span> e.g. "Article", "HowTo"
+                <span class="output-key">internalLinks[]</span>
+                <span class="output-key">paaQuestions[]</span> People Also Ask
+                <span class="output-key">metaTitle</span>
+                <span class="output-key">metaDescription</span>
+              </div>
+              <p style="margin-top: 0.5rem; font-size: 0.82rem; color: var(--text-muted);">
+                <strong>Plain English:</strong> A complete writing blueprint — a writer could produce the article from this brief alone. Includes the outline, word count, SEO targets, and competitive analysis.
+              </p>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <div class="connector">↓</div>
+
+    <!-- STEP 17 -->
+    <div class="step-card" onclick="this.classList.toggle('open')">
+      <div class="step-top">
+        <div class="step-num" style="color: var(--accent-purple);">17</div>
+        <div class="step-meta">
+          <h4>Content Article Writer</h4>
+          <div class="depends">Needs: Content Brief ✅</div>
+        </div>
+        <div class="step-badges">
+          <span class="badge badge-approval">✋ Approval</span>
+          <span class="badge badge-cost">30 credits</span>
+        </div>
+      </div>
+      <div class="step-detail">
+        <div class="step-body">
+          <div class="section-grid">
+            <div class="section-box">
+              <h5 class="input-h">📥 What It Receives</h5>
+              <ul>
+                <li>The complete content brief from Step 16</li>
+                <li>Heading structure, word count target, keyword targets</li>
+                <li>Internal linking plan, PAA questions, schema type</li>
+              </ul>
+            </div>
+            <div class="section-box">
+              <h5 class="tools-h">🔧 Tools It Uses</h5>
+              <div>
+                <span class="tool-tag">serper_search</span> Fact-checks claims<br>
+                <span class="tool-tag">firecrawl_scrape</span> Reference source material
+              </div>
+            </div>
+            <div class="section-box full-width">
+              <h5 class="output-h">📤 What It Produces</h5>
+              <div>
+                <span class="output-key">title</span>
+                <span class="output-key">slug</span> URL-friendly version
+                <span class="output-key">content</span> Full article in Markdown (2,000–5,000 words)
+                <span class="output-key">wordCount</span>
+                <span class="output-key">metaTitle</span>
+                <span class="output-key">metaDescription</span>
+                <span class="output-key">faqSection[]</span>
+                <span class="output-key">keyTakeaways[]</span>
+                <span class="output-key">scores{}</span> Readability, SEO quality
+                <span class="output-key">imageAltSuggestions[]</span> Where to place images
+              </div>
+              <p style="margin-top: 0.5rem; font-size: 0.82rem; color: var(--text-muted);">
+                <strong>Plain English:</strong> A complete, ready-to-publish article with FAQ section, internal links, image placement markers, and SEO optimization scores.
+              </p>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <div class="connector">↓</div>
+
+    <!-- STEP 18 -->
+    <div class="step-card" onclick="this.classList.toggle('open')">
+      <div class="step-top">
+        <div class="step-num" style="color: var(--accent-purple);">18</div>
+        <div class="step-meta">
+          <h4>Content Image Generator</h4>
+          <div class="depends">Needs: Content Article ✅</div>
+        </div>
+        <div class="step-badges">
+          <span class="badge badge-approval">✋ Approval</span>
+          <span class="badge badge-cost">25 credits</span>
+        </div>
+      </div>
+      <div class="step-detail">
+        <div class="step-body">
+          <div class="section-grid">
+            <div class="section-box">
+              <h5 class="input-h">📥 What It Receives</h5>
+              <ul>
+                <li>Image placement suggestions from the article</li>
+                <li>Alt text descriptions for each image</li>
+                <li>Article context (topic, style, brand)</li>
+              </ul>
+            </div>
+            <div class="section-box">
+              <h5 class="tools-h">🔧 Tools It Uses</h5>
+              <div>
+                <span class="tool-tag">generate_image</span> DALL-E 3 image generation<br>
+                Creates images at 1792×1024 (landscape) by default
+              </div>
+            </div>
+            <div class="section-box full-width">
+              <h5 class="output-h">📤 What It Produces</h5>
+              <div>
+                <span class="output-key">images[]</span> Each with base64 PNG, alt text, placement location<br>
+                <span class="output-key">styleNotes</span> Visual consistency guidelines
+              </div>
+              <p style="margin-top: 0.5rem; font-size: 0.82rem; color: var(--text-muted);">
+                <strong>Plain English:</strong> AI-generated images matched to the article — hero images, section illustrations, infographics. Ready to insert at the marked positions in the article.
+              </p>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+  </div>
+</div>
+
+<!-- ═══════════════════════════════════════════════════════ -->
+<!-- DEPENDENCY GRAPH -->
+<!-- ═══════════════════════════════════════════════════════ -->
+<div class="dep-graph">
+  <h2>🗺️ Dependency Graph — What Waits for What</h2>
+  <p style="color: var(--text-dim); margin-bottom: 1rem; font-size: 0.9rem;">
+    Each step can only start when ALL of its dependencies are done. <span style="color: var(--accent-amber);">Yellow = needs your approval</span>. <span style="color: var(--accent-green);">Green = runs automatically</span>.
+  </p>
+  <div class="dep-visual"><span class="gate">①  Business Profile</span> ─────────┬──────────────────────────────────────┐
+                              │                                      │
+                        <span class="gate">②  Seed Keywords</span> ──────┬──────┐      <span class="gate">③  Site Audit</span>
+                              │          │      │            │
+                        <span class="auto">④  Search Demand</span>   <span class="auto">⑤  SERP Map</span>     <span class="auto">⑦  AI Intel</span>
+                              │          │                   │
+                              │    <span class="auto">⑥  Competitor Buckets</span>       │
+                              │          │                   │
+                              │    <span class="auto">⑧  Competitor Metrics</span> ◀─────┘
+                              │          │
+                        <span class="gate">⑨  Phase 1 Baseline</span> ◀──┘ (waits for 2+3+4+8)
+                              │
+            ┌─────────────────┼─────────────────┐
+            │                 │                 │
+      <span class="auto">⑩  Method 1</span>      <span class="auto">⑪  Method 2</span>        │
+       (competitors)    (expansion)        │
+            │                 │                 │
+            └────────┬────────┘                 │
+                     │                          │
+               <span class="gate">⑫  Method 3</span> (import) ◀────────┘
+                     │
+      <span class="gate">⑬  Consolidated Keywords</span> ◀──── (waits for 9+10+11+12)
+                     │
+            <span class="gate">⑭  Verdict &amp; Strategy</span>
+                     │
+             <span class="gate">⑮  Topical Map</span>
+                     │
+            <span class="gate">⑯  Content Brief</span>    ← per content piece
+                     │
+           <span class="gate">⑰  Content Article</span>
+                     │
+           <span class="gate">⑱  Content Images</span></div>
+</div>
+
+<!-- ═══════════════════════════════════════════════════════ -->
+<!-- TOOLS INVENTORY -->
+<!-- ═══════════════════════════════════════════════════════ -->
+<div class="tools-section">
+  <h2>🔧 The Toolbox — 25 Real-World Data Tools</h2>
+  <p style="color: var(--text-dim); margin-bottom: 1.25rem; font-size: 0.9rem;">
+    Every tool connects to a real external service. AI agents don't guess — they fetch actual data.
+  </p>
+  <div class="tools-grid">
+    <div class="tool-group">
+      <h4>🔍 Ahrefs (8 tools)</h4>
+      <div class="tool-item"><div class="tool-name">ahrefs_domain_rating</div><div class="tool-desc">Domain authority score (0–100)</div></div>
+      <div class="tool-item"><div class="tool-name">ahrefs_organic_keywords</div><div class="tool-desc">Keywords a domain ranks for</div></div>
+      <div class="tool-item"><div class="tool-name">ahrefs_organic_pages</div><div class="tool-desc">Top pages by organic traffic</div></div>
+      <div class="tool-item"><div class="tool-name">ahrefs_backlinks_stats</div><div class="tool-desc">Backlink profile summary</div></div>
+      <div class="tool-item"><div class="tool-name">ahrefs_competing_domains</div><div class="tool-desc">Organic competitors</div></div>
+      <div class="tool-item"><div class="tool-name">ahrefs_keyword_difficulty</div><div class="tool-desc">How hard to rank (0–100)</div></div>
+      <div class="tool-item"><div class="tool-name">ahrefs_keyword_volume</div><div class="tool-desc">Monthly search volume</div></div>
+      <div class="tool-item"><div class="tool-name">ahrefs_related_keywords</div><div class="tool-desc">Semantic keyword variations</div></div>
+    </div>
+    <div class="tool-group">
+      <h4>🌐 Search &amp; Scraping (5 tools)</h4>
+      <div class="tool-item"><div class="tool-name">serper_search</div><div class="tool-desc">Google SERP results for a query</div></div>
+      <div class="tool-item"><div class="tool-name">serper_search_batch</div><div class="tool-desc">Bulk Google searches (10+ at once)</div></div>
+      <div class="tool-item"><div class="tool-name">firecrawl_scrape</div><div class="tool-desc">Read any webpage's content</div></div>
+      <div class="tool-item"><div class="tool-name">firecrawl_crawl</div><div class="tool-desc">Crawl an entire website</div></div>
+      <div class="tool-item"><div class="tool-name">firecrawl_map_site</div><div class="tool-desc">Get site's URL structure</div></div>
+    </div>
+    <div class="tool-group">
+      <h4>📊 DataForSEO (8 tools)</h4>
+      <div class="tool-item"><div class="tool-name">dataforseo_serp</div><div class="tool-desc">SERP results + rich features</div></div>
+      <div class="tool-item"><div class="tool-name">dataforseo_keyword_volume</div><div class="tool-desc">Search volumes by country</div></div>
+      <div class="tool-item"><div class="tool-name">dataforseo_keyword_suggestions</div><div class="tool-desc">Keyword ideas from a seed</div></div>
+      <div class="tool-item"><div class="tool-name">dataforseo_keyword_difficulty</div><div class="tool-desc">Competition difficulty scores</div></div>
+      <div class="tool-item"><div class="tool-name">dataforseo_onpage_task</div><div class="tool-desc">Create on-page audit</div></div>
+      <div class="tool-item"><div class="tool-name">dataforseo_onpage_summary</div><div class="tool-desc">Get audit results</div></div>
+      <div class="tool-item"><div class="tool-name">dataforseo_backlinks_summary</div><div class="tool-desc">Backlink profile analysis</div></div>
+      <div class="tool-item"><div class="tool-name">dataforseo_domain_technologies</div><div class="tool-desc">Detect tech stack</div></div>
+    </div>
+    <div class="tool-group">
+      <h4>⚡ Performance (2 tools)</h4>
+      <div class="tool-item"><div class="tool-name">pagespeed_analyze</div><div class="tool-desc">Google PageSpeed scores (LCP, CLS, etc.)</div></div>
+      <div class="tool-item"><div class="tool-name">pagespeed_crux</div><div class="tool-desc">Chrome UX Report (real user data)</div></div>
+    </div>
+    <div class="tool-group">
+      <h4>🤖 AI &amp; Generation (2 tools)</h4>
+      <div class="tool-item"><div class="tool-name">openai_ai_inference</div><div class="tool-desc">Test if ChatGPT mentions your brand</div></div>
+      <div class="tool-item"><div class="tool-name">generate_image</div><div class="tool-desc">DALL-E 3 image creation</div></div>
+    </div>
+  </div>
+</div>
+
+<!-- ═══════════════════════════════════════════════════════ -->
+<!-- SUMMARY TABLE -->
+<!-- ═══════════════════════════════════════════════════════ -->
+<div class="summary-table">
+  <h2 style="font-size: 1.5rem; margin-bottom: 1rem; color: var(--accent-teal);">📋 Quick Reference Table</h2>
+  <table>
+    <thead>
+      <tr>
+        <th>#</th>
+        <th>Step</th>
+        <th>What It Does (One Sentence)</th>
+        <th>Key Tools</th>
+        <th>Approval</th>
+        <th>Cost</th>
+      </tr>
+    </thead>
+    <tbody>
+      <tr><td>1</td><td>Business Profile</td><td>Figures out who you are, what you sell, and who competes with you</td><td>Firecrawl, Serper, Ahrefs</td><td style="color: var(--accent-amber);">✋ Yes</td><td>30</td></tr>
+      <tr><td>2</td><td>Seed Keywords</td><td>Generates 50–150 starter keywords based on your business</td><td>Ahrefs, DataForSEO, Serper</td><td style="color: var(--accent-amber);">✋ Yes</td><td>40</td></tr>
+      <tr><td>3</td><td>Site Audit</td><td>Checks your website's technical health — speed, errors, mobile</td><td>PageSpeed, DataForSEO, Firecrawl</td><td style="color: var(--accent-amber);">✋ Yes</td><td>60</td></tr>
+      <tr><td>4</td><td>Search Demand</td><td>Adds real volume &amp; difficulty numbers to each keyword</td><td>Ahrefs, DataForSEO</td><td style="color: var(--accent-green);">⚡ Auto</td><td>50</td></tr>
+      <tr><td>5</td><td>SERP Niche Map</td><td>Maps what types of content rank for your keywords</td><td>Serper, DataForSEO</td><td style="color: var(--accent-green);">⚡ Auto</td><td>45</td></tr>
+      <tr><td>6</td><td>Competitor Buckets</td><td>Sorts competitors into direct, indirect, content, and aspirational</td><td>Ahrefs, Serper</td><td style="color: var(--accent-green);">⚡ Auto</td><td>35</td></tr>
+      <tr><td>7</td><td>AI Intelligence</td><td>Tests if AI assistants mention your brand, scores AI readiness</td><td>OpenAI, Serper, Firecrawl</td><td style="color: var(--accent-green);">⚡ Auto</td><td>50</td></tr>
+      <tr><td>8</td><td>Competitor Metrics</td><td>Detailed scorecards for every competitor (DR, keywords, backlinks)</td><td>Ahrefs (×5), DataForSEO</td><td style="color: var(--accent-green);">⚡ Auto</td><td>55</td></tr>
+      <tr><td>9</td><td>Baseline</td><td>Establishes your current SEO position — rankings, gaps, quick wins</td><td>Ahrefs, DataForSEO</td><td style="color: var(--accent-amber);">✋ Yes</td><td>45</td></tr>
+      <tr><td>10</td><td>Method 1</td><td>Finds keywords your competitors rank for but you don't</td><td>Ahrefs, Firecrawl</td><td style="color: var(--accent-green);">⚡ Auto</td><td>55</td></tr>
+      <tr><td>11</td><td>Method 2</td><td>Expands seeds into long-tail and question-based keywords</td><td>Ahrefs, DataForSEO, Serper</td><td style="color: var(--accent-green);">⚡ Auto</td><td>50</td></tr>
+      <tr><td>12</td><td>Method 3</td><td>Lets you import and clean your own keyword lists</td><td>—</td><td style="color: var(--accent-amber);">✋ Yes</td><td>30</td></tr>
+      <tr><td>13</td><td>Consolidation</td><td>Merges all keywords, removes duplicates, picks top 1,000</td><td>Ahrefs</td><td style="color: var(--accent-amber);">✋ Yes</td><td>40</td></tr>
+      <tr><td>14</td><td>Verdict &amp; Strategy</td><td>SWOT analysis + which battles to fight + 90-day plan</td><td>Serper</td><td style="color: var(--accent-amber);">✋ Yes</td><td>35</td></tr>
+      <tr><td>15</td><td>Topical Map</td><td>Content roadmap: pillars → clusters → pages + 12-month calendar</td><td>Serper, Ahrefs</td><td style="color: var(--accent-amber);">✋ Yes</td><td>40</td></tr>
+      <tr><td>16</td><td>Content Brief</td><td>Writing blueprint: outline, word count, keywords, SERP analysis</td><td>Serper, Firecrawl</td><td style="color: var(--accent-amber);">✋ Yes</td><td>25</td></tr>
+      <tr><td>17</td><td>Content Article</td><td>Writes the full article (2,000–5,000 words) in Markdown</td><td>Serper, Firecrawl</td><td style="color: var(--accent-amber);">✋ Yes</td><td>30</td></tr>
+      <tr><td>18</td><td>Content Images</td><td>Generates AI images matched to article placement markers</td><td>DALL-E 3</td><td style="color: var(--accent-amber);">✋ Yes</td><td>25</td></tr>
+    </tbody>
+  </table>
+  <p style="text-align: right; color: var(--text-muted); font-size: 0.85rem; margin-top: 0.5rem;">
+    <strong>Total: ~680 credits</strong> for a full pipeline run
+  </p>
+</div>
+
+<!-- ═══════════════════════════════════════════════════════ -->
+<!-- DATA FORMAT FLOW -->
+<!-- ═══════════════════════════════════════════════════════ -->
+<div class="big-picture" style="margin-top: 2rem;">
+  <h2>📦 How Data Flows Between Steps</h2>
+  <div class="section-grid" style="margin-top: 1rem;">
+    <div class="how-card">
+      <h4>1. Agent Runs</h4>
+      <p>AI calls tools (Ahrefs, Serper, etc.), gets real data, then synthesizes it into a structured JSON output following its schema.</p>
+    </div>
+    <div class="how-card">
+      <h4>2. Output Stored</h4>
+      <p>The JSON output is saved as an "artifact" in the database with version tracking. Each re-run creates a new version.</p>
+    </div>
+    <div class="how-card">
+      <h4>3. Context Built</h4>
+      <p>When the next step starts, ALL prior step outputs are loaded into a context map: <code style="color: var(--accent-blue);">{"business-profile": {...}, "seed-keywords": {...}, ...}</code></p>
+    </div>
+    <div class="how-card">
+      <h4>4. Prompt Injected</h4>
+      <p>The context is injected into the next agent's prompt using template variables like <code style="color: var(--accent-blue);">{{consolidated-keywords.keywords}}</code>. The AI sees everything.</p>
+    </div>
+  </div>
+
+  <div style="margin-top: 1.5rem; padding: 1rem; background: #0a0a12; border-radius: 10px; font-size: 0.88rem; color: var(--text-dim);">
+    <strong style="color: var(--accent-rose);">🔒 Approval Gates:</strong> When a step requires approval, the pipeline pauses. You see the output, can edit it, and either approve (which triggers downstream steps) or reject (which stops the chain). 11 of 18 steps have this safety gate. The 7 auto-approved steps are intermediate analysis that feeds into the next approval point.
+  </div>
+
+  <div style="margin-top: 1rem; padding: 1rem; background: #0a0a12; border-radius: 10px; font-size: 0.88rem; color: var(--text-dim);">
+    <strong style="color: var(--accent-purple);">🧹 Brand Filter:</strong> Before the Topical Map step, a special transformation automatically removes competitor brand keywords from the consolidated list. You won't accidentally create content targeting "Competitor Inc reviews" — only your own brand keywords pass through.
+  </div>
+
+  <div style="margin-top: 1rem; padding: 1rem; background: #0a0a12; border-radius: 10px; font-size: 0.88rem; color: var(--text-dim);">
+    <strong style="color: var(--accent-green);">✅ Output Validation:</strong> Every step's output is checked against its schema before being saved. If the AI returns the wrong format (e.g., a number where an object is expected), the step fails immediately rather than passing bad data downstream.
+  </div>
+</div>
+
+<div style="text-align: center; color: var(--text-muted); padding: 2rem 0; font-size: 0.85rem;">
+  Generated for Pulse OS · 18-step SEO Intelligence Pipeline · Total: 25 tools, 680 credits per run, 11 approval gates
+</div>
+
+<script>
+  // Click anywhere outside to close expanded cards (optional UX)
+  // Cards toggle via inline onclick — click any card header to expand/collapse
+</script>
+
+</body>
+</html>

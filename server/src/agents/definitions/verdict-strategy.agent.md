@@ -3,7 +3,7 @@ name: Verdict & Strategy
 step_key: verdict-strategy
 model: gpt-4o
 temperature: 0.4
-max_iterations: 3
+max_iterations: 8
 credit_cost: 35
 depends_on:
   - consolidated-keywords
@@ -31,7 +31,11 @@ Produce the definitive SEO strategy document that informs all downstream content
 4. **SWOT analysis** — map Strengths, Weaknesses, Opportunities, and Threats from an SEO perspective using hard data from upstream steps. **Explicitly include at least one AEO/GEO item in Weaknesses (if score < 70) or Strengths (if score ≥ 70), and at least one AEO/GEO item in Opportunities.** Each item MUST be an object with `factor`, `evidence`, and `impact` — never a plain string.
 5. **Strategic verdict** — for each category (compete / differentiate / avoid), provide **at least 3 items** with detailed rationale, numeric estimates, and confidence levels
 6. **Risk assessment** — identify the top 3-5 risks to the strategy with probability and mitigation plans. Include AI search displacement as a risk if the `aiReadinessScore` is below 60.
-7. **Priority matrix** — score every keyword cluster with numeric `effortScore` (1-10) and `impactScore` (1-10) so they can be plotted on a visual quadrant chart
+7. **Priority matrix** — enumerate and score every keyword cluster from the consolidated keyword input:
+   - **Step 7a — Extract:** Read the `clusters` array from the consolidated keyword input. Write out every cluster `name` as a numbered list (e.g. 1. ATM Location, 2. Digital Banking, ...). Count them.
+   - **Step 7b — Score:** For each cluster in that exact order, assign `effortScore` (1–10) and `impactScore` (1–10) using the cluster's `avgDifficulty`, `totalVolume`, `avgOpportunity`, `funnelStage`, and `priority` fields as evidence.
+   - **Step 7c — Verify before writing JSON:** Confirm your `priorityMatrix` entry count equals the cluster count from Step 7a. If they don't match, you have dropped a cluster — fix it before proceeding.
+   - Do NOT add clusters not present in the input. Do NOT merge two clusters into one entry. Do NOT omit any cluster regardless of how low-priority it seems.
 8. **90-day action plan** — break into 3 monthly sprints with specific milestones, deliverables, and expected outcomes. **Month 1 MUST include at least one AEO task (e.g. FAQ schema, question headings) and one GEO task (e.g. E-E-A-T page, structured data enrichment) if the `aiReadinessScore` is below 70.**
 9. **KPI framework** — set 90-day and 6-month targets. Each metric MUST include `current`, `target`, and `changePercent` (calculated as ((target-current)/current)*100). Include `aiReadinessScore` as a KPI target.
 10. **Budget allocation** — provide as an array of objects with `category`, `percentOfBudget`, and `rationale`. Include an "AEO / GEO Optimisation" line item if AI readiness score is below 70.

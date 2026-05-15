@@ -3,7 +3,7 @@ name: Seed Keywords Generator
 step_key: seed-keywords
 model: gpt-4o
 temperature: 0.4
-max_iterations: 6
+max_iterations: 10
 credit_cost: 40
 depends_on:
   - business-profile

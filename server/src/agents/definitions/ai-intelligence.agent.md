@@ -3,7 +3,7 @@ name: AI Intelligence Analyst
 step_key: ai-intelligence
 model: gpt-4o
 temperature: 0.3
-max_iterations: 4
+max_iterations: 10
 credit_cost: 50
 depends_on:
   - site-audit

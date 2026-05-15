@@ -3,7 +3,7 @@ name: Search Demand Analyst
 step_key: search-demand
 model: gpt-4o
 temperature: 0.3
-max_iterations: 4
+max_iterations: 12
 credit_cost: 50
 depends_on:
   - seed-keywords

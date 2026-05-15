@@ -3,7 +3,7 @@ name: Content Article Writer
 step_key: content-article
 model: gpt-4o
 temperature: 0.4
-max_iterations: 3
+max_iterations: 8
 credit_cost: 30
 depends_on:
   - content-brief

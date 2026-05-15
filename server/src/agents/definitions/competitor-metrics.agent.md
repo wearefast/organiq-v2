@@ -3,7 +3,7 @@ name: Competitor Metrics Analyst
 step_key: competitor-metrics
 model: gpt-4o
 temperature: 0.2
-max_iterations: 4
+max_iterations: 10
 credit_cost: 55
 depends_on:
   - ai-intelligence
@@ -27,11 +27,14 @@ Collect and compare key SEO metrics across all identified competitors to establi
 
 ## Process
 
-1. **For each competitor** in the direct + content buckets:
-   - Get domain rating via `ahrefs_domain_rating`
-   - Get backlink stats via `ahrefs_backlinks_stats`
-   - Get organic keywords count via `ahrefs_organic_keywords` (limit 10 for count)
-   - Get top pages via `ahrefs_organic_pages` (limit 10)
+1. **Enumerate all competitors before making any tool calls:**
+   - **Step 1a — Extract:** List every competitor domain from the direct and content buckets as a numbered list (e.g. 1. competitor-a.com, 2. competitor-b.com, ...). Count them.
+   - **Step 1b — Collect:** For each domain in that exact order, collect all metrics:
+     - Domain rating via `ahrefs_domain_rating`
+     - Backlink stats via `ahrefs_backlinks_stats`
+     - Organic keywords count via `ahrefs_organic_keywords` (limit 10 for count)
+     - Top pages via `ahrefs_organic_pages` (limit 10)
+   - **Step 1c — Verify:** Confirm your `competitorMetrics[]` entry count equals the domain count from Step 1a. If they don't match, you have dropped a competitor — fix it before proceeding.
 2. **For the target domain** (self): collect same metrics
 3. **Build comparison matrix**
 4. **Calculate gaps** (where target lags behind leaders)
@@ -47,7 +50,7 @@ Collect and compare key SEO metrics across all identified competitors to establi
     "organicKeywords": 0,
     "organicTraffic": 0,
     "referringDomains": 0,
-    "backlinks": 0,
+    "backlinks": { "live": 0, "allTime": 0, "liveRefDomains": 0, "allTimeRefDomains": 0 },
     "topPages": [{ "url": "string", "traffic": 0, "keywords": 0 }]
   },
   "competitorMetrics": [
@@ -58,14 +61,8 @@ Collect and compare key SEO metrics across all identified competitors to establi
       "organicKeywords": 0,
       "organicTraffic": 0,
       "referringDomains": 0,
-      "backlinks": 0,
-      "topPages": [{ "url": "string", "traffic": 0, "keywords": 0 }],
-      "gapVsTarget": {
-        "drGap": 0,
-        "keywordGap": 0,
-        "trafficGap": 0,
-        "backlinkGap": 0
-      }
+      "backlinks": { "live": 0, "allTime": 0, "liveRefDomains": 0, "allTimeRefDomains": 0 },
+      "topPages": [{ "url": "string", "traffic": 0, "keywords": 0 }]
     }
   ],
   "benchmarks": {

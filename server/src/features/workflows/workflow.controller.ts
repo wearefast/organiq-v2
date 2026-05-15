@@ -1,7 +1,8 @@
-import { Controller, Get, Post, Patch, Param, Body, UseGuards, Req } from '@nestjs/common';
+import { Controller, Get, Post, Patch, Query, Param, Body, UseGuards, Req } from '@nestjs/common';
 import { ApiTags, ApiBearerAuth } from '@nestjs/swagger';
 import { WorkflowService } from './workflow.service';
 import { WorkflowGateway } from './workflow.gateway';
+import { WorkflowMaterializerService } from './workflow-materializer.service';
 import { ClerkGuard } from '../auth/clerk.guard';
 import { OrgMembershipGuard } from '../auth/org-membership.guard';
 
@@ -13,7 +14,16 @@ export class WorkflowController {
   constructor(
     private readonly workflowService: WorkflowService,
     private readonly workflowGateway: WorkflowGateway,
+    private readonly materializer: WorkflowMaterializerService,
   ) {}
+
+  @Post('backfill-materialization')
+  async backfillMaterialization(@Query('projectId') projectId: string) {
+    if (!projectId) {
+      throw new Error('projectId query parameter is required');
+    }
+    return this.materializer.backfillProject(projectId);
+  }
 
   @Post()
   async createRun(@Body() body: { projectId: string; organizationId: string }) {
@@ -60,6 +70,9 @@ export class WorkflowController {
       reviewerId,
       body.notes,
     );
+
+    // Materialize approved artifact into project feature tables (after approval commits)
+    await this.materializer.materialize(runId, stepKey);
 
     // Enqueue downstream steps after approval
     await this.workflowService.enqueuePendingSteps(runId);

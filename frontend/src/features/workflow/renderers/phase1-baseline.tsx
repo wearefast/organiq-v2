@@ -102,7 +102,7 @@ function normalizeBaseline(raw: Record<string, unknown>): Phase1BaselineData {
     }
   }
 
-  // Map keywordGapsVsCompetitors summary
+  // Map keywordGapsVsCompetitors summary (legacy field name)
   const gapsRaw = raw.keywordGapsVsCompetitors as Record<string, unknown> | undefined;
   if (gapsRaw?.summary && typeof gapsRaw.summary === 'string') {
     result.summary = {
@@ -112,13 +112,33 @@ function normalizeBaseline(raw: Record<string, unknown>): Phase1BaselineData {
       quickWinPotential: result.quickWins?.length ?? 0,
       gapOpportunity: 0,
     };
-    // Store raw summary as _gapSummary for display
     (result as Record<string, unknown>)._gapSummary = gapsRaw.summary;
+  }
+
+  // Map keywordGaps array (current schema field name)
+  const gapsArray = raw.keywordGaps as Array<Record<string, unknown>> | undefined;
+  if (Array.isArray(gapsArray) && gapsArray.length > 0) {
+    (result as Record<string, unknown>)._gapSummary =
+      `${gapsArray.length} keyword gap${gapsArray.length !== 1 ? 's' : ''} identified vs competitors.`;
+    (result as Record<string, unknown>)._gapKeywords = gapsArray
+      .slice(0, 10)
+      .map((g) => String(g.keyword ?? ''))
+      .filter(Boolean);
+  }
+
+  // Pass through dataGaps notices from agent
+  if (Array.isArray(raw.dataGaps)) {
+    (result as Record<string, unknown>).dataGaps = raw.dataGaps;
   }
 
   // Preserve any matching fields from raw
   if (raw.currentRankings) result.currentRankings = raw.currentRankings as CurrentRankings;
   if (raw.summary && typeof raw.summary === 'object') result.summary = raw.summary as Phase1BaselineData['summary'];
+
+  // Backfill quickWinPotential from quickWins count if agent omitted it
+  if (result.summary && (result.summary.quickWinPotential === undefined || result.summary.quickWinPotential === null)) {
+    result.summary = { ...result.summary, quickWinPotential: result.quickWins?.length ?? 0 };
+  }
 
   return result;
 }
@@ -133,6 +153,8 @@ export function Phase1BaselineRenderer({ data }: { data: unknown }) {
   }
 
   const gapSummary = (baseline as Record<string, unknown>)._gapSummary as string | undefined;
+  const gapKeywords = (baseline as Record<string, unknown>)._gapKeywords as string[] | undefined;
+  const dataGaps = (baseline as Record<string, unknown>).dataGaps as string[] | undefined;
 
   return (
     <div className="space-y-6">
@@ -160,8 +182,13 @@ export function Phase1BaselineRenderer({ data }: { data: unknown }) {
       )}
 
       {/* Quick Wins */}
-      {baseline.quickWins && baseline.quickWins.length > 0 && (
+      {baseline.quickWins && baseline.quickWins.length > 0 ? (
         <SortableQuickWinsTable quickWins={baseline.quickWins} />
+      ) : (
+        <div>
+          <SectionLabel>Quick Wins</SectionLabel>
+          <p className="mt-2 text-sm text-zinc-500">No quick win opportunities found. Keywords ranking positions 4–20 with KD &lt; 40 will appear here once Ahrefs ranking data is available for this domain.</p>
+        </div>
       )}
 
       {/* Intent Distribution */}
@@ -200,11 +227,34 @@ export function Phase1BaselineRenderer({ data }: { data: unknown }) {
         </div>
       )}
 
-      {/* Gap Summary */}
-      {gapSummary && (
-        <div>
-          <SectionLabel>Gap Analysis</SectionLabel>
-          <p className="mt-1 text-sm leading-relaxed text-zinc-300">{gapSummary}</p>
+      {/* Gap Analysis */}
+      <div>
+        <SectionLabel>Gap Analysis</SectionLabel>
+        {gapSummary ? (
+          <>
+            <p className="mt-1 text-sm leading-relaxed text-zinc-300">{gapSummary}</p>
+            {gapKeywords && gapKeywords.length > 0 && (
+              <div className="mt-2 flex flex-wrap gap-1.5">
+                {gapKeywords.map((kw, i) => (
+                  <span key={i} className="rounded bg-zinc-800 px-2 py-1 text-xs text-zinc-400">{kw}</span>
+                ))}
+              </div>
+            )}
+          </>
+        ) : (
+          <p className="mt-2 text-sm text-zinc-500">No competitor keyword gaps identified. Requires competitor-metrics data from Step 7.</p>
+        )}
+      </div>
+
+      {/* Data Gaps notice */}
+      {dataGaps && dataGaps.length > 0 && (
+        <div className="rounded border border-amber-800/40 bg-amber-500/5 px-3 py-2">
+          <p className="text-[11px] font-semibold uppercase tracking-wider text-amber-500">Data Gaps</p>
+          <ul className="mt-1 space-y-0.5">
+            {dataGaps.map((gap, i) => (
+              <li key={i} className="text-sm text-amber-400/80">{gap}</li>
+            ))}
+          </ul>
         </div>
       )}
     </div>
@@ -283,9 +333,9 @@ function MetricCard({ label, value, tip }: { label: string; value: string; tip?:
   );
 }
 
-function DifficultyBadge({ value }: { value: number }) {
+function DifficultyBadge({ value, showLabel }: { value: number; showLabel?: boolean }) {
   const color = value <= 30 ? 'text-green-400' : value <= 60 ? 'text-yellow-400' : 'text-red-400';
-  return <span className={`text-xs font-medium ${color}`}>{value}</span>;
+  return <span className={`text-xs font-medium ${color}`}>{showLabel ? 'KD: ' : ''}{Math.round(value)}</span>;
 }
 
 function SectionLabel({ children }: { children: React.ReactNode }) {

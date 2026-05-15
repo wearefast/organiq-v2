@@ -65,8 +65,33 @@ interface ContentBriefData {
   summary?: string;
 }
 
+/** Normalize fields that old agent runs returned as string[] instead of object[] */
+function normalizeBrief(raw: ContentBriefData): ContentBriefData {
+  const d = { ...raw };
+
+  // paaQuestions: string[] → {question}[]
+  if (Array.isArray(d.paaQuestions) && d.paaQuestions.length > 0) {
+    if (typeof d.paaQuestions[0] === 'string') {
+      d.paaQuestions = (d.paaQuestions as unknown as string[]).map((q) => ({ question: q }));
+    }
+  }
+  // serpAnalysis.paaQuestions: string[] stays as-is (typed differently — displayed elsewhere)
+
+  // internalLinks: string[] → {targetPage, anchorText}[]
+  if (Array.isArray(d.internalLinks) && d.internalLinks.length > 0 && typeof d.internalLinks[0] === 'string') {
+    d.internalLinks = (d.internalLinks as unknown as string[]).map((s) => ({ targetPage: s, anchorText: s }));
+  }
+
+  // ctaRecommendations: string[] → {placement, type, text}[]
+  if (Array.isArray(d.ctaRecommendations) && d.ctaRecommendations.length > 0 && typeof d.ctaRecommendations[0] === 'string') {
+    d.ctaRecommendations = (d.ctaRecommendations as unknown as string[]).map((s) => ({ placement: 'conclusion', type: 'product', text: s }));
+  }
+
+  return d;
+}
+
 export function ContentBriefRenderer({ data }: { data: unknown }) {
-  const d = data as ContentBriefData;
+  const d = data ? normalizeBrief(data as ContentBriefData) : null;
   if (!d) return <p className="text-zinc-400">No brief data available.</p>;
 
   return (

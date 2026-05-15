@@ -39,4 +39,44 @@ You have access to Firecrawl (crawling/scraping), PageSpeed Insights, CrUX data,
 
 ## Task
 
-Perform a complete technical SEO audit. Use your tools to crawl the site, test performance, and analyze on-page factors. Return structured JSON with: overallScore, scores (4 dimensions), coreWebVitals, issues array, topPages, siteStats, and summary.
+Perform a complete technical SEO audit. Use your tools to crawl the site, test performance, and analyze on-page factors.
+
+## CRITICAL: Output Schema Enforcement
+
+You MUST return a flat JSON object with EXACTLY these top-level keys: `overallScore`, `scores`, `coreWebVitals`, `issues`, `topPages`, `siteStats`, `summary`.
+
+Do NOT wrap dimension scores as plain numbers — each dimension inside `scores` MUST be an object with `score`, `weight`, and `weighted`.
+Do NOT use string labels like `"LCP: 2.5s"` as the top-level CWV values. Each CWV entry MUST be an object with `value` (string, e.g. `"2.5s"`) and `rating` (`"good"`, `"needs-improvement"`, or `"poor"`).
+Do NOT add top-level keys beyond the seven listed above.
+
+Return ONLY valid JSON with this exact structure:
+
+```json
+{
+  "overallScore": 0,
+  "scores": {
+    "technicalHealth": { "score": 0, "weight": 30, "weighted": 0 },
+    "onPageSeo": { "score": 0, "weight": 25, "weighted": 0 },
+    "contentQuality": { "score": 0, "weight": 25, "weighted": 0 },
+    "schemaStructure": { "score": 0, "weight": 20, "weighted": 0 }
+  },
+  "coreWebVitals": {
+    "lcp": { "value": "", "rating": "good|needs-improvement|poor" },
+    "fid": { "value": "", "rating": "good|needs-improvement|poor" },
+    "cls": { "value": "", "rating": "good|needs-improvement|poor" },
+    "inp": { "value": "", "rating": "good|needs-improvement|poor" }
+  },
+  "issues": [
+    { "severity": "critical|high|medium|low", "category": "", "title": "", "description": "", "affectedUrls": [], "recommendation": "" }
+  ],
+  "topPages": [
+    { "url": "", "title": "", "score": 0 }
+  ],
+  "siteStats": {
+    "totalPages": 0,
+    "indexablePages": 0,
+    "avgPageLoadTime": ""
+  },
+  "summary": ""
+}
+```

@@ -48,34 +48,87 @@ interface Method02Data {
 
 /**
  * Normalize agent output: expandedKeywords may be a nested
- * Record<category, Record<subcategory, string[]>> instead of ExpandedKeyword[].
+ * Record<category, Record<subcategory, string[]>> instead of ExpandedKeyword[],
+ * OR an array of { category, seedKeyword, relatedKeywords: string[] } objects.
  */
 function normalizeMethod02(raw: Record<string, unknown>): Method02Data {
   const result = { ...raw } as Method02Data;
 
-  // If expandedKeywords is a plain object (not array), flatten it
-  if (
+  if (result.expandedKeywords && Array.isArray(result.expandedKeywords)) {
+    const first = result.expandedKeywords[0] as Record<string, unknown> | undefined;
+    // Array of { category, seedKeyword, relatedKeywords } — flatten into ExpandedKeyword[]
+    if (first && 'relatedKeywords' in first) {
+      const flat: ExpandedKeyword[] = [];
+      for (const item of result.expandedKeywords as Array<Record<string, unknown>>) {
+        const related = item.relatedKeywords;
+        if (!Array.isArray(related)) continue;
+        for (const kw of related) {
+          let keyword: string;
+          let volume = 0;
+          let difficulty = 0;
+          if (typeof kw === 'string') {
+            keyword = kw;
+          } else if (kw !== null && typeof kw === 'object') {
+            const kwObj = kw as Record<string, unknown>;
+            keyword = String(kwObj.keyword ?? '');
+            volume = Number(kwObj.volume ?? 0);
+            difficulty = Number(kwObj.difficulty ?? 0);
+          } else {
+            continue;
+          }
+          if (!keyword) continue;
+          flat.push({
+            keyword,
+            volume,
+            difficulty,
+            intent: '',
+            funnelStage: String(item.category ?? ''),
+            expansionMethod: 'seed-expansion',
+            sourceSeed: String(item.seedKeyword ?? ''),
+            opportunityScore: Math.round(volume * (100 - difficulty) / 100),
+          });
+        }
+      }
+      result.expandedKeywords = flat;
+    }
+  } else if (
     result.expandedKeywords &&
     !Array.isArray(result.expandedKeywords) &&
     typeof result.expandedKeywords === 'object'
   ) {
     const flat: ExpandedKeyword[] = [];
-    const catObj = result.expandedKeywords as Record<string, Record<string, string[]>>;
-    for (const [category, subcats] of Object.entries(catObj)) {
-      if (typeof subcats !== 'object' || subcats === null) continue;
-      for (const [seedKeyword, keywords] of Object.entries(subcats)) {
-        if (!Array.isArray(keywords)) continue;
-        for (const kw of keywords) {
-          flat.push({
-            keyword: String(kw),
-            volume: 0,
-            difficulty: 0,
-            intent: '',
-            funnelStage: category,
-            expansionMethod: 'seed-expansion',
-            sourceSeed: seedKeyword,
-            opportunityScore: 0,
-          });
+    const topObj = result.expandedKeywords as Record<string, unknown>;
+
+    for (const [topicName, items] of Object.entries(topObj)) {
+      if (Array.isArray(items)) {
+        // Shape: { topicName: ExpandedKeyword[] }  (v4)
+        for (const item of items) {
+          if (typeof item === 'string') {
+            flat.push({ keyword: item, volume: 0, difficulty: 0, intent: '', funnelStage: '', expansionMethod: 'seed-expansion', sourceSeed: topicName, opportunityScore: 0 });
+          } else if (item !== null && typeof item === 'object') {
+            const o = item as Record<string, unknown>;
+            const volume = Number(o.volume ?? 0);
+            const difficulty = Number(o.difficulty ?? 0);
+            flat.push({
+              keyword: String(o.keyword ?? ''),
+              volume,
+              difficulty,
+              intent: String(o.intent ?? ''),
+              funnelStage: String(o.funnelStage ?? ''),
+              expansionMethod: String(o.expansionMethod ?? 'seed-expansion'),
+              sourceSeed: String(o.sourceSeed ?? topicName),
+              opportunityScore: Math.round(volume * (100 - difficulty) / 100),
+            });
+          }
+        }
+      } else if (typeof items === 'object' && items !== null) {
+        // Shape: { category: { subcategory: string[] } }  (legacy)
+        const subcats = items as Record<string, unknown>;
+        for (const [seedKeyword, keywords] of Object.entries(subcats)) {
+          if (!Array.isArray(keywords)) continue;
+          for (const kw of keywords) {
+            flat.push({ keyword: String(kw), volume: 0, difficulty: 0, intent: '', funnelStage: topicName, expansionMethod: 'seed-expansion', sourceSeed: seedKeyword, opportunityScore: 0 });
+          }
         }
       }
     }
@@ -242,7 +295,7 @@ function SortableExpandedKeywordsTable({ keywords }: { keywords: ExpandedKeyword
               <th className={th('text-right')} onClick={() => handleSort('volume')}><InfoTip tip="Monthly search volume">Volume{arrow('volume')}</InfoTip></th>
               <th className={th('text-right')} onClick={() => handleSort('difficulty')}><InfoTip tip="Keyword Difficulty (0–100)">KD{arrow('difficulty')}</InfoTip></th>
               <th className={th('text-left')} onClick={() => handleSort('expansionMethod')}><InfoTip tip="Expansion technique (synonym, LSI, etc.)">Method{arrow('expansionMethod')}</InfoTip></th>
-              <th className={th('text-right')} onClick={() => handleSort('opportunityScore')}><InfoTip tip="Opportunity score (0–100%)">Score{arrow('opportunityScore')}</InfoTip></th>
+              <th className={th('text-right')} onClick={() => handleSort('opportunityScore')}><InfoTip tip="Opportunity Score = volume × (100 − difficulty) / 100. Higher = more traffic potential with less competition.">Opp. Score{arrow('opportunityScore')}</InfoTip></th>
             </tr>
           </thead>
           <tbody>
@@ -256,7 +309,7 @@ function SortableExpandedKeywordsTable({ keywords }: { keywords: ExpandedKeyword
                 </td>
                 <td className="px-3 py-2 text-right">
                   <span className="rounded bg-violet-500/20 px-1.5 py-0.5 text-[10px] font-medium text-violet-400">
-                    {(kw.opportunityScore * 100).toFixed(0)}%
+                    {Math.round(kw.opportunityScore).toLocaleString()}
                   </span>
                 </td>
               </tr>
@@ -277,9 +330,9 @@ function MetricCard({ label, value, tip }: { label: string; value: string; tip?:
   );
 }
 
-function DifficultyBadge({ value }: { value: number }) {
+function DifficultyBadge({ value, showLabel }: { value: number; showLabel?: boolean }) {
   const color = value <= 30 ? 'text-green-400' : value <= 60 ? 'text-yellow-400' : 'text-red-400';
-  return <span className={`text-xs font-medium ${color}`}>{value}</span>;
+  return <span className={`text-xs font-medium ${color}`}>{showLabel ? 'KD: ' : ''}{Math.round(value)}</span>;
 }
 
 function SectionLabel({ children }: { children: React.ReactNode }) {

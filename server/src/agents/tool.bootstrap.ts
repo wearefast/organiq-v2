@@ -251,7 +251,7 @@ export class ToolBootstrap implements OnModuleInit {
       {
         name: 'generate_image',
         description:
-          'Generate an image using DALL-E 3 from a text prompt. Returns the image as a base64-encoded PNG string and the revised prompt used by the model. Use detailed, descriptive prompts for best results.',
+          'Generate an image using gpt-image-1 from a text prompt. Returns the image as a base64-encoded PNG string. Use detailed, descriptive prompts for best results.',
         inputSchema: {
           type: 'object',
           properties: {
@@ -261,8 +261,8 @@ export class ToolBootstrap implements OnModuleInit {
             },
             size: {
               type: 'string',
-              enum: ['1024x1024', '1792x1024', '1024x1792'],
-              description: 'Image dimensions. Default is 1792x1024 (landscape). Use 1024x1792 for portrait.',
+              enum: ['1024x1024', '1536x1024', '1024x1536'],
+              description: 'Image dimensions. Default is 1536x1024 (landscape). Use 1024x1536 for portrait.',
             },
           },
           required: ['prompt'],

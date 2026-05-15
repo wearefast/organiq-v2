@@ -30,7 +30,17 @@ interface ContentPattern {
   recommendation: string;
 }
 
+interface CompetitorPage {
+  competitor: string;
+  url: string;
+  estimatedTraffic: number;
+  keywordsCount: number;
+  topKeyword: string;
+  contentType: string;
+}
+
 interface Method01Data {
+  competitorPages?: CompetitorPage[];
   discoveredKeywords?: DiscoveredKeyword[];
   topicClusters?: TopicCluster[];
   contentPatterns?: ContentPattern[];
@@ -44,6 +54,47 @@ interface Method01Data {
   [key: string]: unknown;
 }
 
+/**
+ * Normalize per-domain `competitorAnalysis` shape into the flat schema the
+ * renderer expects. Shape: { competitorAnalysis: { "domain.com": { topPages: [...] } } }
+ */
+function normalizeMethod01(raw: Record<string, unknown>): Method01Data {
+  // Already in expected shape
+  if (raw.discoveredKeywords || raw.competitorPages || raw.topicClusters) return raw as Method01Data;
+
+  const ca = raw.competitorAnalysis as Record<string, { topPages?: Array<Record<string, unknown>> }> | undefined;
+  if (!ca || typeof ca !== 'object') return raw as Method01Data;
+
+  const competitorPages: Method01Data['competitorPages'] = [];
+  let pagesAnalyzed = 0;
+
+  for (const [domain, domainData] of Object.entries(ca)) {
+    const pages = domainData?.topPages ?? [];
+    pagesAnalyzed += pages.length;
+    for (const page of pages) {
+      competitorPages.push({
+        competitor: domain,
+        url: String(page.url ?? ''),
+        estimatedTraffic: Number(page.estimatedTraffic ?? page.traffic ?? 0),
+        keywordsCount: Number(page.keywordsCount ?? page.keywords ?? 0),
+        topKeyword: String(page.topKeyword ?? page.keyword ?? ''),
+        contentType: String(page.contentType ?? page.type ?? 'landing'),
+      });
+    }
+  }
+
+  return {
+    competitorPages,
+    summary: {
+      totalDiscovered: 0,
+      totalVolume: 0,
+      avgDifficulty: 0,
+      competitorsAnalyzed: Object.keys(ca).length,
+      pagesAnalyzed,
+    },
+  };
+}
+
 export function Method01Renderer({ data }: { data: unknown }) {
   // Agent may return a plain string explanation when no pages were found
   if (typeof data === 'string') {
@@ -54,7 +105,7 @@ export function Method01Renderer({ data }: { data: unknown }) {
     );
   }
 
-  const m01 = data as Method01Data;
+  const m01 = normalizeMethod01(data as Record<string, unknown>);
 
   if (!m01 || typeof m01 !== 'object') {
     return <p className="text-sm text-zinc-500">No competitor page data available.</p>;
@@ -72,6 +123,38 @@ export function Method01Renderer({ data }: { data: unknown }) {
         </div>
       )}
 
+      {/* Competitor Pages (when discoveredKeywords is empty but competitorPages exist) */}
+      {m01.competitorPages && m01.competitorPages.length > 0 && !m01.discoveredKeywords?.length && (
+        <div>
+          <SectionLabel>Competitor Pages Analyzed ({m01.competitorPages.length})</SectionLabel>
+          <div className="mt-2 overflow-hidden rounded-lg border border-zinc-800">
+            <table className="w-full text-sm">
+              <thead>
+                <tr className="border-b border-zinc-800 bg-zinc-900/80">
+                  <th className="px-3 py-2 text-left text-[10px] uppercase text-zinc-500">Competitor</th>
+                  <th className="px-3 py-2 text-left text-[10px] uppercase text-zinc-500">URL</th>
+                  <th className="px-3 py-2 text-right text-[10px] uppercase text-zinc-500">Traffic</th>
+                  <th className="px-3 py-2 text-right text-[10px] uppercase text-zinc-500">Keywords</th>
+                  <th className="px-3 py-2 text-left text-[10px] uppercase text-zinc-500">Type</th>
+                </tr>
+              </thead>
+              <tbody>
+                {m01.competitorPages.slice(0, 20).map((page, i) => (
+                  <tr key={i} className="border-b border-zinc-800/50 hover:bg-zinc-800/30">
+                    <td className="px-3 py-2 text-[11px] text-zinc-400">{page.competitor}</td>
+                    <td className="max-w-[260px] truncate px-3 py-2 text-[11px] text-zinc-300">{page.url}</td>
+                    <td className="px-3 py-2 text-right text-zinc-400">{formatNumber(page.estimatedTraffic)}</td>
+                    <td className="px-3 py-2 text-right text-zinc-400">{page.keywordsCount}</td>
+                    <td className="px-3 py-2 text-[11px] text-zinc-500">{page.contentType}</td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+          <p className="mt-2 text-xs text-zinc-500">Keyword gap data unavailable for this run. Re-run step to get full keyword discovery.</p>
+        </div>
+      )}
+
       {/* Topic Clusters */}
       {m01.topicClusters && m01.topicClusters.length > 0 && (
         <div>
@@ -84,7 +167,7 @@ export function Method01Renderer({ data }: { data: unknown }) {
                   <div className="flex items-center gap-3 text-xs">
                     <span className="text-zinc-400">{cluster.keywordCount} kws</span>
                     <span className="text-zinc-400">{formatNumber(cluster.totalVolume)} vol</span>
-                    <DifficultyBadge value={cluster.avgDifficulty} />
+                    <DifficultyBadge value={cluster.avgDifficulty} showLabel />
                   </div>
                 </div>
                 {cluster.topKeywords && cluster.topKeywords.length > 0 && (
@@ -162,7 +245,7 @@ function SortableDiscoveredKeywordsTable({ keywords }: { keywords: DiscoveredKey
               <th className={th('text-right')} onClick={() => handleSort('difficulty')}><InfoTip tip="Keyword Difficulty (0–100)">KD{arrow('difficulty')}</InfoTip></th>
               <th className={th('text-left')} onClick={() => handleSort('intent')}><InfoTip tip="Search intent type">Intent{arrow('intent')}</InfoTip></th>
               <th className={th('text-left')} onClick={() => handleSort('sourceCompetitor')}><InfoTip tip="Competitor domain it came from">Source{arrow('sourceCompetitor')}</InfoTip></th>
-              <th className={th('text-right')} onClick={() => handleSort('opportunityScore')}><InfoTip tip="Opportunity score (0–100%)">Score{arrow('opportunityScore')}</InfoTip></th>
+              <th className={th('text-right')} onClick={() => handleSort('opportunityScore')}><InfoTip tip="Opportunity Score = volume × (100 − difficulty) / 100 × intent weight. Higher = more traffic potential with less competition.">Opp. Score{arrow('opportunityScore')}</InfoTip></th>
             </tr>
           </thead>
           <tbody>
@@ -175,7 +258,7 @@ function SortableDiscoveredKeywordsTable({ keywords }: { keywords: DiscoveredKey
                 <td className="px-3 py-2 text-[11px] text-zinc-500">{kw.sourceCompetitor}</td>
                 <td className="px-3 py-2 text-right">
                   <span className="rounded bg-violet-500/20 px-1.5 py-0.5 text-[10px] font-medium text-violet-400">
-                    {(kw.opportunityScore * 100).toFixed(0)}%
+                    {Math.round(kw.opportunityScore).toLocaleString()}
                   </span>
                 </td>
               </tr>
@@ -191,14 +274,14 @@ function StatCard({ label, value, format, tip }: { label: string; value: number;
   return (
     <div className="rounded-lg border border-zinc-800 bg-zinc-900/50 p-3 text-center">
       <p className="text-[10px] uppercase text-zinc-500">{tip ? <InfoTip tip={tip}>{label}</InfoTip> : label}</p>
-      <p className="mt-1 text-lg font-bold text-zinc-100">{format ? formatNumber(value) : value}</p>
+      <p className="mt-1 text-lg font-bold text-zinc-100">{format ? formatNumber(value) : Math.round(value)}</p>
     </div>
   );
 }
 
-function DifficultyBadge({ value }: { value: number }) {
+function DifficultyBadge({ value, showLabel }: { value: number; showLabel?: boolean }) {
   const color = value <= 30 ? 'text-green-400' : value <= 60 ? 'text-yellow-400' : 'text-red-400';
-  return <span className={`text-xs font-medium ${color}`}>{value}</span>;
+  return <span className={`text-xs font-medium ${color}`}>{showLabel ? 'KD: ' : ''}{Math.round(value)}</span>;
 }
 
 function IntentBadge({ intent }: { intent: string }) {

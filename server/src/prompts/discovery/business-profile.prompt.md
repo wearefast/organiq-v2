@@ -30,4 +30,31 @@ You have access to tools that can scrape websites and search Google. Use them to
 
 Analyze the domain above. Scrape the website, search for the brand, and produce a comprehensive business profile as structured JSON.
 
-Return a single JSON object with these fields: businessName, industry, subIndustry, description, targetAudience, products, services, geographicFocus, brandVoice, positioning, competitors, uniqueSellingPoints, contentTopics, websiteType.
+## CRITICAL: Output Schema Enforcement
+
+You MUST return a flat JSON object with EXACTLY these top-level keys: `businessName`, `industry`, `subIndustry`, `description`, `targetAudience`, `products`, `services`, `geographicFocus`, `brandVoice`, `positioning`, `competitors`, `uniqueSellingPoints`, `contentTopics`, `websiteType`.
+
+Do NOT wrap these fields inside a nested object (e.g., do NOT use `{ "businessProfile": { ... } }`).
+Do NOT use camelCase variants like `companyName` — the key is `businessName`, exactly.
+Do NOT invent competitors — only include domains/names explicitly found in search results or the website.
+
+Return ONLY valid JSON with this exact structure:
+
+```json
+{
+  "businessName": "",
+  "industry": "",
+  "subIndustry": "",
+  "description": "",
+  "targetAudience": [""],
+  "products": [""],
+  "services": [""],
+  "geographicFocus": [""],
+  "brandVoice": "formal|casual|technical|friendly",
+  "positioning": "premium|mid-market|budget|enterprise",
+  "competitors": [""],
+  "uniqueSellingPoints": [""],
+  "contentTopics": [""],
+  "websiteType": "saas|ecommerce|publisher|local|agency|corporate"
+}
+```

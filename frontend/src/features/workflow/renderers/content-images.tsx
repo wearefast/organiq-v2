@@ -1,18 +1,19 @@
 'use client';
 
-interface GeneratedImage {
-  index: number;
-  placement: string;
-  altText: string;
-  prompt: string;
+import { useEffect, useState } from 'react';
+import { apiFetch } from '@/shared/utils/api';
+import type { WorkflowStep, StepToolCall } from '../types';
+
+interface GenerateImageOutput {
   base64: string;
   revisedPrompt?: string;
-  size?: string;
 }
 
-interface ContentImagesData {
-  images?: GeneratedImage[];
-  styleNotes?: string;
+interface ImageEntry {
+  index: number;
+  base64: string;
+  revisedPrompt: string;
+  input: { prompt?: string; size?: string };
 }
 
 function toDataUri(base64: string): string {
@@ -20,11 +21,48 @@ function toDataUri(base64: string): string {
   return `data:image/png;base64,${base64}`;
 }
 
-export function ContentImagesRenderer({ data }: { data: unknown }) {
-  const d = data as ContentImagesData;
+export function ContentImagesRenderer({
+  data,
+  allSteps,
+}: {
+  data: unknown;
+  allSteps?: WorkflowStep[];
+}) {
+  const [images, setImages] = useState<ImageEntry[]>([]);
+  const [loading, setLoading] = useState(true);
 
-  if (!d?.images?.length) {
-    return <p className="text-zinc-400">No images generated yet.</p>;
+  useEffect(() => {
+    const step = allSteps?.find((s) => s.stepKey === 'content-images');
+    if (!step) {
+      setLoading(false);
+      return;
+    }
+
+    apiFetch<StepToolCall[]>(`/workflows/steps/${step.id}/tool-calls`)
+      .then((calls) => {
+        const imgCalls = calls.filter((c) => c.toolName === 'generate_image' && c.output);
+        const entries: ImageEntry[] = imgCalls.map((c, i) => {
+          const out = c.output as GenerateImageOutput;
+          const inp = c.input as { prompt?: string; size?: string };
+          return {
+            index: i,
+            base64: out.base64 ?? '',
+            revisedPrompt: out.revisedPrompt ?? '',
+            input: inp,
+          };
+        });
+        setImages(entries.filter((e) => e.base64));
+      })
+      .catch(() => {/* silently fall through to empty state */})
+      .finally(() => setLoading(false));
+  }, [allSteps]);
+
+  if (loading) {
+    return <p className="text-zinc-400 text-sm">Loading images…</p>;
+  }
+
+  if (!images.length) {
+    return <p className="text-zinc-400 text-sm">No images generated yet.</p>;
   }
 
   return (
@@ -32,30 +70,22 @@ export function ContentImagesRenderer({ data }: { data: unknown }) {
       {/* Header */}
       <div className="rounded-lg border border-zinc-700 bg-zinc-800/50 p-4">
         <h3 className="text-lg font-semibold text-white">Generated Images</h3>
-        <div className="mt-1 flex gap-2 text-xs">
-          <span className="rounded-full bg-zinc-700 px-3 py-1 text-zinc-300">
-            {d.images.length} image{d.images.length !== 1 ? 's' : ''}
-          </span>
-          {d.styleNotes && (
-            <span className="rounded-full bg-purple-900/30 px-3 py-1 text-purple-300">
-              {d.styleNotes}
-            </span>
-          )}
-        </div>
+        <span className="mt-1 inline-block rounded-full bg-zinc-700 px-3 py-1 text-xs text-zinc-300">
+          {images.length} image{images.length !== 1 ? 's' : ''}
+        </span>
       </div>
 
       {/* Image Grid */}
       <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
-        {d.images.map((img) => (
+        {images.map((img) => (
           <div
             key={img.index}
             className="rounded-lg border border-zinc-700 bg-zinc-800/30 overflow-hidden"
           >
-            {/* Image */}
             <div className="relative aspect-video bg-zinc-900">
               <img
                 src={toDataUri(img.base64)}
-                alt={img.altText}
+                alt={img.revisedPrompt || `image-${img.index}`}
                 className="h-full w-full object-cover"
                 loading="lazy"
               />
@@ -63,23 +93,15 @@ export function ContentImagesRenderer({ data }: { data: unknown }) {
                 image-{img.index}
               </span>
             </div>
-
-            {/* Metadata */}
             <div className="p-3 space-y-1.5">
-              <p className="text-sm font-medium text-white">{img.altText}</p>
-              {img.placement && (
-                <p className="text-xs text-zinc-500">
-                  <span className="text-zinc-600">Placement: </span>
-                  {img.placement}
-                </p>
-              )}
-              {img.size && (
+              {img.input.size && (
                 <span className="inline-block rounded bg-zinc-700 px-1.5 py-0.5 text-[10px] text-zinc-400">
-                  {img.size}
+                  {img.input.size}
                 </span>
               )}
-
-              {/* Download */}
+              {img.revisedPrompt && (
+                <p className="text-xs text-zinc-500 line-clamp-2">{img.revisedPrompt}</p>
+              )}
               <div className="pt-1">
                 <a
                   href={toDataUri(img.base64)}

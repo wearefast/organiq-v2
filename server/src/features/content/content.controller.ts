@@ -38,6 +38,14 @@ export class ContentController {
     return this.contentService.findById(id, projectId);
   }
 
+  @Get(':id/images')
+  async getImages(
+    @Param('projectId') projectId: string,
+    @Param('id') id: string,
+  ) {
+    return this.contentService.findImagesByContentPiece(id, projectId);
+  }
+
   @Post()
   async create(
     @Param('projectId') projectId: string,

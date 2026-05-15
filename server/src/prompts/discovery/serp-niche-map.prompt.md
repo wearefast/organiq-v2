@@ -23,7 +23,7 @@ You have access to Serper (batch search) and DataForSEO (detailed SERP data). Us
 
 ## Seed Keywords
 
-{{seed-keywords}}
+{{seed-keywords.seedKeywords}}
 
 ## Domain
 
@@ -35,4 +35,41 @@ You have access to Serper (batch search) and DataForSEO (detailed SERP data). Us
 
 ## Task
 
-Map the SERP landscape for this niche. Search representative keywords, analyze the results, and produce a niche map. Return JSON with: nicheSegments, serpFeatureDistribution, contentTypeDistribution, dominantPlayers, opportunities, and summary.
+Map the SERP landscape for this niche. Search representative keywords, analyze the results, and produce a niche map.
+
+## CRITICAL: Output Schema Enforcement
+
+You MUST return a flat JSON object with EXACTLY these top-level keys: `nicheSegments`, `serpFeatureDistribution`, `contentTypeDistribution`, `dominantPlayers`, `opportunities`, `summary`.
+
+Do NOT return `nicheSegments` as an array of plain strings — each item MUST be an object with at minimum `segment`, `dominantContentType`, `competitionLevel`, and `keywords`.
+Do NOT return `dominantPlayers` as an array of strings — each item MUST be an object with `domain`, `estimatedAuthority`, `contentFocus`, and `serpPresence`.
+Do NOT return `summary` as an array — it MUST be an object with `totalKeywordsAnalyzed`, `nichesIdentified`, `avgDifficulty`, and `topOpportunity`.
+
+Return ONLY valid JSON with this exact structure:
+
+```json
+{
+  "nicheSegments": [
+    { "segment": "", "dominantContentType": "", "competitionLevel": "low|medium|high|extreme", "serpFeatures": [], "topDomains": [], "averageAuthority": "low|medium|high", "keywords": [] }
+  ],
+  "serpFeatureDistribution": {
+    "featured_snippet": 0.0, "people_also_ask": 0.0, "local_pack": 0.0,
+    "images": 0.0, "videos": 0.0, "shopping": 0.0, "knowledge_panel": 0.0
+  },
+  "contentTypeDistribution": {
+    "blog": 0.0, "tool": 0.0, "video": 0.0, "directory": 0.0, "product": 0.0, "other": 0.0
+  },
+  "dominantPlayers": [
+    { "domain": "", "estimatedAuthority": "high|medium|low", "contentFocus": "", "serpPresence": 0.0 }
+  ],
+  "opportunities": [
+    { "type": "underserved_segment|low_competition|feature_opportunity|content_gap", "description": "", "keywords": [], "rationale": "" }
+  ],
+  "summary": {
+    "totalKeywordsAnalyzed": 0,
+    "nichesIdentified": 0,
+    "avgDifficulty": 0,
+    "topOpportunity": ""
+  }
+}
+```

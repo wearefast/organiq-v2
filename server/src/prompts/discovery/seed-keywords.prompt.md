@@ -37,4 +37,34 @@ Industry: {{industry}}
 
 ## Task
 
-Generate a comprehensive seed keyword list. Use the tools available to gather real data — pull existing rankings, get suggestions, and find related terms. Return as structured JSON with seedKeywords array, categories breakdown, totalCount, and coverageNotes.
+Generate a comprehensive seed keyword list. Use the tools available to gather real data — pull existing rankings, get suggestions, and find related terms.
+
+## CRITICAL: Output Schema Enforcement
+
+You MUST return a flat JSON object with EXACTLY these top-level keys: `seedKeywords`, `categories`, `totalCount`, `coverageNotes`.
+
+Do NOT use `keywords` in place of `seedKeywords` — the key is `seedKeywords`, exactly.
+Do NOT return `categories` as a plain string array — it MUST be an object keyed by category name, each with `count` and `examples` array.
+Do NOT include keywords not connected to the business — every entry must have `keyword`, `category`, `intent`, `source`, and `relevanceScore`.
+
+Return ONLY valid JSON with this exact structure:
+
+```json
+{
+  "seedKeywords": [
+    { "keyword": "", "category": "brand|product|service|industry|problem|solution|longtail|informational", "intent": "informational|navigational|commercial|transactional", "source": "organic_existing|suggestion|related|manual", "relevanceScore": 0.0, "notes": null }
+  ],
+  "categories": {
+    "brand": { "count": 0, "examples": [] },
+    "product": { "count": 0, "examples": [] },
+    "service": { "count": 0, "examples": [] },
+    "industry": { "count": 0, "examples": [] },
+    "problem": { "count": 0, "examples": [] },
+    "solution": { "count": 0, "examples": [] },
+    "longtail": { "count": 0, "examples": [] },
+    "informational": { "count": 0, "examples": [] }
+  },
+  "totalCount": 0,
+  "coverageNotes": ""
+}
+```

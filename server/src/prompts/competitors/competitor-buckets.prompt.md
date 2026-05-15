@@ -40,4 +40,34 @@ You have access to Ahrefs (competing domains), Serper (search), and Firecrawl (s
 
 ## Task
 
-Identify and classify competitors. Use Ahrefs to find competing domains, verify via search, and classify into strategic buckets. Return JSON with: buckets (4 categories with competitor arrays), totalCompetitors, topThreats, contentGapDomains, and summary.
+Identify and classify competitors. Use Ahrefs to find competing domains, verify via search, and classify into strategic buckets.
+
+## CRITICAL: Output Schema Enforcement
+
+You MUST return a flat JSON object with EXACTLY these top-level keys: `buckets`, `totalCompetitors`, `topThreats`, `contentGapDomains`, `summary`.
+
+Do NOT return `buckets` as a flat array of competitors — it MUST be an object with exactly four keys: `direct`, `indirect`, `content`, `aspirational`, each containing a `competitors` array.
+Do NOT omit competitors' `domain` field — every competitor object must have at minimum `domain`, `name`, `positioning`, `keywordOverlap`, and `threatLevel`.
+Do NOT return `topThreats` or `contentGapDomains` as objects — both MUST be plain string arrays of domain names.
+
+Return ONLY valid JSON with this exact structure:
+
+```json
+{
+  "buckets": {
+    "direct": {
+      "description": "",
+      "competitors": [
+        { "domain": "", "name": "", "positioning": "", "keywordOverlap": "high|medium|low", "threatLevel": "high|medium|low", "strengths": [], "weaknesses": [] }
+      ]
+    },
+    "indirect": { "description": "", "competitors": [] },
+    "content": { "description": "", "competitors": [] },
+    "aspirational": { "description": "", "competitors": [] }
+  },
+  "totalCompetitors": 0,
+  "topThreats": [""],
+  "contentGapDomains": [""],
+  "summary": ""
+}
+```
