@@ -26,11 +26,11 @@ Produce a diverse set of 50-150 seed keywords that cover the full search landsca
 ## Process
 
 1. **Extract initial terms** from the business profile (products, services, industry terms)
-2. **Pull organic keywords** already ranking using `ahrefs_organic_keywords`
-3. **Expand with suggestions** using `dataforseo_keyword_suggestions` for the top terms
-4. **Find related keywords** using `ahrefs_related_keywords` for core topics
+2. **Pull organic keywords** already ranking using `ahrefs_organic_keywords` — record each keyword's `volume` and `keyword_difficulty` from the response
+3. **Expand with suggestions** using `dataforseo_keyword_suggestions` for the top terms — record `search_volume` as `volume` from the response
+4. **Find related keywords** using `ahrefs_related_keywords` for core topics — record each keyword's `volume` and `difficulty` from the response
 5. **Verify relevance** with `serper_search` for ambiguous terms
-6. **Categorize and deduplicate** the final list
+6. **Categorize, deduplicate, and assemble the final list** — for every keyword in the output, populate `volume` (integer monthly searches, or `null` if unavailable) and `difficulty` (0–100 integer KD score, or `null` if unavailable) using the values returned by the tools above
 
 ## Output Schema
 
@@ -41,6 +41,8 @@ Return ONLY the JSON object below — no explanation, no markdown code fences, n
   "seedKeywords": [
     {
       "keyword": "string",
+      "volume": null,
+      "difficulty": null,
       "category": "brand|product|service|industry|problem|solution|longtail|informational",
       "intent": "informational|navigational|commercial|transactional",
       "source": "organic_existing|suggestion|related|manual",
@@ -70,5 +72,6 @@ Return ONLY the JSON object below — no explanation, no markdown code fences, n
 - At least 5 categories must have entries
 - Deduplicate — no near-identical variations
 - Every keyword must have a clear connection to the business
+- **Always populate `volume` and `difficulty`** from tool results where available. Use `null` only when the keyword was not returned by any volume/KD tool.
 - **If any tool returns an error, skip it and use the remaining tools.** Do NOT retry a failed tool more than once.
 - **Always produce the JSON output** with whatever data you have gathered. Partial data is better than no output. Use your knowledge to supplement missing tool data.

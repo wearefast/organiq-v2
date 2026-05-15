@@ -107,7 +107,7 @@ export default function SettingsPage() {
             </div>
             <div>
               <p className="text-xs text-zinc-500">Version</p>
-              <p className="text-sm text-zinc-300">Pulse OS v1.0</p>
+              <p className="text-sm text-zinc-300">ORGANIQ v1.0</p>
             </div>
           </div>
         </div>

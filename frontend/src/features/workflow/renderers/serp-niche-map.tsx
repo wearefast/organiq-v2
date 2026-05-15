@@ -259,7 +259,7 @@ function MetricCard({ label, value, tip }: { label: string; value: string; tip?:
   return (
     <div className="rounded-lg border border-zinc-800 bg-zinc-900/50 p-3 text-center">
       <p className="text-[10px] uppercase tracking-wider text-zinc-500">{tip ? <InfoTip tip={tip}>{label}</InfoTip> : label}</p>
-      <p className="mt-1 text-lg font-bold text-zinc-100">{value}</p>
+      <p className={`mt-1 font-semibold text-zinc-100 ${String(value).length > 20 ? 'text-[11px] leading-relaxed' : 'text-lg font-bold'}`}>{value}</p>
     </div>
   );
 }

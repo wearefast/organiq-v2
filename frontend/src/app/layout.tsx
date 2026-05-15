@@ -16,8 +16,8 @@ const jetbrainsMono = JetBrains_Mono({
 });
 
 export const metadata: Metadata = {
-  title: 'Pulse OS',
-  description: 'Agent-led SEO/GEO/AEO strategy operating system',
+  title: 'ORGANIQ',
+  description: 'Agent-led SEO/GEO/AEO strategy platform',
 };
 
 export default function RootLayout({ children }: { children: React.ReactNode }) {

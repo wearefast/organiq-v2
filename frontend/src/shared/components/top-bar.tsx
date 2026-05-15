@@ -16,9 +16,9 @@ export function TopBar({ onCommandPalette }: TopBarProps) {
       {/* Logo */}
       <div className="flex items-center gap-2">
         <span className="flex h-7 w-7 items-center justify-center rounded-lg bg-rose-600 text-xs font-bold text-white">
-          P
+          O
         </span>
-        <span className="text-sm font-semibold text-zinc-100">Pulse OS</span>
+        <span className="text-sm font-semibold text-zinc-100">ORGANIQ</span>
       </div>
 
       {/* Spacer */}

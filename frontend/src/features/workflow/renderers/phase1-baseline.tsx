@@ -78,11 +78,25 @@ function normalizeBaseline(raw: Record<string, unknown>): Phase1BaselineData {
   const intentRaw = (raw.intentDistribution ?? raw.searchIntentDistribution) as Record<string, unknown> | undefined;
   if (intentRaw && typeof intentRaw === 'object') {
     const entries = Object.entries(intentRaw);
-    const total = entries.reduce((s, [, v]) => s + Number(v ?? 0), 0);
+    // Agent may return {intent: number} or {intent: {count, volume}} — handle both
+    const resolveCount = (v: unknown): number => {
+      if (v == null) return 0;
+      if (typeof v === 'number') return v;
+      if (typeof v === 'object') return Number((v as Record<string, unknown>).count ?? 0);
+      return Number(v);
+    };
+    const resolveVolume = (v: unknown): number => {
+      if (v == null) return 0;
+      if (typeof v === 'number') return v;
+      if (typeof v === 'object') return Number((v as Record<string, unknown>).volume ?? (v as Record<string, unknown>).count ?? 0);
+      return Number(v);
+    };
+    const total = entries.reduce((s, [, v]) => s + resolveCount(v), 0);
     const mapped: Record<string, { count: number; volume: number; percentage: number }> = {};
     for (const [intent, val] of entries) {
-      const count = Number(val ?? 0);
-      mapped[intent] = { count, volume: count, percentage: total > 0 ? Math.round((count / total) * 100) : 0 };
+      const count = resolveCount(val);
+      const volume = resolveVolume(val);
+      mapped[intent] = { count, volume, percentage: total > 0 ? Math.round((count / total) * 100) : 0 };
     }
     result.intentDistribution = mapped;
   }

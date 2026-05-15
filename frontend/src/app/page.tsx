@@ -27,8 +27,8 @@ export default function HomePage() {
       <nav className="fixed top-0 z-50 w-full border-b border-white/10 bg-zinc-950/90 backdrop-blur-md">
         <div className="mx-auto flex h-14 max-w-6xl items-center justify-between px-6">
           <Link href="/" className="flex items-center gap-2">
-            <span className="flex h-7 w-7 items-center justify-center rounded-lg bg-white/10 text-xs font-bold text-white">C</span>
-            <span className="text-sm font-semibold text-white">Calibrate Commerce</span>
+            <span className="flex h-7 w-7 items-center justify-center rounded-lg bg-white/10 text-xs font-bold text-white">O</span>
+            <span className="text-sm font-semibold text-white">ORGANIQ</span>
           </Link>
           <div className="flex items-center gap-6">
             <Link href="/#features" className="hidden text-sm text-white/60 transition-colors hover:text-white sm:block">Features</Link>
@@ -41,7 +41,7 @@ export default function HomePage() {
       {/* Hero */}
       <section className="flex flex-col items-center justify-center bg-gradient-hero px-6 pb-24 pt-32 text-center">
         <p className="mb-6 inline-flex items-center rounded-pill border border-white/15 bg-white/5 px-4 py-1.5 text-xs font-medium tracking-wide text-white/70">
-          PULSE · THE ORGANIC VISIBILITY ENGINE
+          ORGANIQ · THE ORGANIC VISIBILITY ENGINE
         </p>
         <h1 className="max-w-3xl text-[40px] font-extrabold leading-[1.08] text-white sm:text-[56px]">
           Your organic visibility,<br />
@@ -147,10 +147,10 @@ export default function HomePage() {
       <footer className="border-t border-zinc-800 bg-zinc-950 px-6 py-8">
         <div className="mx-auto flex max-w-5xl items-center justify-between">
           <div className="flex items-center gap-2">
-            <span className="flex h-6 w-6 items-center justify-center rounded-md bg-zinc-800 text-[9px] font-bold text-white">C</span>
-            <span className="text-xs text-zinc-500">Calibrate Commerce</span>
+            <span className="flex h-6 w-6 items-center justify-center rounded-md bg-zinc-800 text-[9px] font-bold text-white">O</span>
+            <span className="text-xs text-zinc-500">ORGANIQ</span>
           </div>
-          <p className="text-xs text-zinc-500">© {new Date().getFullYear()} Calibrate Commerce. All rights reserved.</p>
+          <p className="text-xs text-zinc-500">© {new Date().getFullYear()} ORGANIQ. All rights reserved.</p>
         </div>
       </footer>
     </div>

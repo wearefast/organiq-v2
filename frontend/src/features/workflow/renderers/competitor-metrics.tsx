@@ -129,7 +129,7 @@ export function CompetitorMetricsRenderer({ data }: { data: unknown }) {
           <div className="mt-2 space-y-2">
             {gapRows.map((row, i) => (
               <div key={i} className="flex items-center justify-between rounded border border-zinc-800 bg-zinc-900/50 px-3 py-2">
-                <span className="text-sm text-zinc-200">{row.metric}</span>
+                <span className="text-sm text-zinc-200">{formatMetricLabel(row.metric)}</span>
                 <div className="flex items-center gap-4 text-xs">
                   <span className="text-zinc-500">You: {formatNumber(row.value)}</span>
                   <span className="text-zinc-500">Avg: {formatNumber(row.benchmark)}</span>
