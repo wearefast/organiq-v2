@@ -11,7 +11,7 @@ server/src/
 ├── main.ts                    Bootstrap, CORS, Swagger, ValidationPipe
 ├── app.module.ts              Root module composition
 ├── agents/                    Agent runtime engine
-│   ├── definitions/           17 .agent.md files (one per workflow step)
+│   ├── definitions/           18 .agent.md files (one per workflow step)
 │   ├── agent.runtime.ts       Execution loop (~200 LOC)
 │   ├── agent.registry.ts      Load/cache agent definitions
 │   ├── tool.registry.ts       Register ~40 tools from integration services

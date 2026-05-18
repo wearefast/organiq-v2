@@ -23,7 +23,7 @@ Key technology and architecture decisions made for this project.
 ## BullMQ for Background Jobs
 
 - **Decision**: BullMQ with Redis for async processing
-- **Reason**: Audit pipeline has 11+ steps, keyword discovery is slow; can't block HTTP requests
+- **Reason**: Workflow pipeline has 18 agent steps, each involving external API calls and LLM inference; can't block HTTP requests
 - **Trade-off**: Requires Redis infrastructure
 
 ## Clerk for Authentication

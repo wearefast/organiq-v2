@@ -113,8 +113,8 @@ organizations ─┬─ org_members ─── (user reference via Clerk ID)
 |--------|------|-------|
 | id | uuid | PK |
 | workflow_run_id | uuid | FK → workflow_runs |
-| step_key | text | One of 17 step keys |
-| step_number | integer | 1-17 |
+| step_key | text | One of 18 step keys |
+| step_number | integer | 1-18 |
 | phase | integer | 1-4 |
 | status | enum | `pending`, `running`, `completed`, `awaiting_approval`, `approved`, `revision_requested`, `rejected`, `failed`, `skipped` |
 | started_at | timestamp | Nullable |

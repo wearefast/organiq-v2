@@ -57,7 +57,7 @@
 | # | Task | Status | Files |
 |---|------|--------|-------|
 | C1 | Workflow shell layout (step rail + artifact panel) | ✅ | `frontend/src/features/workflow/components/workflow-shell.tsx` |
-| C2 | Step Rail component (17 steps, phase grouping, status indicators) | ✅ | `frontend/src/features/workflow/components/step-rail.tsx` |
+| C2 | Step Rail component (18 steps, phase grouping, status indicators) | ✅ | `frontend/src/features/workflow/components/step-rail.tsx` |
 | C3 | Artifact Panel (content area + approval bar) | ✅ | `frontend/src/features/workflow/components/artifact-panel.tsx` |
 | C4 | WebSocket hook — real-time step updates | ✅ | `frontend/src/features/workflow/hooks/use-workflow-ws.ts` |
 | C5 | Artifact renderer — Business Profile (Step 1) | ✅ | `frontend/src/features/workflow/renderers/business-profile.tsx` |

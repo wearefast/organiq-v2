@@ -2,7 +2,7 @@
 
 ## Overview
 
-Pulse OS is an agent-led SEO/GEO/AEO strategy operating system. It runs a 17-step guided workflow where AI agents execute research and analysis tasks, and human strategists approve outputs at every checkpoint before data flows downstream.
+Pulse OS is an agent-led SEO/GEO/AEO strategy operating system. It runs an 18-step guided workflow where AI agents execute research and analysis tasks, and human strategists approve outputs at every checkpoint before data flows downstream.
 
 ## Architecture Principles
 

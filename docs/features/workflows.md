@@ -2,7 +2,7 @@
 
 ## Overview
 
-The workflow engine is the core of Pulse OS. It orchestrates a 17-step AI agent pipeline that takes a business domain from initial discovery through keyword research, competitor analysis, topical mapping, content generation, and strategic recommendations.
+The workflow engine is the core of Pulse OS. It orchestrates an 18-step AI agent pipeline that takes a business domain from initial discovery through keyword research, competitor analysis, topical mapping, content generation, and strategic recommendations.
 
 ## Architecture
 
@@ -61,26 +61,31 @@ User triggers "Start Run" on a project
 Steps only execute after their dependencies complete. The dependency graph is defined in each `.agent.md` file's YAML frontmatter via the `dependencies` field.
 
 ```
-Phase 1 (parallel):
-  business-profile ──────────────────────────────────────┐
-  seed-keywords ─────┬── search-demand ──┐               │
-  competitor-buckets ─┴── competitor-metrics ──┐          │
-  serp-niche-map ─────────────────────────────┤          │
-  ai-intelligence ─────────────────────────────┤          │
-                                               ▼          │
-Phase 2:                                  phase1-baseline ─┤
-  site-audit ──────────────────────────────────┘          │
-                                                          │
-Phase 3:                                                  │
-  method01-competitor-pages (← competitor-metrics) ─┐     │
-  method02-seed-expansion (← seed-keywords) ────────┤     │
-  method03-content-gap-import ──────────────────────┤     │
-                              consolidated-keywords ─┤     │
-                                       topical-map ──┘     │
-                                                          │
-Phase 4:                                                  │
-  content-brief ── content-article                        │
-  verdict-strategy (← all research) ◄────────────────────┘
+Phase 1 — Intelligence & Audit (Steps 1–8):
+  Step 1: business-profile (no deps)
+  Step 2: seed-keywords ← business-profile
+  Step 3: site-audit ← business-profile
+  Step 4: ai-intelligence ← site-audit
+  Step 5: serp-niche-map ← seed-keywords
+  Step 6: competitor-buckets ← serp-niche-map
+  Step 7: competitor-metrics ← ai-intelligence + competitor-buckets
+  Step 8: search-demand ← seed-keywords
+
+Phase 2 — Keyword Research (Steps 9–13):
+  Step 9:  phase1-baseline ← competitor-metrics + search-demand
+  Step 10: method01-competitor-pages ← phase1-baseline
+  Step 11: method02-seed-expansion ← phase1-baseline
+  Step 12: method03-content-gap-import ← phase1-baseline (manual)
+  Step 13: consolidated-keywords ← method01 + method02 + method03
+
+Phase 3 — Strategy & Planning (Steps 14–15):
+  Step 14: verdict-strategy ← consolidated-keywords
+  Step 15: topical-map ← verdict-strategy
+
+Phase 4 — Content Production (Steps 16–18):
+  Step 16: content-brief ← topical-map
+  Step 17: content-article ← content-brief
+  Step 18: content-images ← content-article
 ```
 
 ## Agent Definition Format
@@ -93,7 +98,7 @@ name: seed-keywords
 step_key: seed-keywords
 model: gpt-4o
 temperature: 0.3
-credit_cost: 20
+credit_cost: 40
 max_iterations: 5
 dependencies: []
 required_approval: true

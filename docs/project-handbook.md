@@ -10,7 +10,7 @@ For comprehensive coverage, see the dedicated docs:
 
 | Area | Document | What It Covers |
 |------|----------|----------------|
-| Product | [Product Overview](product/overview.md) | What Pulse is, 17-step workflow, key concepts, credit costs |
+| Product | [Product Overview](product/overview.md) | What Pulse is, 18-step workflow, key concepts, credit costs |
 | API | [API Reference](architecture/api-reference.md) | Complete REST endpoints for all 11 controllers + sidecar |
 | Dependencies | [Dependencies](architecture/dependencies.md) | All packages, env variables, external services |
 | Workflows | [Workflows](features/workflows.md) | Agent pipeline, step states, dependency graph |
@@ -31,7 +31,7 @@ For comprehensive coverage, see the dedicated docs:
 |------|-------------|
 | Product name | Pulse OS |
 | Category | Agent-led SEO/GEO/AEO strategy consultant OS |
-| Core promise | Turn raw domain data into approved keyword strategies, topical maps, and production content via 17 guided agent steps with human approval |
+| Core promise | Turn raw domain data into approved keyword strategies, topical maps, and production content via 18 guided agent steps with human approval |
 | Target user | SEO agencies and in-house SEO teams |
 | Differentiator | AI agents execute research + analysis; humans approve at every checkpoint |
 | Multi-tenancy | Organization → Workspace (client) → Project (domain) → Workflow Run |
@@ -42,11 +42,11 @@ For comprehensive coverage, see the dedicated docs:
 Organization (agency)
   └── Workspace (client)
        └── Project (domain)
-            └── Workflow Run (17 steps)
+            └── Workflow Run (18 steps)
                  └── Steps → Artifacts → Approvals
 ```
 
-## 17-Step Workflow
+## 18-Step Workflow
 
 ### Phase 1: Intelligence & Audit (Steps 1-8) — THE MOAT
 
@@ -78,12 +78,13 @@ Organization (agency)
 | 14 | `verdict-strategy` | Verdict & Strategy |
 | 15 | `topical-map` | Topical Map & Content Calendar |
 
-### Phase 4: Content Production (Steps 16-17)
+### Phase 4: Content Production (Steps 16-18)
 
 | Step | Key | Name |
 |------|-----|------|
 | 16 | `content-brief` | Content Briefs |
 | 17 | `content-article` | Content Generation & Scoring |
+| 18 | `content-images` | Image Generation & Assets |
 
 ### Step Dependency Graph
 
@@ -96,7 +97,7 @@ Step 1 → Step 2 → Step 3 (parallel with Step 5)
 Step 7 + Step 8 → Step 9 → Step 10 (parallel with Step 11)
                              Step 12 (manual, anytime after Step 9)
                    Step 10 + Step 11 + Step 12 → Step 13
-Step 13 → Step 14 → Step 15 → Step 16 → Step 17
+Step 13 → Step 14 → Step 15 → Step 16 → Step 17 → Step 18
 ```
 
 ---
@@ -157,7 +158,7 @@ Pulse/
 ├── server/                    NestJS 10 API + agent runtime
 │   └── src/
 │       ├── agents/            Agent runtime engine
-│       │   ├── definitions/   17 .agent.md files
+│       │   ├── definitions/   18 .agent.md files
 │       │   ├── agent.runtime.ts
 │       │   ├── agent.registry.ts
 │       │   ├── tool.registry.ts
@@ -215,7 +216,7 @@ step_key: business-profile
 model: gpt-4o
 temperature: 0.3
 max_iterations: 3
-credit_cost: 50
+credit_cost: 30
 depends_on: []
 requires_approval: true
 ---
@@ -237,13 +238,13 @@ Each agent can only call tools listed in its definition. ~40 tools registered ac
 
 ### Credit System
 
-| Phase | Credits |
-|-------|---------|
-| Phase 1 (Intelligence) | 875 |
-| Phase 2 (Research) | 275 |
-| Phase 3 (Strategy) | 125 |
-| Phase 4 (per unit) | 25/brief, 75/article |
-| Full project (Phase 1-3 + 10 articles) | ~2,275 |
+| Phase | Steps | Credits |
+|-------|-------|---------|
+| Phase 1 (Intelligence & Audit) | 1–8 | 365 |
+| Phase 2 (Keyword Research) | 9–13 | 220 |
+| Phase 3 (Strategy & Planning) | 14–15 | 75 |
+| Phase 4 (Content Production) | 16–18 | 80 per content unit |
+| Full project (Phases 1–3 + 1 content unit) | | ~740 |
 
 ---
 
@@ -256,7 +257,7 @@ Each agent can only call tools listed in its definition. ~40 tools registered ac
 | `credit_ledger` | Credit transactions |
 | `workspaces` | Client containers within an org |
 | `projects` | Domain-level project |
-| `workflow_runs` | 17-step workflow execution |
+| `workflow_runs` | 18-step workflow execution |
 | `workflow_steps` | Individual step state |
 | `step_artifacts` | Versioned step output |
 | `step_approvals` | Human decisions |

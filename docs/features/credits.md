@@ -60,4 +60,4 @@ Credits are debited atomically inside a database transaction:
 
 ## Credit Costs by Step
 
-See [Product Overview](../product/overview.md) for the full table of credit costs per workflow step. Total cost for a full 17-step run: ~565 credits.
+See [Product Overview](../product/overview.md) for the full table of credit costs per workflow step. Total cost for a full 18-step run: ~740 credits.

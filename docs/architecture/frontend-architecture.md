@@ -37,7 +37,7 @@ frontend/src/
 │   ├── workflow/                   Main workflow feature
 │   │   ├── components/
 │   │   │   ├── workflow-shell.tsx  Shell layout
-│   │   │   ├── step-rail.tsx      Step navigation (17 steps, 4 phases)
+│   │   │   ├── step-rail.tsx      Step navigation (18 steps, 4 phases)
 │   │   │   ├── artifact-panel.tsx Content display area
 │   │   │   ├── approval-bar.tsx   Approve/Revise/Reject controls
 │   │   │   ├── reasoning-panel.tsx Agent reasoning (expandable)

@@ -4,7 +4,7 @@
 
 ## What Is Pulse?
 
-Pulse is a SaaS platform that automates the entire SEO strategy lifecycle — from initial keyword research and competitor analysis through topical mapping, content generation, and performance reporting. It replaces manual consultant workflows with a **17-step AI agent pipeline** featuring human-in-the-loop approval at every checkpoint.
+Pulse is a SaaS platform that automates the entire SEO strategy lifecycle — from initial keyword research and competitor analysis through topical mapping, content generation, and performance reporting. It replaces manual consultant workflows with an **18-step AI agent pipeline** featuring human-in-the-loop approval at every checkpoint.
 
 ## Who Is It For?
 
@@ -17,7 +17,7 @@ Pulse is a SaaS platform that automates the entire SEO strategy lifecycle — fr
 
 ## Core Value Proposition
 
-1. **17-Step Guided Workflow** — Structured pipeline from discovery to content, with no missed steps
+1. **18-Step Guided Workflow** — Structured pipeline from discovery to content, with no missed steps
 2. **AI Agents + Human Approval** — Every output is reviewable and revisable before the pipeline continues
 3. **Multi-Org & Multi-Project** — Hierarchical model: Organization → Workspace → Project
 4. **Credit-Based Usage** — Granular billing per workflow step; no flat monthly fee waste
@@ -29,55 +29,64 @@ Pulse is a SaaS platform that automates the entire SEO strategy lifecycle — fr
 Organization (Clerk-managed)
  └── Workspace(s)
       └── Project(s)     — one domain/market per project
-           ├── Workflow Runs  — 17-step agent pipeline
+           ├── Workflow Runs  — 18-step agent pipeline
            ├── Keywords       — discovered, scored, categorized
            ├── Topical Maps   — pillars → clusters → keywords
            ├── Content Pieces — briefs + articles
            └── Reports        — PDF strategy documents
 ```
 
-## The 17-Step Workflow
+## The 18-Step Workflow
 
 The workflow is organized into **4 phases**, each building on the previous. Every step is executed by a specialized AI agent that uses external tools (Ahrefs, DataForSEO, Serper, etc.) and produces structured JSON output.
 
-### Phase 1 — Discovery & Foundation (Steps 1–5)
+### Phase 1 — Intelligence & Audit (Steps 1–8)
 
 | Step | Agent | Purpose | Credit Cost |
 |------|-------|---------|-------------|
-| 1 | `business-profile` | Extract business model, audience, positioning | 10 |
-| 2 | `seed-keywords` | Initial keyword discovery from business context | 20 |
-| 3 | `competitor-buckets` | Identify and categorize competitors | 30 |
-| 4 | `serp-niche-map` | Map SERP landscape by intent and features | 25 |
-| 5 | `ai-intelligence` | Identify AI-native search opportunities | 30 |
+| 1 | `business-profile` | Discovery & profiling (enhanced with Firecrawl) | 30 |
+| 2 | `seed-keywords` | Initial keyword discovery from business context | 40 |
+| 3 | `site-audit` | GEO citability + technical SEO audit | 60 |
+| 4 | `ai-intelligence` | AI search intelligence (Brand Radar + DataForSEO) | 50 |
+| 5 | `serp-niche-map` | SERP & niche landscape mapping | 45 |
+| 6 | `competitor-buckets` | Competitor identification & classification | 35 |
+| 7 | `competitor-metrics` | Competitor traffic, keyword, and content gap analysis (enhanced with AI SoV) | 55 |
+| 8 | `search-demand` | Search demand & seasonality (DataForSEO + Ahrefs) | 50 |
 
-### Phase 2 — Research & Analysis (Steps 6–10)
+**Phase 1 subtotal: 365 credits**
 
-| Step | Agent | Purpose | Credit Cost |
-|------|-------|---------|-------------|
-| 6 | `site-audit` | Technical SEO audit of target domain | 25 |
-| 7 | `competitor-metrics` | Competitor traffic, keyword, and content gap analysis | 35 |
-| 8 | `search-demand` | Search volume and intent data analysis | 20 |
-| 9 | `phase1-baseline` | Consolidate research into keyword baseline | 45 |
-| 10 | `method01-competitor-pages` | Extract keywords from competitor pages | 40 |
-
-### Phase 3 — Keyword Consolidation (Steps 11–14)
+### Phase 2 — Keyword Research (Steps 9–13)
 
 | Step | Agent | Purpose | Credit Cost |
 |------|-------|---------|-------------|
-| 11 | `method02-seed-expansion` | Expand seed keywords with related terms | 35 |
-| 12 | `method03-content-gap-import` | Import gaps from external content analysis | 30 |
-| 13 | `consolidated-keywords` | Merge all keywords into final taxonomy | 35 |
-| 14 | `topical-map` | Build hierarchical topical structure | 50 |
+| 9 | `phase1-baseline` | Client baseline consolidation | 45 |
+| 10 | `method01-competitor-pages` | Method 01 — Extract keywords from competitor pages | 55 |
+| 11 | `method02-seed-expansion` | Method 02 — Expand seed keywords with related terms | 50 |
+| 12 | `method03-content-gap-import` | Method 03 — Content gap import (manual) | 30 |
+| 13 | `consolidated-keywords` | Merge all keywords into final taxonomy | 40 |
 
-### Phase 4 — Strategy & Content (Steps 15–17)
+**Phase 2 subtotal: 220 credits**
+
+### Phase 3 — Strategy & Planning (Steps 14–15)
 
 | Step | Agent | Purpose | Credit Cost |
 |------|-------|---------|-------------|
-| 15 | `content-brief` | Generate SEO-optimized brief for writers | 20 |
-| 16 | `content-article` | Draft full article from brief | 40 |
-| 17 | `verdict-strategy` | Final strategy verdict with roadmap | 55 |
+| 14 | `verdict-strategy` | Final strategy verdict with roadmap | 35 |
+| 15 | `topical-map` | Build hierarchical topical map & content calendar | 40 |
 
-**Total credits per full workflow run: ~565**
+**Phase 3 subtotal: 75 credits**
+
+### Phase 4 — Content Production (Steps 16–18)
+
+| Step | Agent | Purpose | Credit Cost |
+|------|-------|---------|-------------|
+| 16 | `content-brief` | Generate SEO-optimized brief for writers | 25 |
+| 17 | `content-article` | Draft full article from brief | 30 |
+| 18 | `content-images` | Generate image suggestions/assets for article | 25 |
+
+**Phase 4 subtotal: 80 credits per content unit**
+
+**Total credits per full workflow run: ~740** (Phases 1–3: 660 fixed + Phase 4: 80 per content unit)
 
 ## Key Concepts
 

@@ -2,13 +2,13 @@
 
 Agent-led SEO/GEO/AEO strategy consultant operating system for agencies.
 
-**17-step guided workflow** from discovery through content production, powered by AI agents with human-in-the-loop approval at every checkpoint.
+**18-step guided workflow** from discovery through content production, powered by AI agents with human-in-the-loop approval at every checkpoint.
 
 ## Documentation
 
 | Category | Document | Description |
 |----------|----------|-------------|
-| **Product** | [Product Overview](docs/product/overview.md) | What Pulse is, who it's for, 17-step workflow, key concepts |
+| **Product** | [Product Overview](docs/product/overview.md) | What Pulse is, who it's for, 18-step workflow, key concepts |
 | **Product** | [Project Handbook](docs/project-handbook.md) | Full product reference & dev guide |
 | **Architecture** | [System Design](docs/architecture/system-design.md) | Runtime topology, service ports, design principles |
 | **Architecture** | [Frontend](docs/architecture/frontend-architecture.md) | Next.js 15 App Router, feature modules, design tokens |
@@ -16,7 +16,7 @@ Agent-led SEO/GEO/AEO strategy consultant operating system for agencies.
 | **Architecture** | [Data Models](docs/architecture/data-models.md) | Drizzle schema, ERD, 14 core tables |
 | **Architecture** | [API Reference](docs/architecture/api-reference.md) | Complete REST API surface (all endpoints) |
 | **Architecture** | [Dependencies](docs/architecture/dependencies.md) | All packages, external services, env variables |
-| **Features** | [Workflows](docs/features/workflows.md) | 17-step agent pipeline, step states, dependency graph |
+| **Features** | [Workflows](docs/features/workflows.md) | 18-step agent pipeline, step states, dependency graph |
 | **Features** | [Keywords](docs/features/keywords.md) | Keyword lifecycle, intent, funnel stages |
 | **Features** | [Content](docs/features/content.md) | Briefs, articles, scoring framework |
 | **Features** | [Reports](docs/features/reports.md) | PDF generation, templates, download flow |
