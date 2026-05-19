@@ -47,11 +47,75 @@ class EnvironmentVariables {
 
   @IsOptional()
   @IsString()
-  PYTHON_SIDECAR_URL?: string;
+  ANTHROPIC_API_KEY?: string;
+
+  @IsOptional()
+  @IsString()
+  ANTHROPIC_DEFAULT_MODEL?: string;
+
+  @IsOptional()
+  @IsString()
+  AGENT_PROVIDER_OVERRIDE?: string;
+
+  @IsOptional()
+  @IsString()
+  SHADOW_MODE_STEPS?: string;
+
+  @IsOptional()
+  @IsString()
+  PROMPT_SOURCE?: string;
+
+  @IsOptional()
+  @IsString()
+  PROMPT_CONSOLE_URL?: string;
+
+  @IsOptional()
+  @IsString()
+  PROMPT_CONSOLE_API_KEY?: string;
+
+  @IsOptional()
+  @IsString()
+  GSC_CLIENT_ID?: string;
+
+  @IsOptional()
+  @IsString()
+  GSC_CLIENT_SECRET?: string;
+
+  @IsOptional()
+  @IsString()
+  GSC_REDIRECT_URI?: string;
+
+  @IsOptional()
+  @IsString()
+  GSC_ENCRYPTION_KEY?: string;
+
+  @IsOptional()
+  @IsString()
+  LOG_LEVEL?: string;
 
   @IsOptional()
   @IsString()
   PORT?: string;
+
+  @IsOptional()
+  @IsString()
+  STRIPE_SECRET_KEY?: string;
+
+  @IsOptional()
+  @IsString()
+  STRIPE_WEBHOOK_SECRET?: string;
+
+  @IsOptional()
+  @IsString()
+  STRIPE_PRICE_PRO?: string;
+
+  @IsOptional()
+  @IsString()
+  STRIPE_PRICE_AGENCY?: string;
+
+  @IsOptional()
+  @IsString()
+  STRIPE_PRICE_ENTERPRISE?: string;
 }
 
 export function validateEnv(config: Record<string, unknown>) {

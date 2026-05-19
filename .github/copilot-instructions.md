@@ -163,11 +163,9 @@ server/             → NestJS 10, Drizzle ORM, BullMQ
   src/
     agents/         → Agent runtime (definitions/, runtime, registry, sandbox, validator)
     prompts/        → Tunable prompt files (~51 .prompt.md, .rubric.md, .config.md)
-    features/       → Feature modules (auth, organizations, credits, workspaces, projects, workflows, keywords, topical-maps, content, reports, integrations)
+    features/       → Feature modules (auth, organizations, credits, workspaces, projects, workflows, keywords, topical-maps, content, reports, integrations, billing)
     shared/         → Database module, prompt service, health
     db/             → Drizzle schema, client, seed
-
-python-sidecar/     → FastAPI analysis + PDF service (12 endpoints)
 
 docs/               → Documentation (READ before touching a feature)
   architecture/     → System design, frontend, backend, data models
@@ -178,7 +176,7 @@ docs/               → Documentation (READ before touching a feature)
 infra/              → Docker Compose (Postgres + Redis)
 ```
 
-**Tech stack:** Next.js 15 · NestJS 10 · Drizzle ORM · PostgreSQL · BullMQ · Redis · Clerk · OpenAI · Ahrefs v3 · DataForSEO · Firecrawl · Serper.dev · PageSpeed/CrUX · FastAPI (Python sidecar)
+**Tech stack:** Next.js 15 · NestJS 10 · Drizzle ORM · PostgreSQL · BullMQ · Redis · Clerk · OpenAI · Ahrefs v3 · DataForSEO · Firecrawl · Serper.dev · PageSpeed/CrUX · Stripe
 
 **Before touching any feature:** Read `docs/project-handbook.md` and relevant section
 **After any change to API, schema, or architecture:** Update the relevant file in `docs/`

@@ -7,10 +7,14 @@ import { PromptService } from '../../shared/prompt/prompt.service';
 import { AgentRuntime } from '../../agents/agent.runtime';
 import { AgentRegistry } from '../../agents/agent.registry';
 import { OutputValidator } from '../../agents/output.validator';
+import { VerificationService } from '../../shared/verification/verification.service';
+import { ShadowService } from './shadow.service';
+import { PipelineService } from './pipelines/pipeline.service';
 import { CreditsService } from '../credits/credits.service';
 import { WorkflowService } from './workflow.service';
 import { WorkflowGateway } from './workflow.gateway';
 import { WorkflowMaterializerService } from './workflow-materializer.service';
+import { DlqService } from './dlq.service';
 import {
   workflowSteps,
   stepArtifacts,
@@ -34,10 +38,14 @@ export class WorkflowProcessor extends WorkerHost {
     private readonly agentRuntime: AgentRuntime,
     private readonly agentRegistry: AgentRegistry,
     private readonly outputValidator: OutputValidator,
+    private readonly verificationService: VerificationService,
+    private readonly shadowService: ShadowService,
+    private readonly pipelineService: PipelineService,
     private readonly creditsService: CreditsService,
     private readonly workflowService: WorkflowService,
     private readonly workflowGateway: WorkflowGateway,
     private readonly materializer: WorkflowMaterializerService,
+    private readonly dlqService: DlqService,
   ) {
     super();
   }
@@ -62,14 +70,64 @@ export class WorkflowProcessor extends WorkerHost {
       // 3. Emit step started
       this.workflowGateway.emitStepStarted(workflowRunId, stepKey);
 
+      // 3.5. Tier 1 fast-path: direct pipeline execution (no LLM)
+      if (agentDef.tier === 'tier1') {
+        const context = await this.workflowService.getContext(workflowRunId);
+        const transformedContext = this.transformContextForStep(stepKey, context);
+        const pipelineOutput = await this.pipelineService.execute(stepKey, transformedContext);
+
+        // Persist artifact directly
+        const step = await this.db.db.query.workflowSteps.findFirst({
+          where: and(
+            eq(workflowSteps.workflowRunId, workflowRunId),
+            eq(workflowSteps.stepKey, stepKey),
+          ),
+        });
+        if (!step) throw new Error(`Step record not found: ${stepKey}`);
+
+        await this.db.db.transaction(async (tx) => {
+          const existing = await tx.query.stepArtifacts.findFirst({
+            where: and(eq(stepArtifacts.workflowStepId, step.id), eq(stepArtifacts.stepKey, stepKey)),
+            orderBy: [desc(stepArtifacts.version)],
+          });
+          const nextVersion = (existing?.version ?? 0) + 1;
+
+          await tx.insert(stepArtifacts).values({
+            workflowStepId: step.id,
+            workflowRunId,
+            stepKey,
+            version: nextVersion,
+            data: pipelineOutput ?? {},
+            reasoning: null,
+            metadata: { provider: 'pipeline', model: 'none', tokensUsed: { input: 0, output: 0, total: 0 }, iterations: 0 },
+          });
+
+          await tx.update(workflowSteps).set({ status: 'completed', completedAt: new Date() }).where(eq(workflowSteps.id, step.id));
+
+          // Debit credits inside transaction (atomic with artifact persistence)
+          await this.creditsService.debit({
+            organizationId,
+            amount: agentDef.creditCost,
+            description: `Pipeline: ${stepKey}`,
+            workflowRunId,
+            stepKey,
+          });
+        });
+
+        this.workflowGateway.emitStepCompleted(workflowRunId, stepKey, 'completed');
+        await this.materializer.materialize(workflowRunId, stepKey);
+        return;
+      }
+
       // 4. Load prompts
       const promptPath = this.getPromptPath(stepKey);
       const context = await this.workflowService.getContext(workflowRunId);
       const transformedContext = this.transformContextForStep(stepKey, context);
       const prompt = await this.promptService.loadPrompt(promptPath, transformedContext);
 
-      // 5. Execute agent
-      const result = await this.agentRuntime.execute({
+      // 5. Execute agent (with verification retry loop — max 2 free retries per AD-8)
+      const MAX_VERIFICATION_RETRIES = 2;
+      let result = await this.agentRuntime.execute({
         name: agentDef.name,
         model: agentDef.model,
         temperature: agentDef.temperature,
@@ -77,6 +135,9 @@ export class WorkflowProcessor extends WorkerHost {
         tools: agentDef.tools,
         systemPrompt: prompt.system,
         userPrompt: prompt.user,
+        provider: agentDef.provider,
+        tier: agentDef.tier,
+        thinkingBudget: agentDef.thinkingBudget,
       });
 
       // 5.5. Validate output against schema (if defined)
@@ -90,6 +151,66 @@ export class WorkflowProcessor extends WorkerHost {
           }
         }
       }
+
+      // 5.6. Verification rules (post-execution quality check)
+      const verification = this.verificationService.verify(stepKey, result.output, transformedContext);
+      if (!verification.valid) {
+        this.logger.warn(`Verification failed for ${stepKey}: ${verification.errors.join('; ')}`);
+
+        // Retry with feedback (free retries — no credit debit)
+        for (let retry = 0; retry < MAX_VERIFICATION_RETRIES; retry++) {
+          this.logger.log(`Verification retry ${retry + 1}/${MAX_VERIFICATION_RETRIES} for ${stepKey}`);
+          const feedback = `Your previous output failed verification:\n${verification.errors.join('\n')}\n\nPlease fix these issues and produce corrected output.`;
+
+          result = await this.agentRuntime.execute({
+            name: agentDef.name,
+            model: agentDef.model,
+            temperature: agentDef.temperature,
+            maxIterations: agentDef.maxIterations,
+            tools: agentDef.tools,
+            systemPrompt: prompt.system,
+            userPrompt: prompt.user + '\n\n---\n\n' + feedback,
+            provider: agentDef.provider,
+            tier: agentDef.tier,
+            thinkingBudget: agentDef.thinkingBudget,
+          });
+
+          const retryVerification = this.verificationService.verify(stepKey, result.output, transformedContext);
+          if (retryVerification.valid) break;
+
+          if (retry === MAX_VERIFICATION_RETRIES - 1) {
+            this.logger.error(`Verification still failing after ${MAX_VERIFICATION_RETRIES} retries for ${stepKey}`);
+            // Proceed with best-effort output rather than hard fail
+          }
+        }
+      }
+
+      // 5.7. Shadow mode — fire-and-forget (non-blocking, never delays primary path)
+      const shadowPromise = this.shadowService.runShadow({
+        stepKey,
+        primaryOutput: result.output,
+        agentConfig: {
+          name: agentDef.name,
+          model: agentDef.model,
+          temperature: agentDef.temperature,
+          maxIterations: agentDef.maxIterations,
+          tools: agentDef.tools,
+          systemPrompt: prompt.system,
+          userPrompt: prompt.user,
+          provider: agentDef.provider,
+          tier: agentDef.tier,
+          thinkingBudget: agentDef.thinkingBudget,
+        },
+      });
+      // Race against a 30s timeout — never block the primary path longer than that
+      let shadowTimer: ReturnType<typeof setTimeout> | undefined;
+      const shadowResult = await Promise.race([
+        shadowPromise,
+        new Promise<{ active: false }>((resolve) => {
+          shadowTimer = setTimeout(() => resolve({ active: false }), 30_000);
+        }),
+      ]);
+      if (shadowTimer) clearTimeout(shadowTimer);
 
       // 6. Get the step record
       const step = await this.db.db.query.workflowSteps.findFirst({
@@ -114,7 +235,7 @@ export class WorkflowProcessor extends WorkerHost {
         });
         const nextVersion = (latestArtifact?.version ?? 0) + 1;
 
-        // 8. Persist artifact
+        // 8. Persist artifact with execution metadata
         await tx.insert(stepArtifacts).values({
           workflowStepId: step.id,
           workflowRunId,
@@ -122,6 +243,14 @@ export class WorkflowProcessor extends WorkerHost {
           version: nextVersion,
           data: result.output ?? {},
           reasoning: result.reasoning,
+          metadata: {
+            thinkingTrace: result.thinkingContent ?? null,
+            provider: agentDef.provider ?? 'openai',
+            model: agentDef.model,
+            tokensUsed: result.totalTokens,
+            iterations: result.iterations,
+            shadowVerdictIfAny: shadowResult.active ? shadowResult.verdict : undefined,
+          },
         });
 
         // 9. Persist tool calls
@@ -194,6 +323,19 @@ export class WorkflowProcessor extends WorkerHost {
 
       // Emit error event
       this.workflowGateway.emitStepError(workflowRunId, stepKey, message);
+
+      // Capture into DLQ on final attempt (BullMQ default: 3 attempts)
+      const maxAttempts = job.opts?.attempts ?? 3;
+      if (job.attemptsMade >= maxAttempts) {
+        await this.dlqService.captureFailedJob({
+          workflowStepId: undefined,
+          workflowRunId,
+          stepKey,
+          error: message,
+          attemptCount: job.attemptsMade,
+          jobData: job.data as unknown as Record<string, unknown>,
+        });
+      }
 
       // Mark step as failed
       await this.db.db

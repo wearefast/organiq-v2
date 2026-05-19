@@ -12,6 +12,7 @@ import {
 } from '@nestjs/common';
 import { ApiTags, ApiBearerAuth } from '@nestjs/swagger';
 import { KeywordsService, BulkKeywordInput } from './keywords.service';
+import { DecayDetectionService } from './decay-detection.service';
 import { ClerkGuard } from '../auth/clerk.guard';
 import { OrgMembershipGuard } from '../auth/org-membership.guard';
 
@@ -20,7 +21,10 @@ import { OrgMembershipGuard } from '../auth/org-membership.guard';
 @UseGuards(ClerkGuard, OrgMembershipGuard)
 @Controller('projects/:projectId/keywords')
 export class KeywordsController {
-  constructor(private readonly keywordsService: KeywordsService) {}
+  constructor(
+    private readonly keywordsService: KeywordsService,
+    private readonly decayDetectionService: DecayDetectionService,
+  ) {}
 
   @Get()
   async findAll(
@@ -80,5 +84,23 @@ export class KeywordsController {
     @Param('id') id: string,
   ) {
     return this.keywordsService.remove(id, projectId);
+  }
+
+  @Get('decay/alerts')
+  async getDecayAlerts(
+    @Param('projectId') projectId: string,
+    @Query('includeResolved') includeResolved?: string,
+    @Query('limit') limit?: string,
+  ) {
+    return this.decayDetectionService.getAlerts(projectId, {
+      includeResolved: includeResolved === 'true',
+      limit: limit ? parseInt(limit, 10) : undefined,
+    });
+  }
+
+  @Patch('decay/alerts/:alertId/resolve')
+  async resolveDecayAlert(@Param('alertId') alertId: string) {
+    await this.decayDetectionService.resolveAlert(alertId);
+    return { success: true };
   }
 }

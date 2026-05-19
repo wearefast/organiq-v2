@@ -1,20 +1,14 @@
 import { Injectable, Logger, NotFoundException } from '@nestjs/common';
-import { eq, and, desc } from 'drizzle-orm';
-import { ConfigService } from '@nestjs/config';
+import { eq, and } from 'drizzle-orm';
 import { DatabaseService } from '../../shared/database/database.service';
 import { PromptService } from '../../shared/prompt/prompt.service';
 import { reports, workflowRuns, workflowContext, projects } from '../../db/schema';
+import { PdfGeneratorService } from './pdf/pdf-generator.service';
 
 interface ReportSection {
   title: string;
   content: string;
   level: number;
-}
-
-interface PdfResponse {
-  pdf_base64: string;
-  page_count: number;
-  file_size_bytes: number;
 }
 
 const REPORT_TYPE_TEMPLATES: Record<string, string> = {
@@ -34,15 +28,12 @@ const REPORT_TYPE_TITLES: Record<string, string> = {
 @Injectable()
 export class ReportsService {
   private readonly logger = new Logger(ReportsService.name);
-  private readonly sidecarUrl: string;
 
   constructor(
     private readonly db: DatabaseService,
     private readonly promptService: PromptService,
-    private readonly config: ConfigService,
-  ) {
-    this.sidecarUrl = this.config.get<string>('PYTHON_SIDECAR_URL', 'http://localhost:8000');
-  }
+    private readonly pdfGenerator: PdfGeneratorService,
+  ) {}
 
   async findAllByProject(projectId: string) {
     return this.db.db.query.reports.findMany({
@@ -114,12 +105,12 @@ export class ReportsService {
 
     const title = REPORT_TYPE_TITLES[type] ?? 'Report';
 
-    // Call Python sidecar to generate PDF
-    const pdfResponse = await this.callSidecarPdf({
+    // Generate PDF locally
+    const pdfResponse = await this.pdfGenerator.generate({
       title,
-      project_domain: project.domain,
-      report_type: type,
-      generated_at: new Date().toISOString(),
+      projectDomain: project.domain,
+      reportType: type,
+      generatedAt: new Date().toISOString(),
       sections,
       metadata: {
         country: project.country,
@@ -137,17 +128,17 @@ export class ReportsService {
         workflowRunId,
         type,
         title,
-        filePath: pdfResponse.pdf_base64, // Store base64 in filePath for now
+        filePath: pdfResponse.pdfBase64, // Store base64 in filePath for now
         generatedAt: new Date(),
       })
       .returning();
 
-    this.logger.log(`Generated ${type} report: ${report.id} (${pdfResponse.page_count} pages, ${pdfResponse.file_size_bytes} bytes)`);
+    this.logger.log(`Generated ${type} report: ${report.id} (${pdfResponse.pageCount} pages, ${pdfResponse.fileSizeBytes} bytes)`);
 
     return {
       ...report,
-      pageCount: pdfResponse.page_count,
-      fileSizeBytes: pdfResponse.file_size_bytes,
+      pageCount: pdfResponse.pageCount,
+      fileSizeBytes: pdfResponse.fileSizeBytes,
     };
   }
 
@@ -241,27 +232,4 @@ export class ReportsService {
     return current;
   }
 
-  private async callSidecarPdf(payload: {
-    title: string;
-    project_domain: string;
-    report_type: string;
-    generated_at: string;
-    sections: ReportSection[];
-    metadata: Record<string, string>;
-  }): Promise<PdfResponse> {
-    const response = await fetch(`${this.sidecarUrl}/reports/pdf`, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify(payload),
-      signal: AbortSignal.timeout(60_000),
-    });
-
-    if (!response.ok) {
-      const text = await response.text();
-      this.logger.error(`Sidecar PDF generation failed: ${response.status}`, text);
-      throw new Error(`PDF generation failed: ${response.status}`);
-    }
-
-    return (await response.json()) as PdfResponse;
-  }
 }

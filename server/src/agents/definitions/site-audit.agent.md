@@ -1,7 +1,10 @@
 ---
 name: Technical SEO Auditor
 step_key: site-audit
-model: gpt-4o
+model: claude-opus-4
+provider: anthropic
+tier: 3
+thinking_budget: 32000
 temperature: 0.2
 max_iterations: 12
 credit_cost: 60

@@ -1,5 +1,8 @@
 import { Injectable, Logger } from '@nestjs/common';
-import { OpenAiService } from '../features/integrations/openai/openai.service';
+import { ConfigService } from '@nestjs/config';
+import { OpenAiProvider } from './openai.provider';
+import { AnthropicProvider } from './anthropic.provider';
+import { LlmProvider, LlmMessage, LlmToolDef } from './llm-provider.interface';
 import { ToolRegistry } from './tool.registry';
 import { ToolSandbox } from './tool.sandbox';
 
@@ -11,6 +14,9 @@ interface AgentConfig {
   tools: string[];
   systemPrompt: string;
   userPrompt: string;
+  provider?: 'openai' | 'anthropic';
+  tier?: 'tier1' | 'tier2' | 'tier3';
+  thinkingBudget?: number;
 }
 
 interface ToolCallRecord {
@@ -29,13 +35,7 @@ interface AgentResult {
   totalTokens: number;
   finishReason: 'completed' | 'max_iterations' | 'error';
   error?: string;
-}
-
-interface ChatMessage {
-  role: 'system' | 'user' | 'assistant' | 'tool';
-  content: string | null;
-  tool_calls?: Array<{ id: string; type: 'function'; function: { name: string; arguments: string } }>;
-  tool_call_id?: string;
+  thinkingContent?: string | null;
 }
 
 @Injectable()
@@ -43,12 +43,29 @@ export class AgentRuntime {
   private readonly logger = new Logger(AgentRuntime.name);
   private static readonly AGENT_TIMEOUT_MS = 10 * 60 * 1000; // 10 minutes
   private static readonly TOOL_TIMEOUT_MS = 60 * 1000; // 60 seconds per tool call
+  private readonly providers: Map<string, LlmProvider>;
+  private readonly providerOverride: string | undefined;
 
   constructor(
-    private readonly openai: OpenAiService,
+    private readonly openAiProvider: OpenAiProvider,
+    private readonly anthropicProvider: AnthropicProvider,
     private readonly toolRegistry: ToolRegistry,
     private readonly toolSandbox: ToolSandbox,
-  ) {}
+    private readonly configService: ConfigService,
+  ) {
+    this.providers = new Map<string, LlmProvider>([
+      ['openai', this.openAiProvider],
+      ['anthropic', this.anthropicProvider],
+    ]);
+    this.providerOverride = this.configService.get<string>('AGENT_PROVIDER_OVERRIDE');
+  }
+
+  private resolveProvider(config: AgentConfig): LlmProvider {
+    const name = this.providerOverride ?? config.provider ?? 'openai';
+    const provider = this.providers.get(name);
+    if (!provider) throw new Error(`Unknown LLM provider: ${name}`);
+    return provider;
+  }
 
   /**
    * Execute an agent's function-calling loop with an overall timeout.
@@ -73,41 +90,56 @@ export class AgentRuntime {
     const toolCalls: ToolCallRecord[] = [];
     let totalTokens = 0;
     let iterations = 0;
+    const provider = this.resolveProvider(config);
 
-    const messages: ChatMessage[] = [
+    // Tier 2: single-shot, no tool loop
+    if (config.tier === 'tier2') {
+      return this.executeTier2(config, provider);
+    }
+
+    const messages: LlmMessage[] = [
       { role: 'system', content: config.systemPrompt },
       { role: 'user', content: config.userPrompt },
     ];
 
-    const openAiTools = config.tools.length > 0
-      ? this.toolRegistry.getOpenAiToolDefs(config.tools)
+    const tools: LlmToolDef[] | undefined = config.tools.length > 0
+      ? this.toolRegistry.getOpenAiToolDefs(config.tools).map((t) => ({
+          name: t.function.name,
+          description: t.function.description,
+          parameters: t.function.parameters,
+        }))
       : undefined;
 
     while (iterations < config.maxIterations) {
       iterations++;
-      this.logger.debug(`Agent "${config.name}" iteration ${iterations}/${config.maxIterations}`);
+      this.logger.debug(`Agent "${config.name}" iteration ${iterations}/${config.maxIterations} [${provider.name}]`);
 
-      const result = await this.openai.chatCompletion({
+      const result = await provider.complete({
         messages,
         model: config.model,
         temperature: config.temperature,
-        tools: openAiTools,
+        tools,
+        thinkingBudget: config.thinkingBudget,
       });
 
       totalTokens += result.usage.totalTokens;
 
-      if (result.finishReason === 'tool_calls' && result.message.tool_calls?.length) {
+      if (result.finishReason === 'tool_calls' && result.toolCalls.length > 0) {
         // Process tool calls
-        messages.push(result.message);
+        messages.push({
+          role: 'assistant',
+          content: result.content,
+          toolCalls: result.toolCalls,
+        });
 
-        for (const tc of result.message.tool_calls) {
-          const toolName = tc.function.name;
+        for (const tc of result.toolCalls) {
+          const toolName = tc.name;
           let input: unknown;
 
           try {
-            input = JSON.parse(tc.function.arguments);
+            input = JSON.parse(tc.arguments);
           } catch {
-            input = tc.function.arguments;
+            input = tc.arguments;
           }
 
           const start = Date.now();
@@ -139,7 +171,7 @@ export class AgentRuntime {
             : toolContent;
           messages.push({
             role: 'tool',
-            tool_call_id: tc.id,
+            toolCallId: tc.id,
             content: cappedContent,
           });
         }
@@ -162,11 +194,10 @@ export class AgentRuntime {
       }
 
       // Agent returned a content response — extract output
-      const content = result.message.content ?? '';
+      const content = result.content ?? '';
 
       try {
         const parsed = this.extractJson(content);
-        // Strip JSON block from reasoning so it only shows the narrative text
         const reasoning = content
           .replace(/```(?:json)?\s*\n[\s\S]*?\n```/g, '')
           .replace(/^\s*\{[\s\S]*\}\s*$/, '')
@@ -178,9 +209,9 @@ export class AgentRuntime {
           iterations,
           totalTokens,
           finishReason: 'completed',
+          thinkingContent: result.thinkingContent,
         };
       } catch {
-        // Content is not valid JSON — return raw
         return {
           output: content,
           reasoning: content,
@@ -188,6 +219,7 @@ export class AgentRuntime {
           iterations,
           totalTokens,
           finishReason: 'completed',
+          thinkingContent: result.thinkingContent,
         };
       }
     }
@@ -202,6 +234,52 @@ export class AgentRuntime {
       totalTokens,
       finishReason: 'max_iterations',
     };
+  }
+
+  /**
+   * Tier 2 execution: single-shot with extended thinking, no tool loop.
+   */
+  private async executeTier2(config: AgentConfig, provider: LlmProvider): Promise<AgentResult> {
+    this.logger.debug(`Agent "${config.name}" executing Tier 2 (single-shot) [${provider.name}]`);
+
+    const result = await provider.completeTier2({
+      messages: [
+        { role: 'system', content: config.systemPrompt },
+        { role: 'user', content: config.userPrompt },
+      ],
+      model: config.model,
+      temperature: config.temperature,
+      thinkingBudget: config.thinkingBudget,
+    });
+
+    const content = result.content ?? '';
+
+    try {
+      const parsed = this.extractJson(content);
+      const reasoning = content
+        .replace(/```(?:json)?\s*\n[\s\S]*?\n```/g, '')
+        .replace(/^\s*\{[\s\S]*\}\s*$/, '')
+        .trim() || 'Output produced successfully.';
+      return {
+        output: parsed,
+        reasoning,
+        toolCalls: [],
+        iterations: 1,
+        totalTokens: result.usage.totalTokens,
+        finishReason: 'completed',
+        thinkingContent: result.thinkingContent,
+      };
+    } catch {
+      return {
+        output: content,
+        reasoning: content,
+        toolCalls: [],
+        iterations: 1,
+        totalTokens: result.usage.totalTokens,
+        finishReason: 'completed',
+        thinkingContent: result.thinkingContent,
+      };
+    }
   }
 
   /**

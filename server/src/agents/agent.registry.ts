@@ -15,6 +15,9 @@ interface AgentDefinition {
   tools: string[];
   body: string;
   outputSchema?: Record<string, unknown>;
+  provider?: 'openai' | 'anthropic';
+  tier?: 'tier1' | 'tier2' | 'tier3';
+  thinkingBudget?: number;
 }
 
 @Injectable()

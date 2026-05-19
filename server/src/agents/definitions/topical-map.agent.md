@@ -1,16 +1,17 @@
 ---
 name: Topical Map Architect
 step_key: topical-map
-model: gpt-4o
+model: claude-opus-4
+provider: anthropic
+tier: 2
+thinking_budget: 32000
 temperature: 0.3
 max_iterations: 8
 credit_cost: 40
 depends_on:
   - verdict-strategy
 requires_approval: true
-tools:
-  - serper_search
-  - dataforseo_serp
+tools: []
 ---
 
 # Topical Map Agent

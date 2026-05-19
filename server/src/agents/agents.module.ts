@@ -5,13 +5,14 @@ import { ToolBootstrap } from './tool.bootstrap';
 import { AgentRuntime } from './agent.runtime';
 import { AgentRegistry } from './agent.registry';
 import { OutputValidator } from './output.validator';
-import { OpenAiModule } from '../features/integrations/openai/openai.module';
+import { OpenAiProvider } from './openai.provider';
+import { AnthropicProvider } from './anthropic.provider';
 import { IntegrationsModule } from '../features/integrations/integrations.module';
 
 @Global()
 @Module({
-  imports: [OpenAiModule, IntegrationsModule],
-  providers: [ToolRegistry, ToolSandbox, ToolBootstrap, AgentRuntime, AgentRegistry, OutputValidator],
-  exports: [ToolRegistry, ToolSandbox, AgentRuntime, AgentRegistry, OutputValidator],
+  imports: [IntegrationsModule],
+  providers: [ToolRegistry, ToolSandbox, ToolBootstrap, AgentRuntime, AgentRegistry, OutputValidator, OpenAiProvider, AnthropicProvider],
+  exports: [ToolRegistry, ToolSandbox, AgentRuntime, AgentRegistry, OutputValidator, OpenAiProvider, AnthropicProvider],
 })
 export class AgentsModule {}

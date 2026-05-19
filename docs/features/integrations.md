@@ -15,7 +15,20 @@ Pulse integrates with 8 external services for SEO data, web scraping, AI process
 - **Model**: GPT-4o (configurable per agent)
 - **Auth**: Bearer token via `OPENAI_API_KEY`
 - **Retry**: Built-in retry for 429 (rate limit) and 5xx responses
-- **Used by**: `AgentRuntime` for all agent executions
+- **Used by**: `OpenAiProvider` (via LlmProvider interface)
+
+### Anthropic (`server/src/features/integrations/anthropic/anthropic.service.ts`)
+
+| Method | Description |
+|--------|-------------|
+| `chat(options)` | Messages API with extended thinking + tool use support |
+
+- **Model**: Claude Opus (`claude-opus-4-20250514`) — configurable
+- **Auth**: API key via `ANTHROPIC_API_KEY`
+- **Retry**: 3 attempts with exponential backoff for 429/5xx
+- **Extended Thinking**: Budget configurable per call (default: 32K tokens for Tier 2)
+- **Used by**: `AnthropicProvider` (via LlmProvider interface)
+- **Env vars**: `ANTHROPIC_API_KEY`, `ANTHROPIC_DEFAULT_MODEL`
 
 ### Ahrefs v3 (`server/src/features/integrations/ahrefs/ahrefs.service.ts`)
 
@@ -97,14 +110,27 @@ Pulse integrates with 8 external services for SEO data, web scraping, AI process
 
 | Method | Description |
 |--------|-------------|
-| `getPerformance(domain, startDate, endDate)` | Search performance data |
-| `getTopQueries(domain, limit)` | Top search queries |
-| `getTopPages(domain, limit)` | Top-performing pages |
+| `getAuthUrl(state)` | Generate Google OAuth consent screen URL |
+| `exchangeCode(code)` | Exchange authorization code for tokens |
+| `refreshAccessToken(encryptedRefreshToken)` | Refresh expired access token |
+| `saveConnection(params)` | Upsert GSC connection with encrypted tokens |
+| `getConnection(projectId)` | Get connection record for a project |
+| `pullSearchAnalytics(params)` | Query Google Search Analytics API directly |
+| `storeKeywordData(connectionId, projectId, rows)` | Batch-insert keyword data (500/batch) |
+| `getPerformanceSummary(projectId, startDate, endDate)` | Aggregated performance metrics |
+| `getKeywords(projectId, params)` | Query stored keyword data |
 
-- **Base URL**: Calls Python sidecar at `PYTHON_SIDECAR_URL` (default `http://localhost:8000`)
-- **Auth**: OAuth handled by the sidecar
-- **Timeout**: 30s per request
-- **Retry**: 3 attempts with exponential backoff
+- **API**: Google Search Console (webmasters/v3) — direct OAuth2
+- **Auth**: OAuth2 with offline access; tokens encrypted at rest via AES-256-GCM
+- **Env vars**: `GSC_CLIENT_ID`, `GSC_CLIENT_SECRET`, `GSC_REDIRECT_URI`, `GSC_ENCRYPTION_KEY` (32-byte hex)
+- **Storage**: `gscConnections` (per-project, upsert on projectId), `gscKeywordData` (time-series)
+- **Sync**: BullMQ `gsc-sync` queue — daily pull + historical on first connect
+- **Controller**: `gsc.controller.ts` — routes under `/projects/:projectId/gsc/`
+  - `GET /connect` → redirects to Google OAuth
+  - `GET /callback` → exchanges code, saves connection, redirects to frontend
+  - `GET /status` → connection status
+  - `GET /keywords` → stored keyword data (query params: startDate, endDate, limit)
+  - `GET /summary` → aggregated performance (last 28 days default)
 
 ### Clerk (`server/src/features/auth/`)
 

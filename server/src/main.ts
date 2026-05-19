@@ -1,10 +1,12 @@
 import { NestFactory } from '@nestjs/core';
 import { ValidationPipe } from '@nestjs/common';
 import { SwaggerModule, DocumentBuilder } from '@nestjs/swagger';
+import { Logger } from 'nestjs-pino';
 import { AppModule } from './app.module';
 
 async function bootstrap() {
-  const app = await NestFactory.create(AppModule);
+  const app = await NestFactory.create(AppModule, { bufferLogs: true, rawBody: true });
+  app.useLogger(app.get(Logger));
 
   app.enableShutdownHooks();
 
@@ -15,14 +17,21 @@ async function bootstrap() {
 
   app.enableCors({
     origin: (origin, callback) => {
-      if (!origin || allowedOrigins.includes(origin)) {
+      // Allow requests with no origin (server-to-server, curl, same-origin)
+      if (!origin) {
         callback(null, true);
         return;
       }
-
-      callback(new Error(`Origin ${origin} not allowed by CORS`));
+      // Allow known frontend origins
+      if (allowedOrigins.includes(origin)) {
+        callback(null, true);
+        return;
+      }
+      // Allow any origin for public endpoints (tracker ingest uses sendBeacon)
+      // NestJS CORS applies globally; auth guards protect dashboard routes
+      callback(null, true);
     },
-    credentials: true,
+    credentials: false,
   });
 
   app.useGlobalPipes(

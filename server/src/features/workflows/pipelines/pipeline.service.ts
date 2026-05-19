@@ -1,0 +1,42 @@
+import { Injectable, Logger } from '@nestjs/common';
+import { Pipeline } from './pipeline.interface';
+import { CompetitorMetricsPipeline } from './competitor-metrics.pipeline';
+import { SearchDemandPipeline } from './search-demand.pipeline';
+import { Method01CompetitorPagesPipeline } from './method01-competitor-pages.pipeline';
+import { Method02SeedExpansionPipeline } from './method02-seed-expansion.pipeline';
+import { Method03ContentGapPipeline } from './method03-content-gap.pipeline';
+
+@Injectable()
+export class PipelineService {
+  private readonly logger = new Logger(PipelineService.name);
+  private readonly registry = new Map<string, Pipeline>();
+
+  constructor(
+    competitorMetrics: CompetitorMetricsPipeline,
+    searchDemand: SearchDemandPipeline,
+    method01: Method01CompetitorPagesPipeline,
+    method02: Method02SeedExpansionPipeline,
+    method03: Method03ContentGapPipeline,
+  ) {
+    const pipelines: Pipeline[] = [competitorMetrics, searchDemand, method01, method02, method03];
+    for (const p of pipelines) {
+      this.registry.set(p.stepKey, p);
+    }
+  }
+
+  /** Get a pipeline for the given step key, or null if not registered */
+  getPipeline(stepKey: string): Pipeline | null {
+    return this.registry.get(stepKey) ?? null;
+  }
+
+  /** Execute a Tier 1 pipeline */
+  async execute(stepKey: string, context: Record<string, unknown>): Promise<unknown> {
+    const pipeline = this.getPipeline(stepKey);
+    if (!pipeline) {
+      throw new Error(`No pipeline registered for step: ${stepKey}`);
+    }
+
+    this.logger.log(`Executing pipeline: ${stepKey}`);
+    return pipeline.execute(context);
+  }
+}

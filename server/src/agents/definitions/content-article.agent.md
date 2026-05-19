@@ -1,7 +1,10 @@
 ---
 name: Content Article Writer
 step_key: content-article
-model: gpt-4o
+model: claude-opus-4
+provider: anthropic
+tier: 3
+thinking_budget: 32000
 temperature: 0.4
 max_iterations: 8
 credit_cost: 30

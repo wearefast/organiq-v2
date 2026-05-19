@@ -39,8 +39,7 @@ Pulse OS is an agent-led SEO/GEO/AEO strategy operating system. It runs an 18-st
 │  pulse_v2│ │          │ │  ├── DataForSEO (9 modules)   │
 └──────────┘ └──────────┘ │  ├── Firecrawl               │
                            │  ├── Serper.dev              │
-                           │  ├── PageSpeed / CrUX        │
-                           │  └── Python Sidecar (FastAPI) │
+                           │  └── PageSpeed / CrUX        │
                            └──────────────────────────────┘
 ```
 
@@ -50,7 +49,6 @@ Pulse OS is an agent-led SEO/GEO/AEO strategy operating system. It runs an 18-st
 |---------|------|---------|
 | Frontend | 3001 | Next.js dev server |
 | Backend API | 3002 | NestJS REST + WebSocket |
-| Python Sidecar | 8000 | Analysis + PDF |
 | PostgreSQL | 5433 | Database |
 | Redis | 6379 | BullMQ queues |
 
@@ -69,6 +67,5 @@ Pulse OS is an agent-led SEO/GEO/AEO strategy operating system. It runs an 18-st
 | Drizzle over Prisma | Better TypeScript inference, no binary engine issues on Windows |
 | BullMQ for steps | Reliable retry, dead letter, priority; already battle-tested in v1 |
 | Clerk for auth | Handles MFA, org management, webhooks; reduces auth surface area |
-| Python sidecar | ReportLab + NLP libraries are Python-native; FastAPI is lightweight |
 | WebSocket for progress | Steps can take 30-60s; polling is wasteful |
 | Credit pre-check | Prevents runaway costs; agents cannot exceed budget |

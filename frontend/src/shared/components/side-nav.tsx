@@ -5,12 +5,14 @@ import { usePathname } from 'next/navigation';
 import {
   LayoutGrid,
   Settings,
-  Zap,
-  Search,
   FileText,
-  Network,
-  BarChart3,
   ChevronLeft,
+  Bot,
+  Eye,
+  Activity,
+  Wrench,
+  FlaskConical,
+  CreditCard,
 } from 'lucide-react';
 import { cn } from '@/shared/utils/cn';
 
@@ -19,17 +21,21 @@ const NAV_ITEMS = [
 ] as const;
 
 const BOTTOM_ITEMS = [
+  { href: '/billing', icon: CreditCard, label: 'Billing' },
   { href: '/settings', icon: Settings, label: 'Settings' },
 ] as const;
 
 function getProjectItems(wId: string, pId: string) {
   const base = `/workspaces/${wId}/projects/${pId}`;
   return [
-    { href: `${base}/workflows`, icon: Zap, label: 'Workflows' },
-    { href: `${base}/keywords`, icon: Search, label: 'Keywords' },
+    { href: `${base}/overview`, icon: LayoutGrid, label: 'Overview' },
+    { href: `${base}/ai-search`, icon: Eye, label: 'AI Search' },
+    { href: `${base}/analytics`, icon: Activity, label: 'Analytics' },
+    { href: `${base}/technical`, icon: Wrench, label: 'Technical' },
+    { href: `${base}/agents`, icon: Bot, label: 'Agents' },
     { href: `${base}/content`, icon: FileText, label: 'Content' },
-    { href: `${base}/topical-map`, icon: Network, label: 'Topical Map' },
-    { href: `${base}/reports`, icon: BarChart3, label: 'Reports' },
+    { href: `${base}/research`, icon: FlaskConical, label: 'Research' },
+    { href: `${base}/settings`, icon: Settings, label: 'Settings' },
   ];
 }
 

@@ -1,5 +1,6 @@
 import { Module } from '@nestjs/common';
 import { AhrefsModule } from './ahrefs/ahrefs.module';
+import { AnthropicModule } from './anthropic/anthropic.module';
 import { DataForSeoModule } from './dataforseo/dataforseo.module';
 import { FirecrawlModule } from './firecrawl/firecrawl.module';
 import { OpenAiModule } from './openai/openai.module';
@@ -10,6 +11,7 @@ import { GscModule } from './gsc/gsc.module';
 @Module({
   imports: [
     AhrefsModule,
+    AnthropicModule,
     DataForSeoModule,
     FirecrawlModule,
     OpenAiModule,
@@ -19,6 +21,7 @@ import { GscModule } from './gsc/gsc.module';
   ],
   exports: [
     AhrefsModule,
+    AnthropicModule,
     DataForSeoModule,
     FirecrawlModule,
     OpenAiModule,

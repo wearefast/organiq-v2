@@ -2,6 +2,7 @@
 name: Competitor Metrics Analyst
 step_key: competitor-metrics
 model: gpt-4o
+tier: 1
 temperature: 0.2
 max_iterations: 10
 credit_cost: 55

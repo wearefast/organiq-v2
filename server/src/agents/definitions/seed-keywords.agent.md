@@ -1,7 +1,10 @@
 ---
 name: Seed Keywords Generator
 step_key: seed-keywords
-model: gpt-4o
+model: claude-opus-4
+provider: anthropic
+tier: 3
+thinking_budget: 32000
 temperature: 0.4
 max_iterations: 10
 credit_cost: 40

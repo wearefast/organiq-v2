@@ -1,15 +1,17 @@
 ---
 name: Verdict & Strategy
 step_key: verdict-strategy
-model: gpt-4o
+model: claude-opus-4
+provider: anthropic
+tier: 2
+thinking_budget: 32000
 temperature: 0.4
 max_iterations: 8
 credit_cost: 35
 depends_on:
   - consolidated-keywords
 requires_approval: true
-tools:
-  - serper_search
+tools: []
 ---
 
 # Verdict & Strategy Agent

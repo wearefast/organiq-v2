@@ -9,10 +9,10 @@ Reports are PDF documents generated from workflow run data. They consolidate key
 | File | Purpose |
 |------|---------|
 | `server/src/features/reports/reports.controller.ts` | REST API under `projects/:projectId/reports` |
-| `server/src/features/reports/reports.service.ts` | CRUD + generate (template interpolation + sidecar PDF call) |
+| `server/src/features/reports/reports.service.ts` | CRUD + generate (template interpolation + PDF generation) |
 | `server/src/features/reports/reports.module.ts` | NestJS module |
+| `server/src/features/reports/pdf/pdf-generator.service.ts` | PDF rendering via pdfmake |
 | `server/src/prompts/reports/*.template.md` | Markdown report templates |
-| `python-sidecar/routers/reports.py` | PDF rendering via ReportLab |
 | `frontend/src/features/reports/services/reports.service.ts` | Frontend API service |
 | `frontend/src/app/(dashboard)/workspaces/[wId]/projects/[pId]/reports/page.tsx` | Reports list + generate modal |
 
@@ -45,7 +45,7 @@ Reports are PDF documents generated from workflow run data. They consolidate key
    a. Loads the Markdown template from server/src/prompts/reports/
    b. Fetches workflow context, project data, keyword stats
    c. Interpolates template variables ({{project_domain}}, {{keywords_count}}, etc.)
-   d. Calls Python sidecar POST /reports/pdf with sections
+   d. Calls PdfGeneratorService to render PDF via pdfmake
    e. Stores base64 PDF in reports table (filePath column)
    f. Returns report metadata
 4. User clicks Download
@@ -70,29 +70,3 @@ Reports are PDF documents generated from workflow run data. They consolidate key
 
 ### Known Issue: filePath Column Misuse
 The `filePath` column stores base64 PDF data directly instead of a file path. This is a semantic mismatch documented in the technical debt tracker. Future fix: either rename to `pdfData` or store PDFs in object storage and use `filePath` for the actual path.
-
-## Python Sidecar — PDF Endpoint
-
-**POST /reports/pdf**
-
-Request:
-```json
-{
-  "title": "SEO Strategy Report",
-  "project_domain": "example.com",
-  "report_type": "full_strategy",
-  "sections": [
-    { "title": "Executive Summary", "content": "...", "level": 1 },
-    { "title": "Keyword Analysis", "content": "...", "level": 2 }
-  ]
-}
-```
-
-Response:
-```json
-{
-  "pdf_base64": "JVBERi0xLjQK...",
-  "page_count": 12,
-  "file_size_bytes": 245000
-}
-```

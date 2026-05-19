@@ -158,30 +158,6 @@ Base: `/credits`
 
 ---
 
-## Python Sidecar
-
-Base: `PYTHON_SIDECAR_URL` (default `http://localhost:8000`)
-
-### Analysis Endpoints
-
-| Method | Path | Description |
-|--------|------|-------------|
-| `POST` | `/analyze/citability` | HTML citability scoring for AI systems |
-| `POST` | `/analyze/pagespeed` | Parse PageSpeed Insights metrics |
-| `POST` | `/analyze/gsc-performance` | Google Search Console performance |
-| `POST` | `/analyze/brand-mentions` | Brand mention sentiment tracking |
-| `POST` | `/analyze/keywords` | Keyword scoring & opportunity analysis |
-| `POST` | `/analyze/opportunity` | Quick-win identification |
-| `POST` | `/analyze/gaps` | Competitor gap analysis |
-
-### Report Endpoints
-
-| Method | Path | Description |
-|--------|------|-------------|
-| `POST` | `/reports/pdf` | Markdown → PDF generation (ReportLab) |
-
----
-
 ## Frontend Routes
 
 | Route | Page | Description |

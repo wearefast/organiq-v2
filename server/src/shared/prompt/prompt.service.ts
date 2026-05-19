@@ -21,6 +21,17 @@ interface AgentDefinition {
   tools: string[];
   body: string;
   outputSchema?: Record<string, unknown>;
+  provider?: 'openai' | 'anthropic';
+  tier?: 'tier1' | 'tier2' | 'tier3';
+  thinkingBudget?: number;
+  promptId?: string;
+}
+
+type PromptSourceMode = 'local' | 'console' | 'hybrid';
+
+interface ConsoleCacheEntry {
+  content: string;
+  fetchedAt: number;
 }
 
 @Injectable()
@@ -31,6 +42,13 @@ export class PromptService {
   private readonly cache = new Map<string, { content: string; mtime: number }>();
   private readonly useCache: boolean;
   private static readonly MAX_CACHE_SIZE = 100;
+
+  // Console integration
+  private readonly promptSource: PromptSourceMode;
+  private readonly consoleUrl: string | undefined;
+  private readonly consoleApiKey: string | undefined;
+  private readonly consoleCache = new Map<string, ConsoleCacheEntry>();
+  private static readonly CONSOLE_TTL_MS = 5 * 60 * 1000; // 5 minutes
 
   constructor(private readonly config: ConfigService) {
     this.promptsDir = this.resolveFirstExistingDir([
@@ -46,6 +64,16 @@ export class PromptService {
       join(__dirname, '..', '..', '..', 'src', 'agents', 'definitions'),
     ]);
     this.useCache = config.get('NODE_ENV') === 'production';
+
+    // Console integration config
+    const source = config.get<string>('PROMPT_SOURCE') || 'local';
+    this.promptSource = (['local', 'console', 'hybrid'].includes(source) ? source : 'local') as PromptSourceMode;
+    this.consoleUrl = config.get<string>('PROMPT_CONSOLE_URL');
+    this.consoleApiKey = config.get<string>('PROMPT_CONSOLE_API_KEY');
+
+    if (this.promptSource !== 'local' && (!this.consoleUrl || !this.consoleApiKey)) {
+      this.logger.warn(`PROMPT_SOURCE=${this.promptSource} but Console URL/API key not configured. Falling back to local.`);
+    }
   }
 
   private resolveFirstExistingDir(candidates: string[]): string {
@@ -97,6 +125,86 @@ export class PromptService {
     return this.readFileWithCache(filePath);
   }
 
+  /**
+   * Fetch a prompt from the Console API with 5-min TTL cache.
+   * Falls back to local file on Console failure.
+   */
+  async fetchFromConsole(promptId: string, version?: string): Promise<string | null> {
+    if (!this.consoleUrl || !this.consoleApiKey) {
+      return null;
+    }
+
+    const cacheKey = `${promptId}:${version ?? 'latest'}`;
+    const cached = this.consoleCache.get(cacheKey);
+    if (cached && Date.now() - cached.fetchedAt < PromptService.CONSOLE_TTL_MS) {
+      return cached.content;
+    }
+
+    try {
+      const url = version
+        ? `${this.consoleUrl}/api/prompts/${encodeURIComponent(promptId)}/versions/${encodeURIComponent(version)}`
+        : `${this.consoleUrl}/api/prompts/${encodeURIComponent(promptId)}`;
+
+      const response = await fetch(url, {
+        headers: {
+          Authorization: `Bearer ${this.consoleApiKey}`,
+          'Content-Type': 'application/json',
+        },
+        signal: AbortSignal.timeout(5_000),
+      });
+
+      if (!response.ok) {
+        this.logger.warn(`Console fetch failed for ${promptId}: HTTP ${response.status}`);
+        return cached?.content ?? null;
+      }
+
+      const data = (await response.json()) as { content?: string };
+      if (!data.content) {
+        this.logger.warn(`Console response for ${promptId} missing content field`);
+        return cached?.content ?? null;
+      }
+
+      this.consoleCache.set(cacheKey, { content: data.content, fetchedAt: Date.now() });
+      return data.content;
+    } catch (error) {
+      const msg = error instanceof Error ? error.message : String(error);
+      this.logger.warn(`Console fetch error for ${promptId}: ${msg}`);
+      // Return stale cache if available
+      return cached?.content ?? null;
+    }
+  }
+
+  /**
+   * Load agent definition, optionally resolving from Console based on PROMPT_SOURCE.
+   */
+  async loadAgentDefinitionResolved(stepKey: string): Promise<AgentDefinition> {
+    const localDef = await this.loadAgentDefinition(stepKey);
+
+    // If mode is 'local' or no promptId, always use local
+    if (this.promptSource === 'local' || !localDef.promptId) {
+      return localDef;
+    }
+
+    // Console or hybrid mode — try Console first
+    const consoleContent = await this.fetchFromConsole(localDef.promptId);
+    if (!consoleContent) {
+      // Console unavailable — hybrid falls back to local, console mode also falls back
+      if (this.promptSource === 'console') {
+        this.logger.warn(`Console-only mode but fetch failed for ${stepKey}. Using local fallback.`);
+      }
+      return localDef;
+    }
+
+    // Parse Console content as agent definition
+    try {
+      const parsed = this.parseAgentDefinition(this.normalizeLineEndings(consoleContent), stepKey);
+      return parsed;
+    } catch (error) {
+      this.logger.warn(`Failed to parse Console content for ${stepKey}, using local: ${(error as Error).message}`);
+      return localDef;
+    }
+  }
+
   private parseAgentDefinition(raw: string, fallbackKey: string): AgentDefinition {
     const fmMatch = raw.match(/^---\n([\s\S]*?)\n---\n([\s\S]*)$/);
     if (!fmMatch) {
@@ -119,7 +227,20 @@ export class PromptService {
       tools: this.parseYamlArray(frontmatter.tools),
       body,
       outputSchema,
+      provider: (frontmatter.provider as 'openai' | 'anthropic') ?? undefined,
+      tier: this.parseTier(frontmatter.tier),
+      thinkingBudget: frontmatter.thinking_budget ? parseInt(String(frontmatter.thinking_budget), 10) : undefined,
+      promptId: frontmatter.prompt_id ?? undefined,
     };
+  }
+
+  private parseTier(raw: unknown): 'tier1' | 'tier2' | 'tier3' | undefined {
+    if (!raw) return undefined;
+    const val = String(raw);
+    if (val === '1' || val === 'tier1') return 'tier1';
+    if (val === '2' || val === 'tier2') return 'tier2';
+    if (val === '3' || val === 'tier3') return 'tier3';
+    return undefined;
   }
 
   private extractOutputSchema(

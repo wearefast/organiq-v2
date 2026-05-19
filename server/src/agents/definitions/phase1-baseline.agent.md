@@ -1,7 +1,10 @@
 ---
 name: Phase 1 Keyword Baseline
 step_key: phase1-baseline
-model: gpt-4o
+model: claude-opus-4
+provider: anthropic
+tier: 3
+thinking_budget: 32000
 temperature: 0.3
 max_iterations: 12
 credit_cost: 45

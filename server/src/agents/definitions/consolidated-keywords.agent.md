@@ -1,7 +1,10 @@
 ---
 name: Keyword Consolidation
 step_key: consolidated-keywords
-model: gpt-4o
+model: claude-opus-4
+provider: anthropic
+tier: 2
+thinking_budget: 32000
 temperature: 0.2
 max_iterations: 10
 credit_cost: 40
@@ -11,9 +14,7 @@ depends_on:
   - method02-seed-expansion
   - method03-content-gap-import
 requires_approval: true
-tools:
-  - ahrefs_keyword_difficulty
-  - dataforseo_keyword_volume
+tools: []
 ---
 
 # Consolidated Keywords Agent

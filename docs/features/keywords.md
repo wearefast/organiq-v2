@@ -12,7 +12,6 @@ Keywords are the core data asset in Pulse. They are discovered, scored, and cate
 | `server/src/features/keywords/keywords.service.ts` | CRUD + bulk upsert + stats |
 | `server/src/features/keywords/keywords.module.ts` | NestJS module |
 | `frontend/src/app/(dashboard)/workspaces/[wId]/projects/[pId]/keywords/page.tsx` | Keywords management page |
-| `python-sidecar/routers/keywords.py` | Keyword scoring, opportunity analysis, gap analysis |
 
 ## API Endpoints
 
@@ -79,11 +78,3 @@ discovered → approved → brief_ready → written → published
 | `tofu` | Top of Funnel | Awareness — broad informational queries |
 | `mofu` | Middle of Funnel | Consideration — comparison & evaluation |
 | `bofu` | Bottom of Funnel | Decision — purchase-intent queries |
-
-## Python Sidecar Endpoints
-
-| Endpoint | Purpose |
-|----------|---------|
-| `POST /analyze/keywords` | Score keywords by opportunity, difficulty, relevance |
-| `POST /analyze/opportunity` | Identify quick-win opportunities |
-| `POST /analyze/gaps` | Competitor gap analysis |

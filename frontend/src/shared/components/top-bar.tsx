@@ -1,8 +1,9 @@
 'use client';
 
-import { UserButton } from '@clerk/nextjs';
+import { UserButton, useOrganization } from '@clerk/nextjs';
 import { Command, Sun, Moon } from 'lucide-react';
 import { useTheme } from '@/shared/hooks/use-theme';
+import { NotificationBell } from '@/shared/components/notification-bell';
 
 interface TopBarProps {
   onCommandPalette?: () => void;
@@ -10,6 +11,7 @@ interface TopBarProps {
 
 export function TopBar({ onCommandPalette }: TopBarProps) {
   const { theme, toggleTheme } = useTheme();
+  const { organization } = useOrganization();
 
   return (
     <header className="fixed top-0 z-50 flex h-topbar w-full items-center border-b border-zinc-800 bg-shell px-4">
@@ -35,6 +37,9 @@ export function TopBar({ onCommandPalette }: TopBarProps) {
           ⌘K
         </kbd>
       </button>
+
+      {/* Notifications */}
+      <NotificationBell organizationId={organization?.id} />
 
       {/* Theme toggle */}
       <button

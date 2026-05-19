@@ -36,24 +36,12 @@
 | `react` | ^19.0.0 | UI library |
 | `react-dom` | ^19.0.0 | React DOM renderer |
 | `@clerk/nextjs` | ^7.3.3 | Authentication (SSO, org management) |
-| `@react-pdf/renderer` | ^4.5.1 | Client-side PDF rendering (unused — reports use sidecar) |
+| `@react-pdf/renderer` | ^4.5.1 | Client-side PDF rendering |
 | `lucide-react` | ^1.11.0 | Icon library |
 | `class-variance-authority` | ^0.7.0 | Component variant utility |
 | `clsx` | ^2.1.1 | Conditional CSS class merging |
 | `tailwind-merge` | ^2.3.0 | Tailwind class conflict resolution |
 | `socket.io-client` | ^4.8.3 | WebSocket client for real-time step updates |
-
-### Python Sidecar (python-sidecar/)
-
-| Package | Version | Purpose |
-|---------|---------|---------|
-| `fastapi` | >=0.104.0 | API framework |
-| `uvicorn` | >=0.24.0 | ASGI server |
-| `pydantic` | >=2.5.0 | Request/response validation |
-| `beautifulsoup4` | >=4.12.0 | HTML parsing (citability analysis) |
-| `textstat` | >=0.7.3 | Readability scoring |
-| `reportlab` | >=4.1.0 | PDF generation (report rendering) |
-| `markdown` | >=3.5.0 | Markdown-to-HTML conversion for PDFs |
 
 ### Root (monorepo)
 
@@ -100,7 +88,7 @@
 | **Firecrawl** | `FIRECRAWL_API_KEY` | Web scraping and crawling (markdown output) | Bearer token |
 | **PageSpeed Insights** | `PAGESPEED_API_KEY` (optional) | Core Web Vitals, performance scoring | Query param |
 | **CrUX API** | `PAGESPEED_API_KEY` | Chrome UX Report real-user metrics | Query param |
-| **Google Search Console** | via Python sidecar | Search performance, top queries/pages | OAuth (sidecar) |
+| **Google Search Console** | GSC API | Search performance, top queries/pages | OAuth |
 
 ### Infrastructure Services
 
@@ -109,7 +97,7 @@
 | **PostgreSQL 16** | `DATABASE_URL` | `postgres://pulse:pulse@localhost:5433/pulse_v2` | Primary data store |
 | **Redis 7** | `REDIS_URL` | `redis://localhost:6379` | BullMQ job queues |
 | **Clerk** | `CLERK_SECRET_KEY` / `CLERK_WEBHOOK_SECRET` | — | Auth provider (JWT, webhooks) |
-| **Python Sidecar** | `PYTHON_SIDECAR_URL` | `http://localhost:8000` | Analysis + PDF service |
+| **Stripe** | `STRIPE_SECRET_KEY` / `STRIPE_WEBHOOK_SECRET` | — | Billing & subscriptions |
 
 ---
 
@@ -135,7 +123,8 @@
 | `DATAFORSEO_LOGIN` | `''` | DataForSEO login |
 | `DATAFORSEO_PASSWORD` | `''` | DataForSEO password |
 | `PAGESPEED_API_KEY` | `''` | Google PageSpeed/CrUX API key |
-| `PYTHON_SIDECAR_URL` | `http://localhost:8000` | Python sidecar base URL |
+| `STRIPE_SECRET_KEY` | — | Stripe secret key |
+| `STRIPE_WEBHOOK_SECRET` | — | Stripe webhook signing secret |
 | `FRONTEND_URL` | — | Frontend origin (CORS) |
 | `PORT` | `3002` | Backend server port |
 | `CLERK_DOMAIN` | — | Custom Clerk domain |

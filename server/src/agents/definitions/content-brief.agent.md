@@ -1,7 +1,10 @@
 ---
 name: Content Brief Strategist
 step_key: content-brief
-model: gpt-4o
+model: claude-opus-4
+provider: anthropic
+tier: 3
+thinking_budget: 32000
 temperature: 0.3
 max_iterations: 5
 credit_cost: 25

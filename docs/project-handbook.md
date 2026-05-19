@@ -11,7 +11,7 @@ For comprehensive coverage, see the dedicated docs:
 | Area | Document | What It Covers |
 |------|----------|----------------|
 | Product | [Product Overview](product/overview.md) | What Pulse is, 18-step workflow, key concepts, credit costs |
-| API | [API Reference](architecture/api-reference.md) | Complete REST endpoints for all 11 controllers + sidecar |
+| API | [API Reference](architecture/api-reference.md) | Complete REST endpoints for all 11 controllers |
 | Dependencies | [Dependencies](architecture/dependencies.md) | All packages, env variables, external services |
 | Workflows | [Workflows](features/workflows.md) | Agent pipeline, step states, dependency graph |
 | Keywords | [Keywords](features/keywords.md) | Keyword lifecycle, intent, funnel stages |
@@ -117,7 +117,6 @@ Step 13 → Step 14 → Step 15 → Step 16 → Step 17 → Step 18
 |-------|-----------|------|----------------|
 | Frontend | Next.js 15 | 3001 | Dashboard UI, workflow shell |
 | Backend | NestJS 10 | 3002 | REST API, WebSocket, agent orchestration |
-| Python Sidecar | FastAPI | 8000 | Analysis endpoints, PDF reports |
 | Database | PostgreSQL 16 | 5433 | Primary persistence |
 | Queue | Redis 7 + BullMQ | 6379 | Background step execution |
 
@@ -133,8 +132,8 @@ Step 13 → Step 14 → Step 15 → Step 16 → Step 17 → Step 18
 | SERP Data | DataForSEO (9 modules), Serper.dev |
 | Scraping | Firecrawl |
 | Performance | PageSpeed / CrUX |
-| Analysis | Python sidecar (FastAPI, 12 endpoints) |
-| Reports | ReportLab (PDF) |
+| Analysis | Server-side utilities (analysis utils) |
+| Reports | pdfmake (PDF) |
 
 ---
 
@@ -197,7 +196,6 @@ Pulse/
 │       │       ├── serper/
 │       │       └── gsc/
 │       └── shared/            Database module, prompt service, health
-├── python-sidecar/            FastAPI analysis + PDF service
 ├── docs/                      Documentation
 ├── infra/                     Docker Compose
 └── .github/                   Copilot instructions
@@ -351,22 +349,3 @@ Keyboard-first: ⌘K command palette, J/K navigation, A/R/E approval shortcuts.
 | `npm run dev` | Run frontend + server |
 | `npm run typecheck` | TypeScript check both packages |
 | `npm run format` | Format all files |
-
----
-
-## Python Sidecar Endpoints
-
-| Endpoint | Purpose |
-|----------|---------|
-| `POST /analyze/citability` | AI citability scoring |
-| `POST /analyze/readability` | Readability scoring |
-| `POST /analyze/keywords` | Keyword density/analysis |
-| `POST /analyze/content-score` | Overall content quality |
-| `POST /analyze/seo-quality` | Technical SEO quality |
-| `POST /analyze/opportunity` | Keyword opportunity scoring |
-| `POST /analyze/competitor-gaps` | Competitor gap analysis |
-| `POST /analyze/brand-mentions` | Brand mention scanning |
-| `POST /analyze/pagespeed` | PageSpeed analysis |
-| `POST /analyze/gsc-performance` | GSC data processing |
-| `POST /reports/pdf` | PDF report generation |
-| `POST /auth/google` | Google OAuth for GSC |

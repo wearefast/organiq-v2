@@ -2,6 +2,7 @@
 name: "Method 03: Content Gap Import"
 step_key: method03-content-gap-import
 model: gpt-4o
+tier: 1
 temperature: 0.2
 max_iterations: 8
 credit_cost: 30

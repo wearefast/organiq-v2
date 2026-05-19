@@ -55,11 +55,11 @@ function normalizeMethod02(raw: Record<string, unknown>): Method02Data {
   const result = { ...raw } as Method02Data;
 
   if (result.expandedKeywords && Array.isArray(result.expandedKeywords)) {
-    const first = result.expandedKeywords[0] as Record<string, unknown> | undefined;
+    const first = result.expandedKeywords[0] as unknown as Record<string, unknown> | undefined;
     // Array of { category, seedKeyword, relatedKeywords } — flatten into ExpandedKeyword[]
     if (first && 'relatedKeywords' in first) {
       const flat: ExpandedKeyword[] = [];
-      for (const item of result.expandedKeywords as Array<Record<string, unknown>>) {
+      for (const item of result.expandedKeywords as unknown as Array<Record<string, unknown>>) {
         const related = item.relatedKeywords;
         if (!Array.isArray(related)) continue;
         for (const kw of related) {

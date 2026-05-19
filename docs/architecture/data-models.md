@@ -254,10 +254,48 @@ organizations ─┬─ org_members ─── (user reference via Clerk ID)
 | `content_status` | `draft`, `review`, `approved`, `published` |
 | `report_type` | `full_strategy`, `ai_visibility`, `keyword_research`, `content_plan` |
 
+## Integration Tables
+
+### gsc_connections
+
+| Column | Type | Notes |
+|--------|------|-------|
+| id | uuid PK | |
+| project_id | uuid FK (unique) | One GSC connection per project |
+| organization_id | uuid FK | |
+| site_url | text | Google property URL (e.g. `sc-domain:example.com`) |
+| encrypted_access_token | text | AES-256-GCM encrypted |
+| encrypted_refresh_token | text | AES-256-GCM encrypted |
+| token_expires_at | timestamp | |
+| last_sync_at | timestamp | |
+| sync_status | text | `connected`, `syncing`, `synced`, `error` |
+| created_at | timestamp | |
+| updated_at | timestamp | |
+
+### gsc_keyword_data
+
+| Column | Type | Notes |
+|--------|------|-------|
+| id | uuid PK | |
+| connection_id | uuid FK | → gsc_connections |
+| project_id | uuid FK | |
+| query | text | Search query |
+| page | text (nullable) | Landing page URL |
+| clicks | integer | |
+| impressions | integer | |
+| ctr | numeric | Click-through rate |
+| position | numeric | Average position |
+| date | date | |
+| country | text (nullable) | |
+| device | text (nullable) | |
+| created_at | timestamp | |
+
 ## Indexes (Key)
 
 - `workflow_steps`: compound on `(workflow_run_id, step_key)`
 - `step_artifacts`: compound on `(workflow_run_id, step_key, version)`
 - `keywords`: compound on `(project_id, status)`
 - `credit_ledger`: compound on `(organization_id, created_at)`
+- `gsc_connections`: unique on `(project_id)`
+- `gsc_keyword_data`: compound on `(connection_id)`, `(project_id, date)`, `(query)`
 - All FK columns indexed

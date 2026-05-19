@@ -389,16 +389,16 @@ function BriefDataPanel({ briefData }: { briefData: unknown }) {
       )}
 
       {/* Content Structure */}
-      {contentStructure && typeof contentStructure === 'object' && (
+      {(contentStructure && typeof contentStructure === 'object') ? (
         <div>
           <p className="text-[11px] font-semibold uppercase tracking-wide text-zinc-500">Content Structure</p>
           <div className="mt-1 max-h-48 overflow-y-auto text-xs text-zinc-400">
-            <ReactMarkdown remarkPlugins={[remarkGfm]}>
-              {typeof contentStructure === 'string' ? contentStructure : JSON.stringify(contentStructure, null, 2)}
-            </ReactMarkdown>
+            <MarkdownPreview
+              content={typeof contentStructure === 'string' ? contentStructure : JSON.stringify(contentStructure, null, 2)}
+            />
           </div>
         </div>
-      )}
+      ) : null}
 
       {/* Secondary Keywords */}
       {secondaryKeywords.length > 0 && (
