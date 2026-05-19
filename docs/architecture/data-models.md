@@ -9,19 +9,28 @@ PostgreSQL 16 with Drizzle ORM. Schema defined in `server/src/db/schema.ts`.
 ```
 organizations ─┬─ org_members ─── (user reference via Clerk ID)
                ├─ credit_ledger
-               └─ workspaces ─── projects ─── workflow_runs
-                                                    │
-                                              workflow_steps
-                                                    │
-                                    ┌───────────────┼───────────────┐
-                              step_artifacts   step_approvals   step_tool_calls
-                                    │
-                              workflow_context
-                                    │
-                    ┌───────────────┼───────────────┐
-                keywords      topical_maps     content_pieces
-                                                      │
-                                                   reports
+               ├─ subscriptions ─── (Stripe billing)
+               ├─ purchases ─── (one-time credit packs)
+               ├─ notifications
+               └─ workspaces ─── projects ─┬─ workflow_runs
+                                            │       │
+                                            │  workflow_steps
+                                            │       │
+                                            │  ┌────┼────┐
+                                            │  artifacts  approvals  tool_calls
+                                            │       │
+                                            │  workflow_context
+                                            │       │
+                                            ├─ keywords ─── keyword_decay_alerts
+                                            ├─ topical_maps
+                                            ├─ content_pieces ─── content_images
+                                            ├─ reports
+                                            ├─ agent_runs
+                                            ├─ scheduled_workflows ─── workflow_run_history
+                                            ├─ llm_traffic_sessions / llm_traffic_stats
+                                            ├─ llm_audit_results
+                                            ├─ tracked_prompts ─── prompt_visibility_results
+                                            └─ gsc_connections ─── gsc_keyword_data
 ```
 
 ## Core Tables
@@ -253,6 +262,214 @@ organizations ─┬─ org_members ─── (user reference via Clerk ID)
 | `content_type` | `brief`, `article` |
 | `content_status` | `draft`, `review`, `approved`, `published` |
 | `report_type` | `full_strategy`, `ai_visibility`, `keyword_research`, `content_plan` |
+| `subscription_status` | `active`, `past_due`, `canceled`, `trialing`, `incomplete` |
+| `agent_run_status` | `running`, `completed`, `failed` |
+
+## Billing Tables
+
+### subscriptions
+
+| Column | Type | Notes |
+|--------|------|-------|
+| id | uuid | PK |
+| organization_id | uuid | FK → organizations |
+| stripe_subscription_id | text | Unique |
+| stripe_customer_id | text | |
+| stripe_price_id | text | Active price |
+| plan | org_plan enum | pro, agency, enterprise |
+| status | subscription_status | |
+| current_period_start | timestamp | |
+| current_period_end | timestamp | |
+| cancel_at_period_end | boolean | Default false |
+| monthly_credits | integer | Credits per cycle |
+| created_at | timestamp | |
+| updated_at | timestamp | |
+
+### purchases
+
+| Column | Type | Notes |
+|--------|------|-------|
+| id | uuid | PK |
+| organization_id | uuid | FK → organizations |
+| stripe_payment_intent_id | text | Unique |
+| stripe_customer_id | text | |
+| amount | integer | Payment in cents |
+| credits | integer | Credits purchased |
+| currency | text | Default 'usd' |
+| status | text | Default 'succeeded' |
+| created_at | timestamp | |
+
+## Agent Tables
+
+### agent_runs
+
+| Column | Type | Notes |
+|--------|------|-------|
+| id | uuid | PK |
+| project_id | uuid | FK → projects |
+| organization_id | uuid | FK → organizations |
+| agent_type | text | e.g., 'ai-intelligence' |
+| user_prompt | text | Original user prompt |
+| response | text | Agent response (nullable, nulled after 30d) |
+| recommendations | jsonb | Structured recommendations (nullable) |
+| cited_data | jsonb | Data citations |
+| credit_cost | integer | Credits consumed |
+| status | agent_run_status | running, completed, failed |
+| error | text | Nullable |
+| duration_ms | integer | Execution time |
+| created_at | timestamp | |
+
+### scheduled_workflows
+
+| Column | Type | Notes |
+|--------|------|-------|
+| id | uuid | PK |
+| project_id | uuid | FK → projects |
+| organization_id | uuid | FK → organizations |
+| name | text | Human label |
+| agent_type | text | Agent to run |
+| prompt | text | User prompt |
+| schedule_cron | text | Cron expression |
+| delivery_channel | text | 'email' or 'slack' |
+| delivery_target | text | Email address or webhook URL |
+| is_active | boolean | Default true |
+| last_run_at | timestamp | Nullable |
+| next_run_at | timestamp | Nullable |
+| created_at | timestamp | |
+
+### workflow_run_history
+
+| Column | Type | Notes |
+|--------|------|-------|
+| id | uuid | PK |
+| workflow_id | uuid | FK → scheduled_workflows |
+| project_id | uuid | FK → projects |
+| ran_at | timestamp | Execution time |
+| status | text | completed, failed |
+| agent_response | text | Nullable |
+| delivered | boolean | Whether delivery succeeded |
+| error_message | text | Nullable |
+
+## Monitoring Tables
+
+### llm_traffic_sessions
+
+| Column | Type | Notes |
+|--------|------|-------|
+| id | uuid | PK |
+| project_id | uuid | FK → projects |
+| source | text | AI platform (e.g., 'chatgpt', 'perplexity') |
+| query | text | User query detected |
+| landing_page | text | Page that received traffic |
+| referrer | text | Full referrer URL |
+| user_agent | text | |
+| country | text | Nullable |
+| created_at | timestamp | |
+
+### llm_traffic_stats
+
+| Column | Type | Notes |
+|--------|------|-------|
+| id | uuid | PK |
+| project_id | uuid | FK → projects |
+| date | date | Aggregation date |
+| source | text | AI platform |
+| sessions | integer | Session count |
+| unique_queries | integer | Distinct queries |
+| created_at | timestamp | |
+
+### llm_audit_results
+
+| Column | Type | Notes |
+|--------|------|-------|
+| id | uuid | PK |
+| project_id | uuid | FK → projects |
+| query | text | Test query |
+| platform | text | AI platform tested |
+| cited | boolean | Whether the site was cited |
+| position | integer | Nullable, ranking position |
+| snippet | text | Extracted citation snippet |
+| competitor_citations | jsonb | Array of competitor citations |
+| checked_at | timestamp | |
+| cited_url | text | Nullable |
+| created_at | timestamp | |
+
+### tracked_prompts
+
+| Column | Type | Notes |
+|--------|------|-------|
+| id | uuid | PK |
+| project_id | uuid | FK → projects |
+| prompt | text | Prompt to track |
+| platform | text | Target platform |
+| frequency | text | Check frequency |
+| is_active | boolean | |
+| last_checked_at | timestamp | Nullable |
+| created_at | timestamp | |
+
+### prompt_visibility_results
+
+| Column | Type | Notes |
+|--------|------|-------|
+| id | uuid | PK |
+| tracked_prompt_id | uuid | FK → tracked_prompts |
+| project_id | uuid | FK → projects |
+| platform | text | |
+| cited | boolean | |
+| position | integer | Nullable |
+| snippet | text | |
+| full_response | text | |
+| competitor_citations | jsonb | |
+| checked_at | timestamp | |
+| created_at | timestamp | |
+
+### keyword_decay_alerts
+
+| Column | Type | Notes |
+|--------|------|-------|
+| id | uuid | PK |
+| project_id | uuid | FK → projects |
+| keyword_id | uuid | FK → keywords |
+| keyword | text | Denormalized |
+| previous_position | numeric | |
+| current_position | numeric | |
+| position_change | numeric | |
+| previous_traffic | integer | |
+| current_traffic | integer | |
+| traffic_change_pct | numeric | |
+| alert_type | text | 'position_drop', 'traffic_drop' |
+| severity | text | 'low', 'medium', 'high', 'critical' |
+| is_resolved | boolean | |
+| created_at | timestamp | |
+| resolved_at | timestamp | Nullable |
+
+### notifications
+
+| Column | Type | Notes |
+|--------|------|-------|
+| id | uuid | PK |
+| organization_id | uuid | FK → organizations |
+| project_id | uuid | FK → projects (nullable) |
+| type | text | Notification type |
+| title | text | |
+| message | text | |
+| data | jsonb | Additional context |
+| is_read | boolean | Default false |
+| created_at | timestamp | |
+
+### dlq_failed_steps
+
+| Column | Type | Notes |
+|--------|------|-------|
+| id | uuid | PK |
+| workflow_run_id | uuid | FK → workflow_runs |
+| workflow_step_id | uuid | FK → workflow_steps |
+| step_key | text | |
+| error | text | Error message |
+| attempt_count | integer | |
+| job_data | jsonb | Full BullMQ job payload |
+| resolved | boolean | Default false |
+| created_at | timestamp | |
 
 ## Integration Tables
 
@@ -294,8 +511,16 @@ organizations ─┬─ org_members ─── (user reference via Clerk ID)
 
 - `workflow_steps`: compound on `(workflow_run_id, step_key)`
 - `step_artifacts`: compound on `(workflow_run_id, step_key, version)`
-- `keywords`: compound on `(project_id, status)`
+- `keywords`: compound on `(project_id, status)`, unique on `(project_id, keyword)`
 - `credit_ledger`: compound on `(organization_id, created_at)`
 - `gsc_connections`: unique on `(project_id)`
 - `gsc_keyword_data`: compound on `(connection_id)`, `(project_id, date)`, `(query)`
+- `subscriptions`: unique on `(stripe_subscription_id)`, indexed on `(organization_id)`, `(stripe_customer_id)`
+- `purchases`: unique on `(stripe_payment_intent_id)`, indexed on `(organization_id)`
+- `agent_runs`: indexed on `(project_id)`, `(organization_id)`, `(created_at)`
+- `scheduled_workflows`: indexed on `(project_id)`, `(is_active)`
+- `workflow_run_history`: indexed on `(workflow_id)`, `(project_id)`
+- `llm_traffic_sessions`: indexed on `(project_id)`, `(source)`, `(created_at)`
+- `llm_audit_results`: indexed on `(project_id)`, `(platform)`, `(checked_at)`
+- `tracked_prompts`: indexed on `(project_id)`, `(is_active)`
 - All FK columns indexed

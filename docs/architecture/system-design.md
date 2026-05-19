@@ -28,18 +28,21 @@ Pulse OS is an agent-led SEO/GEO/AEO strategy operating system. It runs an 18-st
 │  ├── WebSocket Gateway (real-time step progress)         │
 │  ├── Agent Runtime (execution loop)                      │
 │  ├── Workflow Service (orchestration)                     │
-│  └── BullMQ Worker (step processor)                      │
+│  ├── BullMQ Worker (step processor)                      │
+│  └── @nestjs/schedule (retention cron, scheduler)        │
 └──────┬────────────┬────────────┬────────────────────────┘
        │            │            │
        ▼            ▼            ▼
 ┌──────────┐ ┌──────────┐ ┌──────────────────────────────┐
 │PostgreSQL│ │  Redis   │ │  External Services            │
 │  16      │ │  7       │ │  ├── OpenAI (function calling)│
-│          │ │  (BullMQ)│ │  ├── Ahrefs v3 (3 APIs)      │
-│  pulse_v2│ │          │ │  ├── DataForSEO (9 modules)   │
-└──────────┘ └──────────┘ │  ├── Firecrawl               │
+│          │ │  (BullMQ)│ │  ├── Anthropic (Claude)       │
+│  pulse_v2│ │          │ │  ├── Ahrefs v3 (3 APIs)      │
+└──────────┘ └──────────┘ │  ├── DataForSEO (9 modules)   │
+                           │  ├── Firecrawl               │
                            │  ├── Serper.dev              │
-                           │  └── PageSpeed / CrUX        │
+                           │  ├── PageSpeed / CrUX        │
+                           │  └── Stripe (billing)        │
                            └──────────────────────────────┘
 ```
 
@@ -69,3 +72,6 @@ Pulse OS is an agent-led SEO/GEO/AEO strategy operating system. It runs an 18-st
 | Clerk for auth | Handles MFA, org management, webhooks; reduces auth surface area |
 | WebSocket for progress | Steps can take 30-60s; polling is wasteful |
 | Credit pre-check | Prevents runaway costs; agents cannot exceed budget |
+| pdfmake for PDFs | Server-side PDF generation without external sidecar dependency |
+| Stripe for billing | Subscription + one-time payments, customer portal, webhook-driven |
+| @nestjs/schedule | Native cron for retention/cleanup tasks without extra infra |

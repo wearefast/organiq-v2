@@ -130,4 +130,4 @@ The workflow is organized into **4 phases**, each building on the previous. Ever
 | `keyword_research` | Keyword research summary with scoring |
 | `content_plan` | Content calendar and topical roadmap |
 
-Reports are generated from workflow run data, interpolated into Markdown templates in `server/src/prompts/reports/`, and rendered to PDF via the Python sidecar's ReportLab endpoint.
+Reports are generated from workflow run data, interpolated into Markdown templates in `server/src/prompts/reports/`, and rendered to PDF via the server-side `PdfGeneratorService` (pdfmake).

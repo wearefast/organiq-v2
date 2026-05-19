@@ -11,7 +11,7 @@ For comprehensive coverage, see the dedicated docs:
 | Area | Document | What It Covers |
 |------|----------|----------------|
 | Product | [Product Overview](product/overview.md) | What Pulse is, 18-step workflow, key concepts, credit costs |
-| API | [API Reference](architecture/api-reference.md) | Complete REST endpoints for all 11 controllers |
+| API | [API Reference](architecture/api-reference.md) | Complete REST endpoints for all controllers |
 | Dependencies | [Dependencies](architecture/dependencies.md) | All packages, env variables, external services |
 | Workflows | [Workflows](features/workflows.md) | Agent pipeline, step states, dependency graph |
 | Keywords | [Keywords](features/keywords.md) | Keyword lifecycle, intent, funnel stages |
@@ -127,13 +127,14 @@ Step 13 → Step 14 → Step 15 → Step 16 → Step 17 → Step 18
 | Frontend | Next.js 15, React 19, Tailwind CSS, Zustand |
 | Auth | Clerk |
 | Backend | NestJS 10, Drizzle ORM, BullMQ |
-| AI | OpenAI (GPT-4o, function calling) |
+| AI | OpenAI (GPT-4o, function calling), Anthropic (Claude, extended thinking) |
 | SEO Data | Ahrefs v3 (Site Explorer + Keywords Explorer + Brand Radar) |
 | SERP Data | DataForSEO (9 modules), Serper.dev |
 | Scraping | Firecrawl |
 | Performance | PageSpeed / CrUX |
-| Analysis | Server-side utilities (analysis utils) |
-| Reports | pdfmake (PDF) |
+| Reports | pdfmake (server-side PDF generation) |
+| Billing | Stripe (subscriptions, credit packs, customer portal) |
+| Scheduling | @nestjs/schedule (retention cron, workflow scheduler) |
 
 ---
 

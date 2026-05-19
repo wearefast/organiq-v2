@@ -37,6 +37,7 @@ server/src/
 │   ├── auth/                  Clerk webhook + ClerkGuard
 │   ├── organizations/         Org CRUD + membership
 │   ├── credits/               Balance, transactions, pre-check
+│   ├── billing/               Stripe subscriptions, credit packs, webhooks
 │   ├── workspaces/            Workspace CRUD
 │   ├── projects/              Project CRUD
 │   ├── workflows/             Orchestration engine
@@ -45,10 +46,17 @@ server/src/
 │   │   ├── workflow.service.ts
 │   │   ├── workflow.processor.ts   (BullMQ worker)
 │   │   └── workflow.gateway.ts     (WebSocket)
+│   ├── on-demand-agents/      Natural-language ad-hoc agents
+│   ├── scheduled-workflows/   Cron-based recurring agents + retention
 │   ├── keywords/              Keyword ledger
 │   ├── topical-maps/          Topical map storage
 │   ├── content/               Content CRUD
-│   ├── reports/               Report generation
+│   ├── reports/               Report generation + PDF (pdfmake)
+│   │   └── pdf/               PdfGeneratorService
+│   ├── notifications/         Org notifications
+│   ├── llm-traffic/           LLM traffic session analytics
+│   ├── audit/                 LLM audit results
+│   ├── prompt-visibility/     Prompt tracking + visibility results
 │   └── integrations/          External API services
 │       ├── ahrefs/            Site Explorer + Keywords Explorer + Brand Radar
 │       ├── anthropic/         Claude Messages API + extended thinking
@@ -57,7 +65,7 @@ server/src/
 │       ├── openai/            Chat completions + function calling
 │       ├── pagespeed/         PageSpeed + CrUX
 │       ├── serper/            SERP results
-│       └── gsc/               Google Search Console (via sidecar)
+│       └── gsc/               Google Search Console
 └── shared/
     ├── database/              DatabaseModule (Drizzle provider)
     ├── prompt/                PromptService (file loader + cache)

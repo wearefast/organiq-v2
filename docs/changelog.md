@@ -4,6 +4,346 @@ All notable changes to the Pulse OS codebase, organized by audit and implementat
 
 ---
 
+## [Full-Project CTO Audit — Cleanup & Hardening] — May 19, 2026
+
+**Comprehensive project-wide audit: 8 issues identified and fixed.**
+
+### Fix 1 (HIGH): Stale `frontend/src/app/dashboard/` route group deleted
+
+**Problem:** An orphaned `dashboard/keywords/[projectId]/workflows/[workflowId]/page.tsx` route existed outside the active `(dashboard)/` route group. It imported from 11 non-existent `@/features/keywords/components/*` modules, causing 37 TypeScript errors.
+
+**Fix:** Deleted the entire `frontend/src/app/dashboard/` directory (stale route group).
+
+### Fix 2 (HIGH): Drizzle migration metadata out of sync
+
+**Problem:** `drizzle/0013_r11_billing.sql` existed as an orphaned file with no corresponding snapshot (`0013_snapshot.json`) or journal entry in `_journal.json`. This could cause Drizzle to re-run or fail on deploy.
+
+**Fix:** Deleted the orphaned SQL file and regenerated via `drizzle-kit generate --name r11_billing`, producing a proper `0013_snapshot.json` + journal entry.
+
+| File | Change |
+|------|--------|
+| `server/drizzle/meta/_journal.json` | Added entry idx 13 for `0013_r11_billing` |
+| `server/drizzle/meta/0013_snapshot.json` | Generated full schema snapshot |
+| `server/drizzle/0013_r11_billing.sql` | Regenerated with proper Drizzle metadata |
+
+### Fix 3 (HIGH): `/billing` page unreachable from UI
+
+**Problem:** The billing page existed at `(dashboard)/billing/page.tsx` but no navigation element linked to it — users could only reach it via direct URL or post-checkout redirect.
+
+**Fix:** Added `Billing` link (CreditCard icon) to side-nav `BOTTOM_ITEMS` above Settings.
+
+| File | Change |
+|------|--------|
+| `frontend/src/shared/components/side-nav.tsx` | Added `CreditCard` import, added `/billing` to `BOTTOM_ITEMS` |
+
+### Fix 4 (MEDIUM): 7 stale Python sidecar references
+
+**Problem:** The Python sidecar was removed in R10 but references remained in `.env.example`, copilot-instructions, and 5 documentation files — misleading for new developers.
+
+**Fix:** Removed all sidecar references, updated tech stack mentions, added Stripe env vars to `.env.example`.
+
+| File | Change |
+|------|--------|
+| `.env.example` | Removed `PYTHON_SIDECAR_URL`, added `STRIPE_*` vars |
+| `.github/copilot-instructions.md` | Removed `python-sidecar/` from structure, updated tech stack |
+| `docs/architecture/api-reference.md` | Removed Python Sidecar section |
+| `docs/architecture/dependencies.md` | Removed sidecar package table, updated service table |
+| `docs/features/reports.md` | Updated to reference `PdfGeneratorService` via pdfmake |
+| `docs/features/keywords.md` | Removed Python Sidecar Endpoints section |
+| `docs/project-handbook.md` | Removed sidecar from topology, structure, and endpoints |
+
+### Fix 5 (MEDIUM): Unused imports in `reports.service.ts`
+
+**Problem:** `desc` (from drizzle-orm) and `ConfigService` were imported/injected but never used — leftover from the sidecar HTTP call removal.
+
+**Fix:** Removed both unused imports and the `ConfigService` constructor injection.
+
+| File | Change |
+|------|--------|
+| `server/src/features/reports/reports.service.ts` | Removed `desc`, `ConfigService` import + injection |
+
+### Fix 6 (MEDIUM): `method02-seed-expansion.tsx` type errors
+
+**Problem:** TS2352 — `ExpandedKeyword` cannot be directly cast to `Record<string, unknown>` because the types don't sufficiently overlap.
+
+**Fix:** Added intermediate `unknown` cast: `as unknown as Record<string, unknown>`.
+
+| File | Change |
+|------|--------|
+| `frontend/src/features/workflow/renderers/method02-seed-expansion.tsx` | Two casts fixed via `unknown` intermediate |
+
+### Fix 7 (LOW): Stale temp files and empty directory
+
+**Problem:** `tmp-reasoning.txt` and `tmp-step14-output.json` contained unrelated SERP analysis data (UAE banking niche). `data/` was empty.
+
+**Fix:** Deleted all three.
+
+### Fix 8 (MEDIUM): `workflow-scheduler.service.ts` onModuleInit lacked error handling
+
+**Problem:** If Redis or BullMQ queue init failed during module startup, the error propagated uncaught and could crash the application.
+
+**Fix:** Wrapped the entire `onModuleInit` body in try-catch with error logging.
+
+| File | Change |
+|------|--------|
+| `server/src/features/scheduled-workflows/workflow-scheduler.service.ts` | Added try-catch around queue registration |
+
+### Bonus: `content/page.tsx` TypeScript errors fixed
+
+**Problem:** Page used raw `ReactMarkdown` and `remarkGfm` without importing them (3 errors). Also had `unknown` type not assignable to `ReactNode` (1 error) due to `contentStructure` being rendered as a short-circuit expression.
+
+**Fix:** Replaced raw `ReactMarkdown` usage with the already-imported `MarkdownPreview` component. Changed `{contentStructure && ...}` to a ternary `(contentStructure && ...) ? <div/> : null` to avoid `unknown` leaking to ReactNode.
+
+| File | Change |
+|------|--------|
+| `frontend/src/app/(dashboard)/workspaces/[wId]/projects/[pId]/content/page.tsx` | ReactMarkdown → MarkdownPreview, ternary for unknown type |
+
+**Final state:** Server tsc 0 errors, Frontend tsc 0 errors (down from 43), 93 tests passing.
+
+---
+
+## [CTO Review — R8–R11 Issues] — May 19, 2026
+
+**7 issues identified from CTO review of R8–R11 implementations:**
+
+### Issue 1 (HIGH): Open redirect via Stripe checkout URLs
+
+**Problem:** `createCheckoutSession` passed user-supplied `successUrl`/`cancelUrl` directly to Stripe with no origin validation. Attacker could redirect users to phishing sites post-checkout.
+
+**Fix:** Added `validateRedirectUrl()` that checks redirect URLs match the configured `FRONTEND_URL` origin. Throws `BadRequestException` on mismatch.
+
+| File | Change |
+|------|--------|
+| `server/src/features/billing/billing.service.ts` | Added `validateRedirectUrl()` with origin check |
+
+### Issue 2 (HIGH): Raw Error thrown for insufficient credits
+
+**Problem:** `throw new Error('Insufficient credits')` in billing service bypassed NestJS exception handling, returning raw 500 to client.
+
+**Fix:** Changed to `throw new ForbiddenException('Insufficient credits')`.
+
+| File | Change |
+|------|--------|
+| `server/src/features/billing/billing.service.ts` | `Error` → `ForbiddenException` |
+
+### Issue 3 (HIGH): PlanLimitGuard was a no-op
+
+**Problem:** Guard always returned `true` without checking actual usage against plan limits.
+
+**Fix:** Implemented real limit counting — queries COUNT of projects, workflows/month, and agent runs/month, compares against plan limits, throws `ForbiddenException` when exceeded.
+
+| File | Change |
+|------|--------|
+| `server/src/features/billing/plan-limit.guard.ts` | Full implementation with DB COUNT queries |
+
+### Issue 4 (MEDIUM): Retention service DELETEd agent runs
+
+**Problem:** `DELETE FROM agent_runs` destroyed audit records, making credit debit history unverifiable.
+
+**Fix:** Changed to `UPDATE SET response=null, recommendations=null` — preserves the audit row while freeing storage.
+
+| File | Change |
+|------|--------|
+| `server/src/features/scheduled-workflows/retention.service.ts` | DELETE → UPDATE nulling response/recommendations |
+
+### Issue 5 (LOW): Blank line in reports.service.ts
+
+Fixed trivial formatting.
+
+### Issue 6 (MEDIUM): Webhook threw generic `Error`
+
+**Problem:** `throw new Error(...)` in webhook handler bypassed NestJS exception filters.
+
+**Fix:** Changed to `throw new BadRequestException(...)`.
+
+| File | Change |
+|------|--------|
+| `server/src/features/billing/billing.service.ts` | `Error` → `BadRequestException` in webhook |
+
+### Issue 7 (LOW): Unused imports in side-nav.tsx
+
+Removed unused icon imports: `Zap`, `Search`, `Network`, `BarChart3`.
+
+---
+
+## [R11 — Stripe Billing] — May 19, 2026
+
+### Billing Module
+
+Full Stripe billing integration with subscription plans, credit packs, and customer portal.
+
+| File | Purpose |
+|------|---------|
+| `server/src/features/billing/billing.service.ts` | Stripe checkout, portal, webhook handler |
+| `server/src/features/billing/billing.controller.ts` | REST endpoints with DTOs |
+| `server/src/features/billing/billing.module.ts` | Module registration |
+| `server/src/features/billing/plan-limit.guard.ts` | PlanLimitGuard + @PlanLimit() decorator |
+| `frontend/src/features/billing/services/billing.service.ts` | Frontend API client |
+| `frontend/src/app/(dashboard)/billing/page.tsx` | Plan cards + credit packs UI |
+
+### API Endpoints
+
+| Method | Path | Description | Auth |
+|--------|------|-------------|------|
+| `POST` | `/billing/webhook` | Stripe webhook receiver | Stripe signature |
+| `POST` | `/billing/:orgId/checkout` | Create subscription checkout | ClerkGuard + OrgMembership |
+| `POST` | `/billing/:orgId/purchase-credits` | Buy credit pack | ClerkGuard + OrgMembership |
+| `POST` | `/billing/:orgId/portal` | Open Stripe customer portal | ClerkGuard + OrgMembership |
+| `GET` | `/billing/:orgId/subscription` | Get current subscription | ClerkGuard + OrgMembership |
+
+### Webhook Events Handled
+
+| Event | Action |
+|-------|--------|
+| `checkout.session.completed` | Activate subscription or credit purchase record |
+| `customer.subscription.updated` | Sync plan/status/period changes |
+| `customer.subscription.deleted` | Mark subscription as canceled |
+| `invoice.paid` | Credit monthly allocation to org ledger |
+
+### Schema Changes (Migration 0013)
+
+- `subscriptions` table — Stripe subscription tracking (status, plan, period dates, credits)
+- `purchases` table — One-time credit pack purchases
+- `subscription_status` enum — active, past_due, canceled, trialing, incomplete
+- Indexes on org_id, stripe_subscription_id (unique), stripe_payment_intent_id (unique)
+
+### PlanLimitGuard
+
+Decorator-based usage enforcement:
+```typescript
+@PlanLimit('projects')           // Max projects per org
+@PlanLimit('workflowsPerMonth')  // Monthly workflow run cap
+@PlanLimit('agentRunsPerMonth')  // Monthly agent run cap
+```
+
+---
+
+## [R10 — PDF Port, Nav Restructure, Retention] — May 19, 2026
+
+### PDF Generation — Python Sidecar → pdfmake
+
+Replaced the Python sidecar HTTP call with a local NestJS service using `pdfmake`.
+
+| File | Purpose |
+|------|---------|
+| `server/src/features/reports/pdf/pdf-generator.service.ts` | PDF rendering (Helvetica font, A4, brand color #E11D48) |
+
+Features:
+- Title page with brand header
+- Section rendering with heading levels
+- Markdown parsing: tables, bullets, bold, horizontal rules
+- 25mm margins, A4 format
+
+### Navigation Restructure
+
+Replaced the project-level sidebar with a cleaner 8-item nav:
+
+| Route | Label | Icon |
+|-------|-------|------|
+| `overview` | Overview | LayoutGrid |
+| `ai-search` | AI Search | Eye |
+| `analytics` | Analytics | Activity |
+| `technical` | Technical | Wrench |
+| `agents` | Agents | Bot |
+| `content` | Content | FileText |
+| `research` | Research | FlaskConical |
+| `settings` | Settings | Settings |
+
+New route pages created under `(dashboard)/workspaces/[wId]/projects/[pId]/`.
+
+### Data Retention Service
+
+Weekly cron job managing data lifecycle:
+
+| Data | Policy | Action |
+|------|--------|--------|
+| LLM traffic sessions | >90 days | DELETE (raw session data not needed) |
+| Agent run responses | >30 days | UPDATE SET null (preserves audit row) |
+
+### Python Sidecar Removal
+
+- Deleted `python-sidecar/` directory entirely
+- Removed `PYTHON_SIDECAR_URL` from env validation
+- Updated system topology diagram
+
+---
+
+## [R8/R9 CTO Review Fixes] — May 19, 2026
+
+**8 issues fixed from CTO review of R8 (On-Demand Agents) and R9 (Scheduled Workflows):**
+
+1. Added class-validator decorators to all DTO fields
+2. Added `@IsEmail()` to `deliveryTarget` when channel is `email`
+3. Removed hardcoded `projectId` fallback
+4. Optimized DB queries (moved filtering from JS to SQL WHERE clause)
+5. Fixed `cron-parser` v5 API (uses `parseExpression().fields` not `parseExpression().next()`)
+6. Added `@IsUrl()` validation on Slack webhook URL
+7. Added `@MaxLength()` constraints on all string fields
+8. Fixed scheduled-workflows response format consistency
+
+---
+
+## [R8 — On-Demand Agents] — May 19, 2026
+
+### On-Demand Agents Module
+
+Natural-language agent interface for ad-hoc project analysis.
+
+| File | Purpose |
+|------|---------|
+| `server/src/features/on-demand-agents/on-demand-agents.controller.ts` | REST API (`projects/:projectId/agents`) |
+| `server/src/features/on-demand-agents/on-demand-agents.service.ts` | Agent execution, history |
+| `server/src/features/on-demand-agents/agent-router.service.ts` | Route prompts to agent types |
+| `server/src/features/on-demand-agents/on-demand-agents.module.ts` | Module registration |
+
+### API Endpoints
+
+| Method | Path | Description |
+|--------|------|-------------|
+| `POST` | `/projects/:projectId/agents/run` | Execute agent with prompt |
+| `GET` | `/projects/:projectId/agents/history` | Get run history |
+| `GET` | `/projects/:projectId/agents/types` | List available agent types |
+
+### Schema (Migration 0012)
+
+- `agent_runs` table — Execution log (prompt, response, recommendations, cited_data, credit_cost, status, duration)
+- `agent_run_status` enum — running, completed, failed
+
+---
+
+## [R9 — Scheduled Workflows] — May 19, 2026
+
+### Scheduled Workflows Module
+
+Cron-based recurring agent execution with email/Slack delivery.
+
+| File | Purpose |
+|------|---------|
+| `server/src/features/scheduled-workflows/scheduled-workflows.controller.ts` | REST CRUD |
+| `server/src/features/scheduled-workflows/scheduled-workflows.service.ts` | Business logic + run history |
+| `server/src/features/scheduled-workflows/scheduled-workflows.processor.ts` | BullMQ processor (check-due-workflows) |
+| `server/src/features/scheduled-workflows/workflow-scheduler.service.ts` | Registers repeatable BullMQ job |
+| `server/src/features/scheduled-workflows/retention.service.ts` | Weekly data cleanup cron |
+| `server/src/features/scheduled-workflows/scheduled-workflows.module.ts` | Module registration |
+
+### API Endpoints
+
+| Method | Path | Description |
+|--------|------|-------------|
+| `POST` | `/projects/:projectId/scheduled-workflows` | Create schedule |
+| `GET` | `/projects/:projectId/scheduled-workflows` | List schedules |
+| `GET` | `/projects/:projectId/scheduled-workflows/:id` | Get schedule |
+| `PATCH` | `/projects/:projectId/scheduled-workflows/:id` | Update schedule |
+| `DELETE` | `/projects/:projectId/scheduled-workflows/:id` | Delete schedule |
+| `GET` | `/projects/:projectId/scheduled-workflows/:id/history` | Get run history |
+
+### Schema (Migration 0012)
+
+- `scheduled_workflows` table — Schedule definition (name, agent_type, prompt, cron, delivery_channel/target, is_active, next_run_at)
+- `workflow_run_history` table — Execution log per scheduled workflow (status, response, delivered, error)
+
+---
+
 ## [QA Audit Fixes — Round 2] — May 12, 2026
 
 **Findings from browser-based QA audit, 4 issues fixed:**
@@ -228,7 +568,7 @@ Created 4 Markdown report templates in `server/src/prompts/reports/`:
 - `keyword-research.template.md` — Keyword research summary
 - `content-plan.template.md` — Content calendar
 
-### H2 — PDF Generation Sidecar
+### H2 — PDF Generation Sidecar *(superseded by R10 — replaced with pdfmake)*
 Added `POST /reports/pdf` endpoint to Python sidecar using ReportLab:
 - Accepts `{ title, project_domain, report_type, sections: [{ title, content, level }] }`
 - Returns `{ pdf_base64, page_count, file_size_bytes }`

@@ -27,6 +27,10 @@
 | `lighthouse` | ^13.1.0 | Performance auditing (PageSpeed) |
 | `rxjs` | ^7.8.1 | Reactive programming (NestJS internals) |
 | `reflect-metadata` | ^0.2.2 | TypeScript decorator metadata |
+| `@nestjs/schedule` | ^6.1.3 | Cron-based scheduled tasks (retention, workflow scheduler) |
+| `stripe` | ^22.1.1 | Stripe SDK (subscriptions, checkout, webhooks) |
+| `pdfmake` | ^0.3.8 | Server-side PDF generation (reports) |
+| `cron-parser` | ^5.5.0 | Cron expression parsing/validation |
 
 ### Frontend (frontend/)
 
@@ -125,7 +129,10 @@
 | `PAGESPEED_API_KEY` | `''` | Google PageSpeed/CrUX API key |
 | `STRIPE_SECRET_KEY` | — | Stripe secret key |
 | `STRIPE_WEBHOOK_SECRET` | — | Stripe webhook signing secret |
-| `FRONTEND_URL` | — | Frontend origin (CORS) |
+| `STRIPE_PRICE_PRO` | — | Stripe Price ID for Pro plan |
+| `STRIPE_PRICE_AGENCY` | — | Stripe Price ID for Agency plan |
+| `STRIPE_PRICE_ENTERPRISE` | — | Stripe Price ID for Enterprise plan |
+| `FRONTEND_URL` | — | Frontend origin (CORS, redirect validation) |
 | `PORT` | `3002` | Backend server port |
 | `CLERK_DOMAIN` | — | Custom Clerk domain |
 
@@ -147,6 +154,6 @@
 All external API integrations use the shared `withRetry()` utility (`server/src/shared/utils/retry.ts`):
 
 - **Default**: 3 attempts, exponential backoff (1s → 2s → 4s)
-- **Applies to**: Ahrefs, DataForSEO, Serper, Firecrawl, PageSpeed, CrUX, GSC sidecar calls
+- **Applies to**: Ahrefs, DataForSEO, Serper, Firecrawl, PageSpeed, CrUX, GSC API calls
 - **OpenAI**: Has its own retry logic in `openai.service.ts` for 429/5xx responses
-- **Not retried**: Clerk webhook processing (idempotent via `onConflictDoNothing`)
+- **Not retried**: Clerk webhook processing (idempotent via `onConflictDoNothing`), Stripe webhook processing

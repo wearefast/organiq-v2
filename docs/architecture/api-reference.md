@@ -158,17 +158,151 @@ Base: `/credits`
 
 ---
 
+## Billing
+
+Base: `/billing`
+
+| Method | Path | Description | Auth |
+|--------|------|-------------|------|
+| `POST` | `/webhook` | Stripe webhook receiver | Stripe signature (no JWT) |
+| `POST` | `/:organizationId/checkout` | Create subscription checkout session | ClerkGuard + OrgMembership |
+| `POST` | `/:organizationId/purchase-credits` | Create credit pack purchase session | ClerkGuard + OrgMembership |
+| `POST` | `/:organizationId/portal` | Open Stripe customer portal | ClerkGuard + OrgMembership |
+| `GET` | `/:organizationId/subscription` | Get current subscription | ClerkGuard + OrgMembership |
+
+**Checkout body:**
+```json
+{
+  "plan": "pro" | "agency" | "enterprise",
+  "successUrl": "https://app.example.com/billing?success=true",
+  "cancelUrl": "https://app.example.com/billing"
+}
+```
+
+**Purchase credits body:**
+```json
+{
+  "credits": 500,
+  "successUrl": "https://app.example.com/billing?success=true",
+  "cancelUrl": "https://app.example.com/billing"
+}
+```
+
+---
+
+## On-Demand Agents
+
+Base: `/projects/:projectId/agents`
+
+| Method | Path | Description |
+|--------|------|-------------|
+| `POST` | `/run` | Execute agent with natural-language prompt |
+| `GET` | `/history` | List agent run history (`?limit=20`) |
+| `GET` | `/types` | List available agent types |
+
+**Run body:**
+```json
+{
+  "prompt": "Analyze competitor backlink profiles for example.com",
+  "agentType": "ai-intelligence"
+}
+```
+
+---
+
+## Scheduled Workflows
+
+Base: `/projects/:projectId/scheduled-workflows`
+
+| Method | Path | Description |
+|--------|------|-------------|
+| `POST` | `/` | Create scheduled workflow |
+| `GET` | `/` | List scheduled workflows for project |
+| `GET` | `/:workflowId` | Get single scheduled workflow |
+| `PATCH` | `/:workflowId` | Update scheduled workflow |
+| `DELETE` | `/:workflowId` | Delete scheduled workflow |
+| `GET` | `/:workflowId/history` | Get run history (`?limit=20`) |
+
+**Create body:**
+```json
+{
+  "name": "Weekly competitor check",
+  "agentType": "ai-intelligence",
+  "prompt": "Check competitor rankings for top 10 keywords",
+  "scheduleCron": "0 9 * * 1",
+  "deliveryChannel": "email",
+  "deliveryTarget": "team@example.com"
+}
+```
+
+---
+
+## LLM Audit
+
+Base: `/projects/:projectId/audit/llm`
+
+| Method | Path | Description |
+|--------|------|-------------|
+| `GET` | `/sessions` | List LLM traffic sessions |
+| `GET` | `/sessions/:id` | Get session details |
+| `GET` | `/results` | Get audit results |
+
+---
+
+## Prompt Visibility
+
+Base: `/projects/:projectId/prompts`
+
+| Method | Path | Description |
+|--------|------|-------------|
+| `GET` | `/` | List tracked prompts |
+| `POST` | `/` | Create tracked prompt |
+| `GET` | `/:id/results` | Get visibility results for prompt |
+
+---
+
+## Notifications
+
+Base: `/organizations/:organizationId/notifications`
+
+| Method | Path | Description |
+|--------|------|-------------|
+| `GET` | `/` | List notifications |
+| `PATCH` | `/:id/read` | Mark notification as read |
+
+---
+
+## Admin
+
+Base: `/admin`
+
+| Method | Path | Description |
+|--------|------|-------------|
+| `GET` | `/dlq` | List dead-letter queue failures |
+| `POST` | `/dlq/:id/replay` | Re-enqueue failed job |
+| `POST` | `/dlq/:id/dismiss` | Mark failure as resolved |
+
+---
+
 ## Frontend Routes
 
 | Route | Page | Description |
 |-------|------|-------------|
 | `/` | Home | Auth redirect |
 | `/login` | Login | Clerk sign-in |
+| `/billing` | Billing | Plan cards, credit packs, portal |
 | `/settings` | Settings | Profile, org info, security |
 | `/workspaces` | Workspaces | Workspace list (entry point) |
 | `/workspaces/:id/projects` | Projects | Project list within workspace |
-| `/workspaces/:wId/projects/:pId/keywords` | Keywords | Keyword management |
+| `/workspaces/:wId/projects/:pId/overview` | Overview | Project dashboard |
+| `/workspaces/:wId/projects/:pId/ai-search` | AI Search | AI visibility tracking |
+| `/workspaces/:wId/projects/:pId/analytics` | Analytics | Traffic & performance |
+| `/workspaces/:wId/projects/:pId/technical` | Technical | Technical SEO audit |
+| `/workspaces/:wId/projects/:pId/agents` | Agents | On-demand agent interface |
 | `/workspaces/:wId/projects/:pId/content` | Content | Content pieces list/editor |
+| `/workspaces/:wId/projects/:pId/research` | Research | Keywords, topical maps |
+| `/workspaces/:wId/projects/:pId/settings` | Settings | Project settings |
+| `/workspaces/:wId/projects/:pId/keywords` | Keywords | Keyword management |
 | `/workspaces/:wId/projects/:pId/topical-map` | Topical Map | Topical structure viewer |
 | `/workspaces/:wId/projects/:pId/workflows` | Workflows | Workflow run list |
 | `/workspaces/:wId/projects/:pId/workflows/:runId` | Run Detail | Step-by-step view + approval |
