@@ -1,5 +1,6 @@
 import { Injectable, Logger } from '@nestjs/common';
-import * as PdfMake from 'pdfmake';
+// eslint-disable-next-line @typescript-eslint/no-var-requires
+const pdfmake = require('pdfmake');
 import type { TDocumentDefinitions, Content, TableCell, StyleDictionary } from 'pdfmake/interfaces';
 
 interface ReportSection {
@@ -28,22 +29,19 @@ const DARK_TEXT = '#18181B';
 const MUTED_TEXT = '#71717A';
 const BORDER_COLOR = '#E4E4E7';
 
-const fonts = {
-  Helvetica: {
-    normal: 'Helvetica',
-    bold: 'Helvetica-Bold',
-    italics: 'Helvetica-Oblique',
-    bolditalics: 'Helvetica-BoldOblique',
-  },
-};
-
 @Injectable()
 export class PdfGeneratorService {
   private readonly logger = new Logger(PdfGeneratorService.name);
-  private readonly printer: any;
 
   constructor() {
-    this.printer = new (PdfMake as any)(fonts);
+    pdfmake.fonts = {
+      Helvetica: {
+        normal: 'Helvetica',
+        bold: 'Helvetica-Bold',
+        italics: 'Helvetica-Oblique',
+        bolditalics: 'Helvetica-BoldOblique',
+      },
+    };
   }
 
   async generate(request: PdfRequest): Promise<PdfResult> {
@@ -262,15 +260,9 @@ export class PdfGeneratorService {
     };
   }
 
-  private createPdfBuffer(docDefinition: TDocumentDefinitions): Promise<Buffer> {
-    return new Promise((resolve, reject) => {
-      const pdfDoc = this.printer.createPdfKitDocument(docDefinition);
-      const chunks: Buffer[] = [];
-      pdfDoc.on('data', (chunk: Buffer) => chunks.push(chunk));
-      pdfDoc.on('end', () => resolve(Buffer.concat(chunks)));
-      pdfDoc.on('error', reject);
-      pdfDoc.end();
-    });
+  private async createPdfBuffer(docDefinition: TDocumentDefinitions): Promise<Buffer> {
+    const doc = pdfmake.createPdf(docDefinition);
+    return doc.getBuffer();
   }
 
   private estimatePageCount(buffer: Buffer): number {

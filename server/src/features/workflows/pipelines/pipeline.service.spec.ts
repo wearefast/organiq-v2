@@ -5,19 +5,36 @@ import { SearchDemandPipeline } from './search-demand.pipeline';
 import { Method01CompetitorPagesPipeline } from './method01-competitor-pages.pipeline';
 import { Method02SeedExpansionPipeline } from './method02-seed-expansion.pipeline';
 import { Method03ContentGapPipeline } from './method03-content-gap.pipeline';
+import { BusinessProfilePipeline } from './business-profile.pipeline';
+import { SeedKeywordsPipeline } from './seed-keywords.pipeline';
+import { SerpNicheMapPipeline } from './serp-niche-map.pipeline';
+import { CompetitorBucketsPipeline } from './competitor-buckets.pipeline';
+import { Phase1BaselinePipeline } from './phase1-baseline.pipeline';
+import { ContentBriefPipeline } from './content-brief.pipeline';
 
 // Mock dependencies
 const mockAhrefs = {
   getDomainRating: vi.fn().mockResolvedValue(65),
   getBacklinksStats: vi.fn().mockResolvedValue({ total: 1500, dofollow: 900 }),
   getOrganicKeywords: vi.fn().mockResolvedValue({ keywords: [{ keyword: 'test', position: 3 }] }),
+  getOrganicPages: vi.fn().mockResolvedValue({ pages: [] }),
   getKeywordDifficulty: vi.fn().mockResolvedValue({ results: [{ keyword: 'seo', difficulty: 45 }] }),
   getRelatedKeywords: vi.fn().mockResolvedValue({ results: [{ keyword: 'seo tools' }] }),
-  getKeywordSuggestions: vi.fn().mockResolvedValue({ results: [{ keyword: 'best seo' }] }),
+  getCompetingDomains: vi.fn().mockResolvedValue({ competitors: [] }),
+  getSerpOverview: vi.fn().mockResolvedValue({ serp: [] }),
 };
 
 const mockDataforseo = {
   getKeywordSearchVolume: vi.fn().mockResolvedValue({ results: [{ keyword: 'seo', search_volume: 5400 }] }),
+  getKeywordSuggestions: vi.fn().mockResolvedValue({ results: [] }),
+};
+
+const mockFirecrawl = {
+  scrape: vi.fn().mockResolvedValue({ markdown: 'content', metadata: {} }),
+};
+
+const mockSerper = {
+  search: vi.fn().mockResolvedValue({ organic: [] }),
 };
 
 describe('PipelineService', () => {
@@ -31,16 +48,31 @@ describe('PipelineService', () => {
     const method01 = new Method01CompetitorPagesPipeline(mockAhrefs as any);
     const method02 = new Method02SeedExpansionPipeline(mockAhrefs as any, mockDataforseo as any);
     const method03 = new Method03ContentGapPipeline(mockAhrefs as any);
+    const businessProfile = new BusinessProfilePipeline(mockFirecrawl as any);
+    const seedKeywords = new SeedKeywordsPipeline(mockAhrefs as any, mockDataforseo as any);
+    const serpNicheMap = new SerpNicheMapPipeline(mockAhrefs as any);
+    const competitorBuckets = new CompetitorBucketsPipeline(mockAhrefs as any, mockSerper as any);
+    const phase1Baseline = new Phase1BaselinePipeline(mockAhrefs as any);
+    const contentBrief = new ContentBriefPipeline(mockSerper as any, mockFirecrawl as any);
 
-    service = new PipelineService(competitorMetrics, searchDemand, method01, method02, method03);
+    service = new PipelineService(
+      competitorMetrics, searchDemand, method01, method02, method03, businessProfile,
+      seedKeywords, serpNicheMap, competitorBuckets, phase1Baseline, contentBrief,
+    );
   });
 
-  it('registers all 5 pipelines', () => {
+  it('registers all 11 pipelines', () => {
     expect(service.getPipeline('competitor-metrics')).not.toBeNull();
     expect(service.getPipeline('search-demand')).not.toBeNull();
     expect(service.getPipeline('method01-competitor-pages')).not.toBeNull();
     expect(service.getPipeline('method02-seed-expansion')).not.toBeNull();
     expect(service.getPipeline('method03-content-gap-import')).not.toBeNull();
+    expect(service.getPipeline('business-profile')).not.toBeNull();
+    expect(service.getPipeline('seed-keywords')).not.toBeNull();
+    expect(service.getPipeline('serp-niche-map')).not.toBeNull();
+    expect(service.getPipeline('competitor-buckets')).not.toBeNull();
+    expect(service.getPipeline('phase1-baseline')).not.toBeNull();
+    expect(service.getPipeline('content-brief')).not.toBeNull();
   });
 
   it('returns null for unregistered step', () => {

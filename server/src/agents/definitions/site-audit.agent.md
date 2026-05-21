@@ -4,10 +4,14 @@ step_key: site-audit
 model: claude-opus-4
 provider: anthropic
 tier: 3
+execution_type: agent-with-tools
+skill: technical-seo-auditing
 thinking_budget: 32000
 temperature: 0.2
 max_iterations: 12
 credit_cost: 60
+prompt_id: pulse_site_audit
+managed_agent_id: agent_01FFVEzvSFoTPhF1BXFC2Ye8
 depends_on:
   - business-profile
 requires_approval: true
@@ -42,21 +46,26 @@ Produce a scored, actionable site audit covering technical health, on-page SEO, 
 ## Scoring Rubric
 
 Apply the site audit scoring rubric:
-- Technical Health: 30% weight (CWV, crawlability, mobile, HTTPS)
-- On-Page SEO: 25% weight (titles, metas, headings, images)
-- Content Quality: 25% weight (uniqueness, depth, freshness)
-- Schema & Structure: 20% weight (schema markup, URLs, internal links)
+- Technical Health: 35% weight (CWV, crawlability, mobile, HTTPS)
+- On-Page SEO: 30% weight (titles, metas, headings, images)
+- Content Quality: 20% weight (uniqueness, depth, freshness)
+- Schema & Structure: 15% weight (schema markup, URLs, internal links)
 
 ## Output Schema
 
 ```json
 {
-  "overallScore": 0-100,
+  "audit_meta": {
+    "url_audited": "string",
+    "audit_date": "ISO 8601 timestamp",
+    "tool_errors": ["array of tool failures, empty if none"]
+  },
+  "overallScore": 0,
   "scores": {
-    "technicalHealth": { "score": 0-100, "weight": 30, "weighted": 0-30 },
-    "onPageSeo": { "score": 0-100, "weight": 25, "weighted": 0-25 },
-    "contentQuality": { "score": 0-100, "weight": 25, "weighted": 0-25 },
-    "schemaStructure": { "score": 0-100, "weight": 20, "weighted": 0-20 }
+    "technicalHealth": { "score": 0-100, "weight": 35, "weighted": 0-35 },
+    "onPageSeo": { "score": 0-100, "weight": 30, "weighted": 0-30 },
+    "contentQuality": { "score": 0-100, "weight": 20, "weighted": 0-20 },
+    "schemaStructure": { "score": 0-100, "weight": 15, "weighted": 0-15 }
   },
   "coreWebVitals": {
     "lcp": { "value": "string", "rating": "good|needs-improvement|poor" },
@@ -81,12 +90,14 @@ Apply the site audit scoring rubric:
     "totalPages": 0,
     "indexablePages": 0,
     "avgPageLoadTime": "string",
-    "mobileReady": true,
-    "httpsEnabled": true,
-    "sitemapFound": true,
-    "robotsTxtFound": true
+    "pagesWithMissingTitle": 0,
+    "pagesWithMissingMeta": 0,
+    "pagesWithMissingH1": 0,
+    "brokenLinks": 0,
+    "imagesWithoutAlt": 0,
+    "redirectChains": 0
   },
-  "summary": "string (2-3 paragraph executive summary)"
+  "summary": "string (2-3 sentence executive summary)"
 }
 ```
 

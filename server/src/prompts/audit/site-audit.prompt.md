@@ -14,10 +14,10 @@ You have access to Firecrawl (crawling/scraping), PageSpeed Insights, CrUX data,
 
 ## Scoring Weights
 
-- Technical Health: 30% (CWV, crawlability, mobile, HTTPS, sitemaps)
-- On-Page SEO: 25% (titles, metas, headings, images, internal links)
-- Content Quality: 25% (uniqueness, depth, freshness, word count)
-- Schema & Structure: 20% (structured data, URL patterns, navigation)
+- Technical Health: 35% (CWV, crawlability, mobile, HTTPS, sitemaps)
+- On-Page SEO: 30% (titles, metas, headings, images, internal links)
+- Content Quality: 20% (uniqueness, depth, freshness, word count)
+- Schema & Structure: 15% (structured data, URL patterns, navigation)
 
 ## Rules
 
@@ -43,22 +43,27 @@ Perform a complete technical SEO audit. Use your tools to crawl the site, test p
 
 ## CRITICAL: Output Schema Enforcement
 
-You MUST return a flat JSON object with EXACTLY these top-level keys: `overallScore`, `scores`, `coreWebVitals`, `issues`, `topPages`, `siteStats`, `summary`.
+You MUST return a JSON object with these top-level keys: `audit_meta`, `overallScore`, `scores`, `coreWebVitals`, `issues`, `topPages`, `siteStats`, `summary`.
 
 Do NOT wrap dimension scores as plain numbers — each dimension inside `scores` MUST be an object with `score`, `weight`, and `weighted`.
 Do NOT use string labels like `"LCP: 2.5s"` as the top-level CWV values. Each CWV entry MUST be an object with `value` (string, e.g. `"2.5s"`) and `rating` (`"good"`, `"needs-improvement"`, or `"poor"`).
-Do NOT add top-level keys beyond the seven listed above.
+`overallScore` = sum of all `weighted` values, rounded to the nearest integer. Weights must always sum to 100; `weighted` = `score × (weight / 100)`, rounded to one decimal.
 
 Return ONLY valid JSON with this exact structure:
 
 ```json
 {
+  "audit_meta": {
+    "url_audited": "",
+    "audit_date": "",
+    "tool_errors": []
+  },
   "overallScore": 0,
   "scores": {
-    "technicalHealth": { "score": 0, "weight": 30, "weighted": 0 },
-    "onPageSeo": { "score": 0, "weight": 25, "weighted": 0 },
-    "contentQuality": { "score": 0, "weight": 25, "weighted": 0 },
-    "schemaStructure": { "score": 0, "weight": 20, "weighted": 0 }
+    "technicalHealth": { "score": 0, "weight": 35, "weighted": 0 },
+    "onPageSeo": { "score": 0, "weight": 30, "weighted": 0 },
+    "contentQuality": { "score": 0, "weight": 20, "weighted": 0 },
+    "schemaStructure": { "score": 0, "weight": 15, "weighted": 0 }
   },
   "coreWebVitals": {
     "lcp": { "value": "", "rating": "good|needs-improvement|poor" },
@@ -75,7 +80,13 @@ Return ONLY valid JSON with this exact structure:
   "siteStats": {
     "totalPages": 0,
     "indexablePages": 0,
-    "avgPageLoadTime": ""
+    "avgPageLoadTime": "",
+    "pagesWithMissingTitle": null,
+    "pagesWithMissingMeta": null,
+    "pagesWithMissingH1": null,
+    "brokenLinks": null,
+    "imagesWithoutAlt": null,
+    "redirectChains": null
   },
   "summary": ""
 }

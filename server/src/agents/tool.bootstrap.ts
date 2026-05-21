@@ -6,6 +6,7 @@ import { FirecrawlService } from '../features/integrations/firecrawl/firecrawl.s
 import { PageSpeedService } from '../features/integrations/pagespeed/pagespeed.service';
 import { DataForSeoService } from '../features/integrations/dataforseo/dataforseo.service';
 import { OpenAiService } from '../features/integrations/openai/openai.service';
+import { AnthropicService } from '../features/integrations/anthropic/anthropic.service';
 
 @Injectable()
 export class ToolBootstrap implements OnModuleInit {
@@ -19,11 +20,36 @@ export class ToolBootstrap implements OnModuleInit {
     private readonly pagespeed: PageSpeedService,
     private readonly dataForSeo: DataForSeoService,
     private readonly openai: OpenAiService,
+    private readonly anthropic: AnthropicService,
   ) {}
 
   onModuleInit() {
     const tools: ToolDefinition[] = [
       // --- Ahrefs ---
+      {
+        name: 'ahrefs_matching_terms',
+        description: 'Get matching keyword terms for a seed keyword from Ahrefs Keywords Explorer',
+        inputSchema: {
+          type: 'object',
+          properties: {
+            keyword: { type: 'string' },
+            country: { type: 'string' },
+            limit: { type: 'number' },
+          },
+          required: ['keyword'],
+        },
+        execute: (input: any) => this.ahrefs.getMatchingTerms(input.keyword, input.country, input.limit),
+      },
+      {
+        name: 'ahrefs_serp_overview',
+        description: 'Get SERP overview for a keyword showing top-ranking pages and their metrics',
+        inputSchema: {
+          type: 'object',
+          properties: { keyword: { type: 'string' }, country: { type: 'string' } },
+          required: ['keyword'],
+        },
+        execute: (input: any) => this.ahrefs.getSerpOverview(input.keyword, input.country),
+      },
       {
         name: 'ahrefs_domain_rating',
         description: 'Get domain rating and authority metrics for a domain',
@@ -225,6 +251,27 @@ export class ToolBootstrap implements OnModuleInit {
         description: 'Detect technologies used by a domain',
         inputSchema: { type: 'object', properties: { domain: { type: 'string' } }, required: ['domain'] },
         execute: (input: any) => this.dataForSeo.getDomainTechnologies(input.domain),
+      },
+      // --- Anthropic Inference ---
+      {
+        name: 'anthropic_ai_inference',
+        description:
+          'Ask Claude a natural-language question as a real user would and check if a specific brand appears in the AI response. Use this to test actual AI visibility — whether Claude mentions or recommends the brand when asked category-level or comparison questions. Returns the AI response text, whether the brand was mentioned, and the surrounding context.',
+        inputSchema: {
+          type: 'object',
+          properties: {
+            query: {
+              type: 'string',
+              description: 'The question to ask Claude, e.g. "What are the best SEO tools?"',
+            },
+            brand: {
+              type: 'string',
+              description: 'The brand name to look for in the AI response',
+            },
+          },
+          required: ['query', 'brand'],
+        },
+        execute: (input: any) => this.anthropic.inferAiBrandMention(input.query, input.brand),
       },
       // --- OpenAI Inference ---
       {

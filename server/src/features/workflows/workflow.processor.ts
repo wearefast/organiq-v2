@@ -4,12 +4,13 @@ import { Job } from 'bullmq';
 import { eq, and, desc, sql } from 'drizzle-orm';
 import { DatabaseService } from '../../shared/database/database.service';
 import { PromptService } from '../../shared/prompt/prompt.service';
-import { AgentRuntime } from '../../agents/agent.runtime';
+import { ManagedAgentRuntime } from '../../agents/managed-agent.runtime';
 import { AgentRegistry } from '../../agents/agent.registry';
 import { OutputValidator } from '../../agents/output.validator';
 import { VerificationService } from '../../shared/verification/verification.service';
-import { ShadowService } from './shadow.service';
+import { AnthropicService } from '../integrations/anthropic/anthropic.service';
 import { PipelineService } from './pipelines/pipeline.service';
+import { SkillService } from '../../agents/skill.service';
 import { CreditsService } from '../credits/credits.service';
 import { WorkflowService } from './workflow.service';
 import { WorkflowGateway } from './workflow.gateway';
@@ -35,17 +36,18 @@ export class WorkflowProcessor extends WorkerHost {
   constructor(
     private readonly db: DatabaseService,
     private readonly promptService: PromptService,
-    private readonly agentRuntime: AgentRuntime,
+    private readonly managedAgentRuntime: ManagedAgentRuntime,
     private readonly agentRegistry: AgentRegistry,
     private readonly outputValidator: OutputValidator,
     private readonly verificationService: VerificationService,
-    private readonly shadowService: ShadowService,
+    private readonly anthropicService: AnthropicService,
     private readonly pipelineService: PipelineService,
     private readonly creditsService: CreditsService,
     private readonly workflowService: WorkflowService,
     private readonly workflowGateway: WorkflowGateway,
     private readonly materializer: WorkflowMaterializerService,
     private readonly dlqService: DlqService,
+    private readonly skillService: SkillService,
   ) {
     super();
   }
@@ -70,8 +72,13 @@ export class WorkflowProcessor extends WorkerHost {
       // 3. Emit step started
       this.workflowGateway.emitStepStarted(workflowRunId, stepKey);
 
-      // 3.5. Tier 1 fast-path: direct pipeline execution (no LLM)
-      if (agentDef.tier === 'tier1') {
+      // Resolve execution type (V7 executionType with backward-compat fallback to tier)
+      const executionType =
+        agentDef.executionType ??
+        (agentDef.tier === 'tier1' ? 'pipeline-only' : agentDef.tier === 'tier2' ? 'agent-only' : 'agent-with-tools');
+
+      // 3.5. pipeline-only fast-path: direct pipeline execution (no LLM)
+      if (executionType === 'pipeline-only') {
         const context = await this.workflowService.getContext(workflowRunId);
         const transformedContext = this.transformContextForStep(stepKey, context);
         const pipelineOutput = await this.pipelineService.execute(stepKey, transformedContext);
@@ -125,20 +132,93 @@ export class WorkflowProcessor extends WorkerHost {
       const transformedContext = this.transformContextForStep(stepKey, context);
       const prompt = await this.promptService.loadPrompt(promptPath, transformedContext);
 
-      // 5. Execute agent (with verification retry loop — max 2 free retries per AD-8)
+      // 5. Execute based on executionType
       const MAX_VERIFICATION_RETRIES = 2;
-      let result = await this.agentRuntime.execute({
-        name: agentDef.name,
-        model: agentDef.model,
-        temperature: agentDef.temperature,
-        maxIterations: agentDef.maxIterations,
-        tools: agentDef.tools,
-        systemPrompt: prompt.system,
-        userPrompt: prompt.user,
-        provider: agentDef.provider,
-        tier: agentDef.tier,
-        thinkingBudget: agentDef.thinkingBudget,
-      });
+      let result: { output: unknown; reasoning: string | null; toolCalls: Array<{ toolName: string; input: unknown; output: unknown; durationMs: number; success: boolean }>; totalTokens: number; iterations: number; thinkingContent?: string | null };
+
+      // Load skill content for all agent execution types
+      const skillContent = agentDef.skill ? await this.skillService.loadSkill(agentDef.skill) : null;
+
+      if (executionType === 'pipeline-then-agent') {
+        // Step 1: Run pipeline to fetch raw data
+        const pipelineOutput = await this.pipelineService.execute(stepKey, transformedContext);
+
+        // Step 2: Run managed agent to reason over pipeline data (no tools)
+        const managedResult = await this.managedAgentRuntime.execute({
+          managedAgentId: agentDef.managedAgentId ?? '',
+          stepKey,
+          runId: workflowRunId,
+          context: transformedContext,
+          systemPrompt: prompt.system,
+          userPrompt: prompt.user,
+          allowedTools: [],
+          skillContent,
+          pipelineData: pipelineOutput,
+        });
+
+        if (managedResult.finishReason === 'error') {
+          throw new Error(`Managed agent failed (pipeline-then-agent): ${managedResult.error}`);
+        }
+
+        result = {
+          output: managedResult.output,
+          reasoning: managedResult.reasoning,
+          toolCalls: managedResult.toolCalls,
+          totalTokens: managedResult.totalTokens,
+          iterations: managedResult.toolCalls.length + 1,
+          thinkingContent: null,
+        };
+      } else if (executionType === 'agent-only') {
+        // Managed agent reasons over prior context only, no tools, no pipeline
+        const managedResult = await this.managedAgentRuntime.execute({
+          managedAgentId: agentDef.managedAgentId ?? '',
+          stepKey,
+          runId: workflowRunId,
+          context: transformedContext,
+          systemPrompt: prompt.system,
+          userPrompt: prompt.user,
+          allowedTools: [],
+          skillContent,
+        });
+
+        if (managedResult.finishReason === 'error') {
+          throw new Error(`Managed agent failed (agent-only): ${managedResult.error}`);
+        }
+
+        result = {
+          output: managedResult.output,
+          reasoning: managedResult.reasoning,
+          toolCalls: managedResult.toolCalls,
+          totalTokens: managedResult.totalTokens,
+          iterations: managedResult.toolCalls.length + 1,
+          thinkingContent: null,
+        };
+      } else {
+        // agent-with-tools: Managed Agents Sessions API with full tool loop
+        const managedResult = await this.managedAgentRuntime.execute({
+          managedAgentId: agentDef.managedAgentId ?? '',
+          stepKey,
+          runId: workflowRunId,
+          context: transformedContext,
+          systemPrompt: prompt.system,
+          userPrompt: prompt.user,
+          allowedTools: agentDef.tools,
+          skillContent,
+        });
+
+        if (managedResult.finishReason === 'error') {
+          throw new Error(`Managed agent failed: ${managedResult.error}`);
+        }
+
+        result = {
+          output: managedResult.output,
+          reasoning: managedResult.reasoning,
+          toolCalls: managedResult.toolCalls,
+          totalTokens: managedResult.totalTokens,
+          iterations: managedResult.toolCalls.length + 1,
+          thinkingContent: null,
+        };
+      }
 
       // 5.5. Validate output against schema (if defined)
       if (agentDef.outputSchema) {
@@ -157,60 +237,44 @@ export class WorkflowProcessor extends WorkerHost {
       if (!verification.valid) {
         this.logger.warn(`Verification failed for ${stepKey}: ${verification.errors.join('; ')}`);
 
-        // Retry with feedback (free retries — no credit debit)
+        // Retry with feedback
         for (let retry = 0; retry < MAX_VERIFICATION_RETRIES; retry++) {
           this.logger.log(`Verification retry ${retry + 1}/${MAX_VERIFICATION_RETRIES} for ${stepKey}`);
           const feedback = `Your previous output failed verification:\n${verification.errors.join('\n')}\n\nPlease fix these issues and produce corrected output.`;
 
-          result = await this.agentRuntime.execute({
-            name: agentDef.name,
-            model: agentDef.model,
-            temperature: agentDef.temperature,
-            maxIterations: agentDef.maxIterations,
-            tools: agentDef.tools,
+          // Retry uses same execution type, passing verification feedback
+          const retryManaged = await this.managedAgentRuntime.execute({
+            managedAgentId: agentDef.managedAgentId ?? '',
+            stepKey,
+            runId: workflowRunId,
+            context: transformedContext,
             systemPrompt: prompt.system,
-            userPrompt: prompt.user + '\n\n---\n\n' + feedback,
-            provider: agentDef.provider,
-            tier: agentDef.tier,
-            thinkingBudget: agentDef.thinkingBudget,
+            userPrompt: prompt.user,
+            allowedTools: executionType === 'agent-with-tools' ? agentDef.tools : [],
+            skillContent,
+            ...(executionType === 'pipeline-then-agent' ? { pipelineData: null } : {}),
+            additionalInstructions: feedback,
           });
+          if (retryManaged.finishReason === 'error') {
+            throw new Error(`Managed agent retry failed: ${retryManaged.error}`);
+          }
+          result = {
+            output: retryManaged.output,
+            reasoning: retryManaged.reasoning,
+            toolCalls: retryManaged.toolCalls,
+            totalTokens: retryManaged.totalTokens,
+            iterations: retryManaged.toolCalls.length + 1,
+            thinkingContent: null,
+          };
 
           const retryVerification = this.verificationService.verify(stepKey, result.output, transformedContext);
           if (retryVerification.valid) break;
 
           if (retry === MAX_VERIFICATION_RETRIES - 1) {
             this.logger.error(`Verification still failing after ${MAX_VERIFICATION_RETRIES} retries for ${stepKey}`);
-            // Proceed with best-effort output rather than hard fail
           }
         }
       }
-
-      // 5.7. Shadow mode — fire-and-forget (non-blocking, never delays primary path)
-      const shadowPromise = this.shadowService.runShadow({
-        stepKey,
-        primaryOutput: result.output,
-        agentConfig: {
-          name: agentDef.name,
-          model: agentDef.model,
-          temperature: agentDef.temperature,
-          maxIterations: agentDef.maxIterations,
-          tools: agentDef.tools,
-          systemPrompt: prompt.system,
-          userPrompt: prompt.user,
-          provider: agentDef.provider,
-          tier: agentDef.tier,
-          thinkingBudget: agentDef.thinkingBudget,
-        },
-      });
-      // Race against a 30s timeout — never block the primary path longer than that
-      let shadowTimer: ReturnType<typeof setTimeout> | undefined;
-      const shadowResult = await Promise.race([
-        shadowPromise,
-        new Promise<{ active: false }>((resolve) => {
-          shadowTimer = setTimeout(() => resolve({ active: false }), 30_000);
-        }),
-      ]);
-      if (shadowTimer) clearTimeout(shadowTimer);
 
       // 6. Get the step record
       const step = await this.db.db.query.workflowSteps.findFirst({
@@ -245,11 +309,10 @@ export class WorkflowProcessor extends WorkerHost {
           reasoning: result.reasoning,
           metadata: {
             thinkingTrace: result.thinkingContent ?? null,
-            provider: agentDef.provider ?? 'openai',
+            provider: 'anthropic',
             model: agentDef.model,
             tokensUsed: result.totalTokens,
             iterations: result.iterations,
-            shadowVerdictIfAny: shadowResult.active ? shadowResult.verdict : undefined,
           },
         });
 
@@ -481,5 +544,21 @@ export class WorkflowProcessor extends WorkerHost {
     };
 
     return stepPromptMap[stepKey] ?? `${stepKey}.prompt.md`;
+  }
+
+  /**
+   * Extract JSON from an LLM response that may contain markdown code blocks.
+   */
+  private extractJson(content: string): unknown {
+    if (!content.trim()) return null;
+    try {
+      return JSON.parse(content);
+    } catch {
+      const jsonBlockMatch = content.match(/```(?:json)?\s*\n([\s\S]*?)\n```/);
+      if (jsonBlockMatch) {
+        return JSON.parse(jsonBlockMatch[1]);
+      }
+      return content;
+    }
   }
 }

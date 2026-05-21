@@ -3,9 +3,9 @@ import { Pipeline } from './pipeline.interface';
 import { AhrefsService } from '../../integrations/ahrefs/ahrefs.service';
 
 /**
- * Tier 1 pipeline: Method 01 — Competitor Pages
- * Fetches top organic pages from each competitor, extracts keyword opportunities.
- * No LLM needed — pure API aggregation.
+ * V7 Pipeline: Method 01 — Competitor Pages
+ * Fetches raw top organic pages from each competitor via Ahrefs.
+ * Keyword analysis and filtering is handled by the managed agent.
  */
 @Injectable()
 export class Method01CompetitorPagesPipeline implements Pipeline {
@@ -15,55 +15,58 @@ export class Method01CompetitorPagesPipeline implements Pipeline {
   constructor(private readonly ahrefs: AhrefsService) {}
 
   async execute(context: Record<string, unknown>): Promise<unknown> {
-    const competitors = (context.competitors as string[]) || [];
+    const bucketsCtx = context['competitor-buckets'] as {
+      buckets?: {
+        direct?: { competitors?: Array<{ domain: string }> };
+        content?: { competitors?: Array<{ domain: string }> };
+      };
+      rawData?: { competingDomains?: { competitors?: Array<{ competitor_domain?: string }> } };
+    } | undefined;
+
+    // Support both old schema (agent output with buckets) and new pipeline schema (rawData)
+    let competitors: string[] = [];
+    if (bucketsCtx?.buckets) {
+      competitors = [
+        ...(bucketsCtx.buckets.direct?.competitors ?? []),
+        ...(bucketsCtx.buckets.content?.competitors ?? []),
+      ].map((c) => c.domain).filter(Boolean);
+    } else if (bucketsCtx?.rawData?.competingDomains) {
+      const cd = bucketsCtx.rawData.competingDomains as { competitors?: Array<{ competitor_domain?: string }> };
+      competitors = (cd.competitors ?? []).map((c) => c.competitor_domain ?? '').filter(Boolean);
+    }
+
     const country = (context.country as string) || 'us';
-    const pagesPerCompetitor = (context.pagesPerCompetitor as number) || 50;
+    const start = Date.now();
+    let apiCallCount = 0;
 
-    this.logger.log(`Method 01: Fetching top pages from ${competitors.length} competitors`);
+    this.logger.log(`Method 01: fetching top pages from ${competitors.length} competitors`);
 
-    const allPages: Array<Record<string, unknown>> = [];
+    const competitorPagesResults: Array<{ domain: string; data: unknown }> = [];
 
     for (const competitor of competitors) {
       try {
-        const pages = await this.ahrefs.getOrganicPages(competitor, country, pagesPerCompetitor);
-        const pagesArray = Array.isArray(pages) ? pages : ((pages as Record<string, unknown>)?.pages as unknown[]) || [];
-
-        for (const page of pagesArray as Array<Record<string, unknown>>) {
-          allPages.push({
-            ...page,
-            sourceDomain: competitor,
-          });
-        }
-      } catch (error) {
-        this.logger.warn(`Failed to fetch pages for ${competitor}: ${(error as Error).message}`);
-      }
-    }
-
-    // Extract unique keywords from pages
-    const keywordSet = new Set<string>();
-    const keywords: Array<{ keyword: string; sourceDomain: string; url: string }> = [];
-
-    for (const page of allPages) {
-      const kw = String(page.keyword || '').trim().toLowerCase();
-      if (kw && !keywordSet.has(kw)) {
-        keywordSet.add(kw);
-        keywords.push({
-          keyword: kw,
-          sourceDomain: page.sourceDomain as string,
-          url: String(page.url || ''),
-        });
+        const pages = await this.ahrefs.getOrganicPages(competitor, country, 50);
+        apiCallCount++;
+        competitorPagesResults.push({ domain: competitor, data: pages });
+      } catch (err) {
+        this.logger.warn(`Failed to fetch pages for ${competitor}: ${(err as Error).message}`);
+        competitorPagesResults.push({ domain: competitor, data: null });
       }
     }
 
     return {
-      pages: allPages,
-      keywords,
-      meta: {
-        totalPages: allPages.length,
-        uniqueKeywords: keywords.length,
-        competitorsProcessed: competitors.length,
+      rawData: {
+        competitors,
+        competitorPagesResults,
+      },
+      metadata: {
         country,
+        competitorsQueried: competitors.length,
+        successful: competitorPagesResults.filter((r) => r.data !== null).length,
+        apiCallCount,
+        durationMs: Date.now() - start,
       },
     };
   }
 }
+

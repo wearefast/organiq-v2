@@ -3,6 +3,8 @@ name: "Method 02: Seed Keyword Expansion"
 step_key: method02-seed-expansion
 model: gpt-4o
 tier: 1
+execution_type: pipeline-then-agent
+skill: keyword-expansion-analysis
 temperature: 0.4
 max_iterations: 15
 credit_cost: 50

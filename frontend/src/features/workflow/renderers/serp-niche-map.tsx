@@ -71,11 +71,18 @@ export function SerpNicheMapRenderer({ data }: { data: unknown }) {
     <div className="space-y-6">
       {/* Summary */}
       {niche.summary && typeof niche.summary === 'object' && (
-        <div className="grid grid-cols-4 gap-3">
-          <MetricCard label="Keywords Analyzed" value={String(niche.summary.totalKeywordsAnalyzed)} tip="Total unique keywords analyzed in SERP" />
-          <MetricCard label="Niches Found" value={String(niche.summary.nichesIdentified)} tip="Distinct market segments identified" />
-          <MetricCard label="Avg Difficulty" value={String(niche.summary.avgDifficulty)} tip="Average keyword difficulty across all niches" />
-          <MetricCard label="Top Opportunity" value={niche.summary.topOpportunity} tip="Highest-opportunity niche segment" />
+        <div className="space-y-3">
+          <div className="grid grid-cols-1 gap-3 md:grid-cols-3">
+            <MetricCard label="Keywords Analyzed" value={String(niche.summary.totalKeywordsAnalyzed)} tip="Total unique keywords analyzed in SERP" />
+            <MetricCard label="Niches Found" value={String(niche.summary.nichesIdentified)} tip="Distinct market segments identified" />
+            <MetricCard label="Avg Difficulty" value={String(niche.summary.avgDifficulty)} tip="Average keyword difficulty across all niches" />
+          </div>
+          {niche.summary.topOpportunity && (
+            <TopOpportunityCard
+              value={niche.summary.topOpportunity}
+              tip="Highest-opportunity niche segment"
+            />
+          )}
         </div>
       )}
 
@@ -260,6 +267,17 @@ function MetricCard({ label, value, tip }: { label: string; value: string; tip?:
     <div className="rounded-lg border border-zinc-800 bg-zinc-900/50 p-3 text-center">
       <p className="text-[10px] uppercase tracking-wider text-zinc-500">{tip ? <InfoTip tip={tip}>{label}</InfoTip> : label}</p>
       <p className={`mt-1 font-semibold text-zinc-100 ${String(value).length > 20 ? 'text-[11px] leading-relaxed' : 'text-lg font-bold'}`}>{value}</p>
+    </div>
+  );
+}
+
+function TopOpportunityCard({ value, tip }: { value: string; tip?: string }) {
+  return (
+    <div className="rounded-lg border border-zinc-800 bg-zinc-900/50 p-4">
+      <p className="text-[10px] uppercase tracking-wider text-zinc-500">
+        {tip ? <InfoTip tip={tip}>Top Opportunity</InfoTip> : 'Top Opportunity'}
+      </p>
+      <p className="mt-2 text-sm font-medium leading-relaxed text-zinc-100">{value}</p>
     </div>
   );
 }

@@ -4,10 +4,13 @@ step_key: consolidated-keywords
 model: claude-opus-4
 provider: anthropic
 tier: 2
+execution_type: agent-only
+skill: keyword-consolidation
 thinking_budget: 32000
 temperature: 0.2
 max_iterations: 10
 credit_cost: 40
+prompt_id: pulse_consolidated_keywords
 depends_on:
   - phase1-baseline
   - method01-competitor-pages

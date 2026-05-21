@@ -2,12 +2,17 @@
 name: Content Image Generator
 step_key: content-images
 model: gpt-4o
+provider: openai
+tier: 3
+execution_type: agent-with-tools
+skill: content-image-generation
 temperature: 0.3
 max_iterations: 8
 credit_cost: 25
 depends_on:
   - content-article
 requires_approval: true
+managed_agent_id: agent_01TmVScXTpwFk4Y4yTHYQdDF
 tools:
   - generate_image
 ---

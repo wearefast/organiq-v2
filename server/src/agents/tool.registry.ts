@@ -33,23 +33,23 @@ export class ToolRegistry {
   }
 
   /**
-   * Return tool definitions filtered to only those an agent is allowed to use.
-   * Format matches OpenAI function calling tool definitions.
+   * Return tool definitions in Claude Managed Agents custom tool format.
+   * Used by deploy-agents.ts to register tools on Anthropic's platform.
    */
-  getOpenAiToolDefs(allowedTools: string[]): Array<{
-    type: 'function';
-    function: { name: string; description: string; parameters: Record<string, unknown> };
+  getClaudeCustomToolDefs(allowedTools: string[]): Array<{
+    type: 'custom';
+    name: string;
+    description: string;
+    input_schema: Record<string, unknown>;
   }> {
     return allowedTools
       .map((name) => this.tools.get(name))
       .filter((t): t is ToolDefinition => t !== undefined)
       .map((t) => ({
-        type: 'function' as const,
-        function: {
-          name: t.name,
-          description: t.description,
-          parameters: t.inputSchema,
-        },
+        type: 'custom' as const,
+        name: t.name,
+        description: t.description,
+        input_schema: t.inputSchema,
       }));
   }
 }

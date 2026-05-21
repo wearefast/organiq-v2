@@ -22,9 +22,13 @@ interface AgentDefinition {
   body: string;
   outputSchema?: Record<string, unknown>;
   provider?: 'openai' | 'anthropic';
+  /** @deprecated Use executionType instead */
   tier?: 'tier1' | 'tier2' | 'tier3';
+  executionType?: 'pipeline-only' | 'pipeline-then-agent' | 'agent-only' | 'agent-with-tools';
+  skill?: string;
   thinkingBudget?: number;
   promptId?: string;
+  managedAgentId?: string;
 }
 
 type PromptSourceMode = 'local' | 'console' | 'hybrid';
@@ -229,8 +233,11 @@ export class PromptService {
       outputSchema,
       provider: (frontmatter.provider as 'openai' | 'anthropic') ?? undefined,
       tier: this.parseTier(frontmatter.tier),
+      executionType: this.parseExecutionType(frontmatter.execution_type),
+      skill: frontmatter.skill ?? undefined,
       thinkingBudget: frontmatter.thinking_budget ? parseInt(String(frontmatter.thinking_budget), 10) : undefined,
       promptId: frontmatter.prompt_id ?? undefined,
+      managedAgentId: frontmatter.managed_agent_id ?? undefined,
     };
   }
 
@@ -240,6 +247,18 @@ export class PromptService {
     if (val === '1' || val === 'tier1') return 'tier1';
     if (val === '2' || val === 'tier2') return 'tier2';
     if (val === '3' || val === 'tier3') return 'tier3';
+    return undefined;
+  }
+
+  private parseExecutionType(
+    raw: unknown,
+  ): 'pipeline-only' | 'pipeline-then-agent' | 'agent-only' | 'agent-with-tools' | undefined {
+    if (!raw) return undefined;
+    const val = String(raw).trim();
+    if (val === 'pipeline-only') return 'pipeline-only';
+    if (val === 'pipeline-then-agent') return 'pipeline-then-agent';
+    if (val === 'agent-only') return 'agent-only';
+    if (val === 'agent-with-tools') return 'agent-with-tools';
     return undefined;
   }
 

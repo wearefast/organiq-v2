@@ -17,8 +17,8 @@
     "db:migrate": "drizzle-kit migrate",
     "db:studio": "drizzle-kit studio",
     "db:seed": "tsx src/db/seed.ts",
-    "prompts:sync": "tsx scripts/sync-prompts-to-console.ts",
-    "prompts:diff": "tsx scripts/sync-prompts-to-console.ts --diff",
+    "prompts:sync": "tsx scripts/deploy-agents.ts",
+    "prompts:diff": "tsx scripts/deploy-agents.ts --diff",
     "prompts:eval": "vitest run src/prompts/__eval__/"
   },
   "dependencies": {

@@ -1,15 +1,11 @@
-'use client';
-
-import { useParams } from 'next/navigation';
-import { WorkflowBuilder } from '@/features/agents/components/WorkflowBuilder';
-
-export default function ScheduledWorkflowsPage() {
-  const params = useParams();
-  const projectId = params.pId as string;
-
-  return (
-    <div className="p-6 max-w-4xl mx-auto">
-      <WorkflowBuilder projectId={projectId} />
-    </div>
-  );
+﻿'use client';
+import { useEffect } from 'react';
+import { useRouter, useParams } from 'next/navigation';
+export default function RedirectPage() {
+  const router = useRouter();
+  const p = useParams<{ wId: string; pId: string }>();
+  useEffect(() => {
+    router.replace(`/workspaces/${p.wId}/projects/${p.pId}/agents/scheduled`);
+  }, [router, p.wId, p.pId]);
+  return null;
 }
