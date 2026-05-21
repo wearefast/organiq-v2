@@ -42,12 +42,14 @@ Pulse integrates with 8 external services for SEO data, web scraping, AI process
 | `getKeywordDifficulty(keywords[], country)` | KD scores |
 | `getKeywordVolume(keywords[], country)` | Search volume data |
 | `getRelatedKeywords(keyword, country, limit)` | Related term expansion |
+| `getSerpOverview(keyword, country)` | SERP overview positions for a keyword |
 | `getBrandMentions(domain, limit)` | Brand radar mentions |
 
 - **Base URL**: `https://api.ahrefs.com/v3`
 - **Auth**: Bearer token via `AHREFS_API_KEY`
 - **Timeout**: 30s per request
 - **Retry**: 3 attempts with exponential backoff via `withRetry()`
+- **SERP Overview**: Uses `GET /v3/serp-overview/serp-overview` with `keyword`, `country`, `select`, and `top_positions` params
 
 ### DataForSEO (`server/src/features/integrations/dataforseo/dataforseo.service.ts`)
 

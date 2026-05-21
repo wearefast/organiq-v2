@@ -118,6 +118,33 @@ export class AhrefsService {
     });
   }
 
+  async getMatchingTerms(keyword: string, country: string = 'us', limit: number = 100) {
+    return this.request({
+      endpoint: '/keywords-explorer/matching-terms',
+      params: {
+        keywords: keyword,
+        country,
+        limit,
+        order_by: 'volume',
+        select: 'keyword,volume,difficulty,cpc,traffic_potential,parent_topic',
+      },
+    });
+  }
+
+  async getSerpOverview(keyword: string, country: string = 'us') {
+    return this.request({
+      endpoint: '/serp-overview/serp-overview',
+      params: {
+        keyword,
+        country,
+        top_positions: 10,
+        output: 'json',
+        select:
+          'position,url,title,type,domain_rating,url_rating,traffic,keywords,backlinks,refdomains,page_type,top_keyword,top_keyword_volume,value,update_date',
+      },
+    });
+  }
+
   // ─── Brand Radar ───────────────────────────────────────────
 
   async getBrandMentions(domain: string, limit: number = 100) {

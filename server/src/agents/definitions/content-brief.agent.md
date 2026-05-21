@@ -4,10 +4,14 @@ step_key: content-brief
 model: claude-opus-4
 provider: anthropic
 tier: 3
+execution_type: pipeline-then-agent
+skill: content-brief-creation
 thinking_budget: 32000
 temperature: 0.3
 max_iterations: 5
 credit_cost: 25
+prompt_id: pulse_content_brief
+managed_agent_id: agent_01EBKZVfY1LApsMUT3Dc948o
 depends_on:
   - topical-map
 requires_approval: true

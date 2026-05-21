@@ -19,7 +19,10 @@ export class SearchDemandPipeline implements Pipeline {
   ) {}
 
   async execute(context: Record<string, unknown>): Promise<unknown> {
-    const keywords = (context.seedKeywords as string[]) || [];
+    // Context stores prior step output under its step key, not as flat properties.
+    // seed-keywords output shape: { seedKeywords: [{keyword, volume, difficulty, ...}] }
+    const seedKwCtx = context['seed-keywords'] as { seedKeywords?: Array<{ keyword: string }> } | undefined;
+    const keywords = seedKwCtx?.seedKeywords?.map((kw) => kw.keyword) ?? [];
     const country = (context.country as string) || 'us';
     const location = (context.location as string) || 'United States';
 
@@ -56,14 +59,71 @@ export class SearchDemandPipeline implements Pipeline {
       }
     }
 
-    return {
-      keywords: allResults,
-      meta: {
-        totalQueried: keywords.length,
-        totalWithVolume: allResults.filter((r) => r.volume > 0).length,
-        country,
-        location,
+    // Calculate aggregate stats
+    const totalAddressableVolume = allResults.reduce((sum, r) => sum + r.volume, 0);
+    const withVolume = allResults.filter((r) => r.volume > 0);
+    const realisticTargetVolume = Math.round(totalAddressableVolume * 0.1);
+
+    // Build enrichedKeywords matching the agent definition output schema
+    const enrichedKeywords = allResults.map((r) => ({
+      keyword: r.keyword,
+      category: 'general',
+      intent: 'informational' as const,
+      metrics: {
+        searchVolume: r.volume,
+        keywordDifficulty: r.difficulty,
+        cpc: r.cpc,
+        competition: r.difficulty > 60 ? 'high' : r.difficulty > 30 ? 'medium' : 'low',
+        trend: 'stable',
       },
+      opportunityScore:
+        r.volume > 0
+          ? parseFloat(
+              (
+                (Math.min(r.volume, 10000) / 10000) * 0.4 +
+                ((100 - r.difficulty) / 100) * 0.4 +
+                0.5 * 0.2
+              ).toFixed(3),
+            )
+          : 0,
+    }));
+
+    const highOpportunity = enrichedKeywords
+      .filter((k) => k.opportunityScore > 0.6)
+      .sort((a, b) => b.opportunityScore - a.opportunityScore)
+      .slice(0, 20)
+      .map((k) => ({
+        keyword: k.keyword,
+        volume: k.metrics.searchVolume,
+        difficulty: k.metrics.keywordDifficulty,
+        opportunityScore: k.opportunityScore,
+        rationale: `Volume: ${k.metrics.searchVolume}, KD: ${k.metrics.keywordDifficulty}`,
+      }));
+
+    return {
+      enrichedKeywords,
+      demandByCategory: [
+        {
+          category: 'general',
+          totalVolume: totalAddressableVolume,
+          avgDifficulty:
+            allResults.length > 0
+              ? Math.round(allResults.reduce((s, r) => s + r.difficulty, 0) / allResults.length)
+              : 0,
+          keywordCount: allResults.length,
+          topKeyword: allResults.sort((a, b) => b.volume - a.volume)[0]?.keyword ?? '',
+        },
+      ],
+      demandByIntent: {
+        informational: { volume: totalAddressableVolume, count: allResults.length, avgDifficulty: 0 },
+        navigational: { volume: 0, count: 0, avgDifficulty: 0 },
+        commercial: { volume: 0, count: 0, avgDifficulty: 0 },
+        transactional: { volume: 0, count: 0, avgDifficulty: 0 },
+      },
+      highOpportunity,
+      totalAddressableVolume,
+      realisticTargetVolume,
+      summary: `Analysed ${allResults.length} keywords. Total addressable volume: ${totalAddressableVolume.toLocaleString()}. ${withVolume.length} keywords have volume data. Top opportunity score: ${enrichedKeywords[0]?.opportunityScore ?? 0}.`,
     };
   }
 

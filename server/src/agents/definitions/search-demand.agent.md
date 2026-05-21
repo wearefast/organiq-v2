@@ -3,6 +3,7 @@ name: Search Demand Analyst
 step_key: search-demand
 model: gpt-4o
 tier: 1
+execution_type: pipeline-only
 temperature: 0.3
 max_iterations: 12
 credit_cost: 50

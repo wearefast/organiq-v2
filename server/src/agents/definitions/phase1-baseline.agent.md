@@ -4,10 +4,14 @@ step_key: phase1-baseline
 model: claude-opus-4
 provider: anthropic
 tier: 3
+execution_type: pipeline-then-agent
+skill: baseline-assessment
 thinking_budget: 32000
 temperature: 0.3
 max_iterations: 12
 credit_cost: 45
+prompt_id: pulse_phase1_baseline
+managed_agent_id: agent_011feQK3Y7U7B9agm3qJYsHJ
 depends_on:
   - seed-keywords
   - site-audit

@@ -16,14 +16,13 @@ const mockDb = {
   },
 };
 
-const mockAgentRuntime = {
-  execute: vi.fn().mockResolvedValue({
-    output: '1. **Refresh homepage** — Traffic dropped 25%\n2. **Update blog post** — Position declined from 3 to 8',
-    reasoning: '',
-    toolCalls: [],
-    iterations: 1,
-    totalTokens: 1500,
-    finishReason: 'completed',
+const mockAnthropicService = {
+  chat: vi.fn().mockResolvedValue({
+    content: '1. **Refresh homepage** — Traffic dropped 25%\n2. **Update blog post** — Position declined from 3 to 8',
+    toolUse: [],
+    thinkingContent: null,
+    stopReason: 'end_turn',
+    usage: { inputTokens: 500, outputTokens: 1000 },
   }),
 };
 
@@ -51,7 +50,7 @@ describe('OnDemandAgentsService', () => {
     vi.clearAllMocks();
     service = new OnDemandAgentsService(
       mockDb as any,
-      mockAgentRuntime as any,
+      mockAnthropicService as any,
       mockCreditsService as any,
       new AgentRouterService(),
       mockContextRegistry as any,
@@ -77,19 +76,17 @@ describe('OnDemandAgentsService', () => {
   });
 
   it('does not charge credits on failure', async () => {
-    mockAgentRuntime.execute.mockResolvedValueOnce({
-      output: null,
-      finishReason: 'error',
-      error: 'LLM timeout',
-      reasoning: '',
-      toolCalls: [],
-      iterations: 0,
-      totalTokens: 0,
+    mockAnthropicService.chat.mockResolvedValueOnce({
+      content: null,
+      toolUse: [],
+      thinkingContent: null,
+      stopReason: 'end_turn',
+      usage: { inputTokens: 0, outputTokens: 0 },
     });
 
     await expect(
       service.run({ projectId: 'proj-1', organizationId: 'org-1', prompt: 'test' }),
-    ).rejects.toThrow('LLM timeout');
+    ).rejects.toThrow('Agent returned empty response');
 
     expect(mockCreditsService.debit).not.toHaveBeenCalled();
   });

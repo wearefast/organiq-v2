@@ -1,7 +1,7 @@
 import { Injectable, Logger, ForbiddenException } from '@nestjs/common';
 import { eq, desc } from 'drizzle-orm';
 import { DatabaseService } from '../../shared/database/database.service';
-import { AgentRuntime } from '../../agents/agent.runtime';
+import { AnthropicService } from '../integrations/anthropic/anthropic.service';
 import { CreditsService } from '../credits/credits.service';
 import { AgentRouterService, AgentType, AGENT_CREDIT_COSTS, AGENT_TYPE_LABELS } from './agent-router.service';
 import { ContextBuilderRegistry } from './context-builders/context-builder.registry';
@@ -32,7 +32,7 @@ export class OnDemandAgentsService {
 
   constructor(
     private readonly db: DatabaseService,
-    private readonly agentRuntime: AgentRuntime,
+    private readonly anthropicService: AnthropicService,
     private readonly creditsService: CreditsService,
     private readonly router: AgentRouterService,
     private readonly contextRegistry: ContextBuilderRegistry,
@@ -67,24 +67,21 @@ export class OnDemandAgentsService {
       const builder = this.contextRegistry.get(agentType);
       const context = await builder.build(request.projectId, request.prompt);
 
-      // Execute LLM call via AgentRuntime
-      const result = await this.agentRuntime.execute({
-        name: `on-demand-${agentType}`,
-        model: 'gpt-4o',
+      // Execute LLM call via AnthropicService (single-shot, no tools)
+      const chatResult = await this.anthropicService.chat({
+        system: context.systemPrompt,
+        messages: [{ role: 'user', content: context.dataContext }],
+        model: 'claude-sonnet-4-20250514',
         temperature: 0.3,
-        maxIterations: 1,
-        tools: [],
-        systemPrompt: context.systemPrompt,
-        userPrompt: context.dataContext,
-        provider: 'openai',
+        maxTokens: 8192,
       });
 
-      if (result.finishReason === 'error') {
-        throw new Error(result.error ?? 'Agent execution failed');
+      if (!chatResult.content) {
+        throw new Error('Agent returned empty response');
       }
 
       // Parse the response into structured output
-      const parsed = this.parseResponse(result.output as string);
+      const parsed = this.parseResponse(chatResult.content);
       const durationMs = Date.now() - startTime;
 
       // Update record with success

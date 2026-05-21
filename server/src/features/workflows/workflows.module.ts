@@ -8,7 +8,6 @@ import { WorkflowGateway } from './workflow.gateway';
 import { WorkflowMaterializerService } from './workflow-materializer.service';
 import { WorkflowQueueListenerService } from './workflow-queue-listener.service';
 import { DlqService } from './dlq.service';
-import { ShadowService } from './shadow.service';
 import {
   PipelineService,
   CompetitorMetricsPipeline,
@@ -16,11 +15,20 @@ import {
   Method01CompetitorPagesPipeline,
   Method02SeedExpansionPipeline,
   Method03ContentGapPipeline,
+  BusinessProfilePipeline,
+  SeedKeywordsPipeline,
+  SerpNicheMapPipeline,
+  CompetitorBucketsPipeline,
+  Phase1BaselinePipeline,
+  ContentBriefPipeline,
 } from './pipelines';
 import { CreditsModule } from '../credits/credits.module';
 import { KeywordsModule } from '../keywords/keywords.module';
 import { TopicalMapsModule } from '../topical-maps/topical-maps.module';
 import { ContentModule } from '../content/content.module';
+import { AhrefsModule } from '../integrations/ahrefs/ahrefs.module';
+import { DataForSeoModule } from '../integrations/dataforseo/dataforseo.module';
+import { IntegrationsModule } from '../integrations/integrations.module';
 
 /**
  * Dependency direction: WorkflowsModule → feature modules (Keywords, TopicalMaps, Content).
@@ -41,13 +49,19 @@ import { ContentModule } from '../content/content.module';
     KeywordsModule,
     TopicalMapsModule,
     ContentModule,
+    AhrefsModule,
+    DataForSeoModule,
+    IntegrationsModule,
   ],
   controllers: [WorkflowController, DlqController],
   providers: [
     WorkflowService, WorkflowProcessor, WorkflowGateway, WorkflowMaterializerService,
-    WorkflowQueueListenerService, DlqService, ShadowService,
+    WorkflowQueueListenerService, DlqService,
     PipelineService, CompetitorMetricsPipeline, SearchDemandPipeline,
     Method01CompetitorPagesPipeline, Method02SeedExpansionPipeline, Method03ContentGapPipeline,
+    BusinessProfilePipeline,
+    SeedKeywordsPipeline, SerpNicheMapPipeline, CompetitorBucketsPipeline,
+    Phase1BaselinePipeline, ContentBriefPipeline,
   ],
   exports: [WorkflowService, WorkflowGateway, DlqService],
 })

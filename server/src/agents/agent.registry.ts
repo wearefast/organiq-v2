@@ -16,8 +16,13 @@ interface AgentDefinition {
   body: string;
   outputSchema?: Record<string, unknown>;
   provider?: 'openai' | 'anthropic';
+  /** @deprecated Use executionType instead */
   tier?: 'tier1' | 'tier2' | 'tier3';
+  executionType?: 'pipeline-only' | 'pipeline-then-agent' | 'agent-only' | 'agent-with-tools';
+  skill?: string;
   thinkingBudget?: number;
+  promptId?: string;
+  managedAgentId?: string;
 }
 
 @Injectable()
@@ -57,9 +62,9 @@ export class AgentRegistry implements OnModuleInit {
     for (const file of files) {
       const stepKey = file.replace('.agent.md', '');
       try {
-        const definition = await this.promptService.loadAgentDefinition(stepKey);
+        const definition = await this.promptService.loadAgentDefinitionResolved(stepKey);
         this.agents.set(stepKey, definition);
-        this.logger.log(`Loaded agent: ${stepKey}`);
+        this.logger.log(`Loaded agent: ${stepKey} (source: ${definition.promptId ? 'console-eligible' : 'local'})`);
       } catch (error) {
         const msg = error instanceof Error ? error.message : String(error);
         this.logger.error(`Failed to load agent "${stepKey}": ${msg}`);

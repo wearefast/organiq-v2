@@ -4,10 +4,13 @@ step_key: verdict-strategy
 model: claude-opus-4
 provider: anthropic
 tier: 2
+execution_type: agent-only
+skill: seo-strategy-verdict
 thinking_budget: 32000
 temperature: 0.4
 max_iterations: 8
 credit_cost: 35
+prompt_id: pulse_verdict_strategy
 depends_on:
   - consolidated-keywords
 requires_approval: true

@@ -29,6 +29,15 @@ export interface AnthropicChatResult {
   usage: { inputTokens: number; outputTokens: number };
 }
 
+export interface AiBrandMentionResult {
+  query: string;
+  mentioned: boolean;
+  position: number | null;
+  mentionContext: string;
+  aiResponse: string;
+  provider: 'anthropic';
+}
+
 @Injectable()
 export class AnthropicService {
   private readonly logger = new Logger(AnthropicService.name);
@@ -37,15 +46,20 @@ export class AnthropicService {
 
   private static readonly MAX_RETRIES = 3;
   private static readonly RETRY_DELAY_MS = 1000;
+  private static readonly MODEL_ALIASES: Record<string, string> = {
+    'claude-opus-4': 'claude-opus-4-6',
+    'claude-sonnet-4': 'claude-sonnet-4-6',
+  };
 
   constructor(private readonly config: ConfigService) {
     const apiKey = this.config.get<string>('ANTHROPIC_API_KEY', '');
     this.client = new Anthropic({ apiKey });
-    this.defaultModel = this.config.get<string>('ANTHROPIC_DEFAULT_MODEL', 'claude-opus-4-20250514');
+    this.defaultModel = this.config.get<string>('ANTHROPIC_DEFAULT_MODEL', 'claude-opus-4-6');
   }
 
   async chat(options: AnthropicChatOptions): Promise<AnthropicChatResult> {
-    const model = options.model ?? this.defaultModel;
+    const rawModel = options.model ?? this.defaultModel;
+    const model = AnthropicService.MODEL_ALIASES[rawModel] ?? rawModel;
     this.logger.debug(`Anthropic API: messages (model=${model})`);
 
     let lastError: Error | null = null;
@@ -104,6 +118,31 @@ export class AnthropicService {
     }
 
     throw lastError ?? new Error('Anthropic API call failed after retries');
+  }
+
+  async inferAiBrandMention(query: string, brand: string): Promise<AiBrandMentionResult> {
+    const result = await this.chat({
+      messages: [{ role: 'user', content: query }],
+      maxTokens: 2048,
+    });
+
+    const aiResponse = result.content ?? '';
+    const lowerResponse = aiResponse.toLowerCase();
+    const lowerBrand = brand.toLowerCase();
+    const mentioned = lowerResponse.includes(lowerBrand);
+    let position: number | null = null;
+    let mentionContext = '';
+
+    if (mentioned) {
+      const idx = lowerResponse.indexOf(lowerBrand);
+      const relativePos = idx / Math.max(lowerResponse.length, 1);
+      position = relativePos < 0.2 ? 1 : relativePos < 0.4 ? 2 : relativePos < 0.6 ? 3 : relativePos < 0.8 ? 4 : 5;
+      const start = Math.max(0, idx - 100);
+      const end = Math.min(aiResponse.length, idx + brand.length + 100);
+      mentionContext = aiResponse.slice(start, end).trim();
+    }
+
+    return { query, mentioned, position, mentionContext, aiResponse, provider: 'anthropic' };
   }
 
   private parseResponse(response: Anthropic.Message): AnthropicChatResult {

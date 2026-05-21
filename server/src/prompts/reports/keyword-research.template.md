@@ -45,10 +45,10 @@ Comprehensive keyword research analysis for {{domain}}, covering seed discovery,
 {{serp-niche-map.summary}}
 
 ### SERP Feature Opportunities
-{{serp-niche-map.serpFeatures}}
+{{serp-niche-map.serpFeatureDistribution}}
 
 ### Content Type Distribution
-{{serp-niche-map.contentTypes}}
+{{serp-niche-map.contentTypeDistribution}}
 
 ---
 

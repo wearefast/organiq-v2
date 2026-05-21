@@ -1,10 +1,11 @@
-'use client';
-
-export default function TechnicalPage() {
-  return (
-    <div className="space-y-6">
-      <h1 className="text-2xl font-bold text-zinc-100">Technical SEO</h1>
-      <p className="text-sm text-zinc-500">Core Web Vitals, page speed, crawl issues, and technical audits.</p>
-    </div>
-  );
+﻿'use client';
+import { useEffect } from 'react';
+import { useRouter, useParams } from 'next/navigation';
+export default function RedirectPage() {
+  const router = useRouter();
+  const p = useParams<{ wId: string; pId: string }>();
+  useEffect(() => {
+    router.replace(`/workspaces/${p.wId}/projects/${p.pId}/technical/llm-audit`);
+  }, [router, p.wId, p.pId]);
+  return null;
 }

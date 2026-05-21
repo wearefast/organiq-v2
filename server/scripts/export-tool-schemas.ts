@@ -1,0 +1,253 @@
+/**
+ * export-tool-schemas.ts — Exports tool definitions (name, description, input_schema)
+ * to a JSON manifest that deploy-agents.ts consumes.
+ *
+ * This avoids needing to spin up the full NestJS DI container for deployment.
+ *
+ * Usage: npx tsx scripts/export-tool-schemas.ts
+ * Output: server/tool-schemas.json
+ */
+
+import { writeFileSync } from 'fs';
+import { join } from 'path';
+
+interface ToolSchema {
+  name: string;
+  description: string;
+  input_schema: Record<string, unknown>;
+}
+
+// Statically define all tool schemas (mirroring tool.bootstrap.ts)
+// This is the single source of truth for deployment to Anthropic platform.
+const TOOL_SCHEMAS: ToolSchema[] = [
+  // --- Ahrefs ---
+  {
+    name: 'ahrefs_domain_rating',
+    description: 'Get domain rating and authority metrics for a domain',
+    input_schema: { type: 'object', properties: { domain: { type: 'string' } }, required: ['domain'] },
+  },
+  {
+    name: 'ahrefs_organic_keywords',
+    description: 'Get organic keywords ranking for a domain',
+    input_schema: {
+      type: 'object',
+      properties: { domain: { type: 'string' }, country: { type: 'string' }, limit: { type: 'number' } },
+      required: ['domain'],
+    },
+  },
+  {
+    name: 'ahrefs_organic_pages',
+    description: 'Get top organic pages for a domain',
+    input_schema: {
+      type: 'object',
+      properties: { domain: { type: 'string' }, country: { type: 'string' }, limit: { type: 'number' } },
+      required: ['domain'],
+    },
+  },
+  {
+    name: 'ahrefs_backlinks_stats',
+    description: 'Get backlink statistics for a domain',
+    input_schema: { type: 'object', properties: { domain: { type: 'string' } }, required: ['domain'] },
+  },
+  {
+    name: 'ahrefs_competing_domains',
+    description: 'Find competing domains in organic search',
+    input_schema: {
+      type: 'object',
+      properties: { domain: { type: 'string' }, country: { type: 'string' }, limit: { type: 'number' } },
+      required: ['domain'],
+    },
+  },
+  {
+    name: 'ahrefs_keyword_difficulty',
+    description: 'Get keyword difficulty scores for a list of keywords',
+    input_schema: {
+      type: 'object',
+      properties: { keywords: { type: 'array', items: { type: 'string' } }, country: { type: 'string' } },
+      required: ['keywords'],
+    },
+  },
+  {
+    name: 'ahrefs_keyword_volume',
+    description: 'Get search volume data for keywords',
+    input_schema: {
+      type: 'object',
+      properties: { keywords: { type: 'array', items: { type: 'string' } }, country: { type: 'string' } },
+      required: ['keywords'],
+    },
+  },
+  {
+    name: 'ahrefs_related_keywords',
+    description: 'Get related keywords for a seed keyword',
+    input_schema: {
+      type: 'object',
+      properties: { keyword: { type: 'string' }, country: { type: 'string' }, limit: { type: 'number' } },
+      required: ['keyword'],
+    },
+  },
+  // --- Serper ---
+  {
+    name: 'serper_search',
+    description: 'Search Google via Serper API',
+    input_schema: {
+      type: 'object',
+      properties: { query: { type: 'string' }, country: { type: 'string' }, num: { type: 'number' } },
+      required: ['query'],
+    },
+  },
+  {
+    name: 'serper_search_batch',
+    description: 'Batch search multiple queries via Serper API',
+    input_schema: {
+      type: 'object',
+      properties: { queries: { type: 'array', items: { type: 'string' } }, country: { type: 'string' } },
+      required: ['queries'],
+    },
+  },
+  // --- Firecrawl ---
+  {
+    name: 'firecrawl_scrape',
+    description: 'Scrape a single URL and extract content',
+    input_schema: {
+      type: 'object',
+      properties: { url: { type: 'string' }, options: { type: 'object' } },
+      required: ['url'],
+    },
+  },
+  {
+    name: 'firecrawl_crawl',
+    description: 'Crawl a website starting from a URL',
+    input_schema: {
+      type: 'object',
+      properties: { url: { type: 'string' }, limit: { type: 'number' } },
+      required: ['url'],
+    },
+  },
+  {
+    name: 'firecrawl_map_site',
+    description: 'Get sitemap/URL structure of a website',
+    input_schema: { type: 'object', properties: { url: { type: 'string' } }, required: ['url'] },
+  },
+  // --- PageSpeed ---
+  {
+    name: 'pagespeed_analyze',
+    description: 'Run PageSpeed Insights analysis on a URL',
+    input_schema: {
+      type: 'object',
+      properties: { url: { type: 'string' }, strategy: { type: 'string', enum: ['mobile', 'desktop'] } },
+      required: ['url'],
+    },
+  },
+  {
+    name: 'pagespeed_crux',
+    description: 'Get Chrome UX Report (CrUX) data for an origin',
+    input_schema: { type: 'object', properties: { origin: { type: 'string' } }, required: ['origin'] },
+  },
+  // --- DataForSEO ---
+  {
+    name: 'dataforseo_serp',
+    description: 'Get SERP results for a keyword. Location accepts country names ("United States", "Saudi Arabia") or ISO codes ("us", "sa"). Language accepts ISO 639-1 codes ("en", "ar").',
+    input_schema: {
+      type: 'object',
+      properties: {
+        keyword: { type: 'string' },
+        location: { type: 'string', description: 'Country name or ISO code' },
+        language: { type: 'string', description: 'ISO 639-1 language code' },
+      },
+      required: ['keyword'],
+    },
+  },
+  {
+    name: 'dataforseo_keyword_volume',
+    description: 'Get search volume data for keywords via DataForSEO. Location accepts country names or ISO codes.',
+    input_schema: {
+      type: 'object',
+      properties: {
+        keywords: { type: 'array', items: { type: 'string' } },
+        location: { type: 'string', description: 'Country name or ISO code' },
+        language: { type: 'string', description: 'ISO 639-1 language code' },
+      },
+      required: ['keywords'],
+    },
+  },
+  {
+    name: 'dataforseo_keyword_suggestions',
+    description: 'Get keyword suggestions for a seed keyword. Location accepts country names or ISO codes.',
+    input_schema: {
+      type: 'object',
+      properties: {
+        keyword: { type: 'string' },
+        location: { type: 'string', description: 'Country name or ISO code' },
+        language: { type: 'string', description: 'ISO 639-1 language code' },
+        limit: { type: 'number' },
+      },
+      required: ['keyword'],
+    },
+  },
+  {
+    name: 'dataforseo_keyword_difficulty',
+    description: 'Get keyword difficulty scores via DataForSEO.',
+    input_schema: {
+      type: 'object',
+      properties: {
+        keywords: { type: 'array', items: { type: 'string' } },
+        location: { type: 'string', description: 'Country name or ISO code' },
+        language: { type: 'string', description: 'ISO 639-1 language code' },
+      },
+      required: ['keywords'],
+    },
+  },
+  {
+    name: 'dataforseo_onpage_task',
+    description: 'Create an on-page SEO analysis task',
+    input_schema: { type: 'object', properties: { url: { type: 'string' } }, required: ['url'] },
+  },
+  {
+    name: 'dataforseo_onpage_summary',
+    description: 'Get on-page analysis summary for a task',
+    input_schema: { type: 'object', properties: { taskId: { type: 'string' } }, required: ['taskId'] },
+  },
+  {
+    name: 'dataforseo_backlinks_summary',
+    description: 'Get backlinks summary for a domain via DataForSEO',
+    input_schema: { type: 'object', properties: { domain: { type: 'string' } }, required: ['domain'] },
+  },
+  {
+    name: 'dataforseo_domain_technologies',
+    description: 'Detect technologies used by a domain',
+    input_schema: { type: 'object', properties: { domain: { type: 'string' } }, required: ['domain'] },
+  },
+  // --- OpenAI Inference ---
+  {
+    name: 'openai_ai_inference',
+    description:
+      'Ask OpenAI a natural-language question as a real user would and check if a specific brand appears in the AI response. Returns the AI response text, whether the brand was mentioned, position quality, and context.',
+    input_schema: {
+      type: 'object',
+      properties: {
+        query: { type: 'string', description: 'The question to ask OpenAI' },
+        brand: { type: 'string', description: 'The brand name to look for in the AI response' },
+      },
+      required: ['query', 'brand'],
+    },
+  },
+  // --- OpenAI Image Generation ---
+  {
+    name: 'generate_image',
+    description:
+      'Generate an image using gpt-image-1 from a text prompt. Returns the image as a base64-encoded PNG string.',
+    input_schema: {
+      type: 'object',
+      properties: {
+        prompt: { type: 'string', description: 'Detailed text description of the image to generate.' },
+        size: { type: 'string', enum: ['1024x1024', '1536x1024', '1024x1536'], description: 'Image dimensions.' },
+      },
+      required: ['prompt'],
+    },
+  },
+];
+
+// Write manifest
+const outputPath = join(__dirname, '..', 'tool-schemas.json');
+writeFileSync(outputPath, JSON.stringify(TOOL_SCHEMAS, null, 2));
+console.log(`✅ Exported ${TOOL_SCHEMAS.length} tool schemas to ${outputPath}`);

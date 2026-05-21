@@ -62,6 +62,22 @@ User triggers "Start Run" on a project
 | `/workspaces/:wId/projects/:pId/workflows` | Workflow runs list | Shows all runs with status badges |
 | `/workspaces/:wId/projects/:pId/workflows/:runId` | Run detail | Step-by-step view with artifacts, approval buttons, real-time progress |
 
+### Run Detail Panels
+
+The run detail page exposes three distinct execution surfaces for each completed step:
+
+| Panel | Source | Behavior |
+|-------|--------|----------|
+| Artifact renderer | `frontend/src/features/workflow/renderers/` | Step-specific visualization of the structured JSON artifact |
+| Agent Reasoning | `step_artifacts.reasoning` | Shows the exact execution package sent to the managed agent plus any rationale fields the model returned explicitly in structured output |
+| Tool Calls | `step_tool_calls` | Shows recorded tool usage in execution order; `pipeline-then-agent` steps also record a synthetic `pipeline.<stepKey>` trace so upstream fetch/extract work is visible in the UI |
+
+Notes:
+- Anthropic Managed Agents Sessions do not expose private chain-of-thought text.
+- For managed-agent steps, the reasoning panel is therefore an execution trace, not hidden internal reasoning.
+- For `business-profile`, the artifact renderer uses a structured business-analysis layout instead of the generic fallback field dump.
+- For `serp-niche-map`, the renderer shows three summary metrics in a row and places the text-heavy `Top Opportunity` field in a full-width callout below them for readability.
+
 ## Step Dependency Graph
 
 Steps only execute after their dependencies complete. The dependency graph is defined in each `.agent.md` file's YAML frontmatter via the `dependencies` field.
@@ -104,23 +120,33 @@ name: seed-keywords
 step_key: seed-keywords
 model: claude-opus-4
 provider: anthropic
-tier: 3
+execution_type: pipeline-then-agent
 thinking_budget: 32000
 temperature: 0.3
 credit_cost: 40
 max_iterations: 5
 dependencies: []
 required_approval: true
-tools:
-  - ahrefs_keyword_volume
-  - serper_search
 ---
 
 # Seed Keywords Agent
 
-You are an SEO keyword research specialist...
+You are an SEO keyword research specialist who reviews the provided pipeline evidence and returns the final seed keyword artifact...
 [agent instructions in markdown]
 ```
+
+## Execution Types
+
+The workflow runtime routes managed-agent steps by `execution_type`.
+
+| execution_type | Behavior |
+|----------------|----------|
+| `pipeline-only` | Deterministic code path only; no managed agent |
+| `pipeline-then-agent` | Pipeline gathers evidence first, then the managed agent reasons over the provided `pipeline_data` with no tools |
+| `agent-only` | Managed agent reasons over prior workflow context only, with no tools |
+| `agent-with-tools` | Managed agent receives the configured tools and can call them during execution |
+
+For `seed-keywords`, the current contract is `pipeline-then-agent`: the pipeline gathers organic keywords, extracted seed terms, related terms, and suggestions, and the agent returns the final `seedKeywords` artifact from that provided evidence.
 
 ## Tier Routing
 
@@ -130,12 +156,17 @@ Steps are classified into 3 execution tiers:
 |------|----------|-------------|----------|
 | Tier 1 | Pipeline (code) | No LLM — direct API calls + data transform | competitor-metrics, search-demand, method01-03 |
 | Tier 2 | Anthropic (thinking) | Single-shot with extended thinking, no tools | consolidated-keywords, verdict-strategy, topical-map |
-| Tier 3 | Anthropic (tools + thinking) | Full tool loop with extended thinking | phase1-baseline, seed-keywords, content-brief, content-article, site-audit |
+| Tier 3 | Anthropic managed agents | Managed-agent execution; the actual tool behavior is determined by `execution_type` | phase1-baseline, seed-keywords, content-brief, content-article, site-audit |
 
 Routing logic in `WorkflowProcessor`:
 1. `tier: tier1` → `PipelineService.execute()` (no LLM, deterministic)
 2. `tier: tier2` → `AgentRuntime.executeTier2()` → `provider.completeTier2()`
-3. `tier: tier3` (or default) → `AgentRuntime.execute()` → full tool loop
+3. `tier: tier3` (or default) → managed-agent execution path, then:
+  - `pipeline-then-agent` → run pipeline, pass `pipeline_data`, set `allowedTools: []`
+  - `agent-only` → no pipeline, set `allowedTools: []`
+  - `agent-with-tools` → no pipeline, pass configured tools
+
+`seed-keywords` uses `pipeline-then-agent`, so the Tool Calls panel should show the synthetic `pipeline.seed-keywords` trace for the upstream fetch work rather than live Ahrefs, DataForSEO, or Serper tool calls from the managed agent.
 
 ## Verification Service
 
@@ -154,6 +185,78 @@ On failure: up to 2 free retries with feedback before proceeding.
 Env: `SHADOW_MODE_STEPS=verdict-strategy,topical-map,phase1-baseline`
 
 Runs the opposite provider in parallel, compares structural output, stores `shadowVerdictIfAny` in artifact metadata. Shadow failures never block the primary path.
+
+## Prompt Governance (Console Sync)
+
+Prompts are managed via a hybrid model: source of truth is in the repo (`.agent.md` files), but can be deployed to a Console API for non-engineer iteration.
+
+### Configuration
+
+| Env Var | Values | Description |
+|---------|--------|-------------|
+| `PROMPT_SOURCE` | `local` (default) / `console` / `hybrid` | Where to resolve prompts at runtime |
+| `PROMPT_CONSOLE_URL` | URL | Console API base URL |
+| `PROMPT_CONSOLE_API_KEY` | Bearer token | Console API authentication |
+
+### Modes
+
+| Mode | Behavior |
+|------|----------|
+| `local` | Always reads from `.agent.md` files on disk (default, no Console dependency) |
+| `console` | Fetches from Console API; falls back to local on failure |
+| `hybrid` | Uses Console if agent has `prompt_id` in frontmatter; otherwise local |
+
+### Agent `prompt_id` Convention
+
+All Tier 2/3 agents have `prompt_id: pulse_<step_key_with_underscores>` in their frontmatter. This ID maps to the Console prompt entry.
+
+| Agent | prompt_id |
+|-------|-----------|
+| consolidated-keywords | `pulse_consolidated_keywords` |
+| verdict-strategy | `pulse_verdict_strategy` |
+| topical-map | `pulse_topical_map` |
+| content-article | `pulse_content_article` |
+| content-brief | `pulse_content_brief` |
+| seed-keywords | `pulse_seed_keywords` |
+| phase1-baseline | `pulse_phase1_baseline` |
+| site-audit | `pulse_site_audit` |
+| ai-intelligence | `pulse_ai_intelligence` |
+| business-profile | `pulse_business_profile` |
+| serp-niche-map | `pulse_serp_niche_map` |
+| competitor-buckets | `pulse_competitor_buckets` |
+
+### Sync Scripts
+
+```bash
+npm run prompts:sync          # Upserts all .agent.md → Console (versioned by git hash)
+npm run prompts:sync --dry-run # Shows what would sync without uploading
+npm run prompts:diff          # Shows which prompts differ from Console version
+```
+
+### Evaluation Harness
+
+```bash
+npm run prompts:eval          # Runs structural rubric tests against mock outputs
+```
+
+Located in `server/src/prompts/__eval__/`:
+- `eval-framework.ts` — Rubric evaluation engine (exists/array_min/type/contains/custom checks)
+- `fixtures.ts` — Synthetic test contexts (consolidated-keywords, verdict-strategy, topical-map)
+- `prompt-eval.spec.ts` — 9 eval cases (3 per agent), validates output structure
+
+### Key Files
+
+| File | Purpose |
+|------|---------|
+| `server/src/shared/prompt/prompt.service.ts` | `fetchFromConsole()`, `loadAgentDefinitionResolved()`, 5-min TTL cache |
+| `server/scripts/sync-prompts-to-console.ts` | CI sync script (reads .agent.md, upserts to Console API) |
+| `server/src/prompts/__eval__/` | Evaluation harness |
+
+### Rollback
+
+Set `PROMPT_SOURCE=local` to immediately bypass Console and use on-disk prompts.
+
+---
 
 ## Pipelines (Tier 1)
 

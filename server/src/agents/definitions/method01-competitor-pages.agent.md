@@ -3,6 +3,8 @@ name: "Method 01: Competitor Page Analysis"
 step_key: method01-competitor-pages
 model: gpt-4o
 tier: 1
+execution_type: pipeline-then-agent
+skill: competitor-page-analysis
 temperature: 0.3
 max_iterations: 15
 credit_cost: 55

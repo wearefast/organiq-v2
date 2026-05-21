@@ -103,10 +103,41 @@ export class DataForSeoService {
 
   // ─── On-Page ──────────────────────────────────────────────
 
-  async createOnPageTask(url: string) {
-    return this.post('/on_page/task_post', [
+  async createOnPageTask(url: string): Promise<unknown> {
+    // Submit the async on-page crawl task
+    const submission = await this.post('/on_page/task_post', [
       { target: url, max_crawl_pages: 100 },
-    ]);
+    ]) as { tasks?: Array<{ id?: string; status_code?: number }> };
+
+    const taskId = submission?.tasks?.[0]?.id;
+    if (!taskId) {
+      throw new Error('DataForSEO on-page task submission did not return a task ID');
+    }
+
+    this.logger.log(`DataForSEO on-page task submitted: ${taskId}, polling for completion...`);
+
+    // Poll until crawl_progress === 'finished' (max 3 minutes, 15-second intervals)
+    const maxWaitMs = 3 * 60 * 1000;
+    const pollIntervalMs = 15_000;
+    const deadline = Date.now() + maxWaitMs;
+
+    while (Date.now() < deadline) {
+      await new Promise<void>(resolve => setTimeout(resolve, pollIntervalMs));
+
+      const summary = await this.get(`/on_page/summary/${taskId}`) as {
+        tasks?: Array<{ status_code?: number; result?: Array<{ crawl_progress?: string }> }>;
+      };
+      const result = summary?.tasks?.[0]?.result?.[0];
+
+      this.logger.debug(`DataForSEO on-page task ${taskId}: crawl_progress=${result?.crawl_progress}`);
+
+      if (result?.crawl_progress === 'finished') {
+        return summary;
+      }
+      // crawl_progress === 'in_progress' or task still in queue — continue polling
+    }
+
+    throw new Error(`DataForSEO on-page task timed out after 3 minutes: ${taskId}`);
   }
 
   async getOnPageSummary(taskId: string) {
@@ -175,9 +206,11 @@ export class DataForSeoService {
 
         const result = await response.json() as { tasks?: Array<{ status_code?: number; status_message?: string }> };
 
-        // Check task-level errors (DataForSEO returns HTTP 200 with error details inside tasks)
+        // Check task-level errors (DataForSEO returns HTTP 200 with error details inside tasks).
+        // 20000 = OK (data ready), 20100 = Task Created (success for async task_post endpoints).
+        // Only throw on 40xxx (client error) and 50xxx (server error).
         const task = result.tasks?.[0];
-        if (task && task.status_code && task.status_code !== 20000) {
+        if (task && task.status_code && task.status_code >= 40000) {
           const msg = `DataForSEO task error ${task.status_code}: ${task.status_message ?? 'unknown'}`;
           this.logger.error(msg);
           throw new Error(msg);

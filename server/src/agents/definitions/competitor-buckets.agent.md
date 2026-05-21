@@ -1,10 +1,17 @@
 ---
 name: Competitor Bucket Classifier
 step_key: competitor-buckets
-model: gpt-4o
+model: claude-opus-4
+provider: anthropic
+tier: 3
+execution_type: pipeline-then-agent
+skill: competitor-classification
+thinking_budget: 32000
 temperature: 0.3
 max_iterations: 8
 credit_cost: 35
+prompt_id: pulse_competitor_buckets
+managed_agent_id: agent_016q4DrPJUmNf3yK3RGEzaFP
 depends_on:
   - serp-niche-map
 requires_approval: false

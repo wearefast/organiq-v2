@@ -1,10 +1,17 @@
 ---
 name: AI Intelligence Analyst
 step_key: ai-intelligence
-model: gpt-4o
+model: claude-opus-4
+provider: anthropic
+tier: 3
+execution_type: agent-with-tools
+skill: ai-visibility-analysis
+thinking_budget: 32000
 temperature: 0.3
 max_iterations: 10
 credit_cost: 50
+prompt_id: pulse_ai_intelligence
+managed_agent_id: agent_014oPmb6PAppMEUHVmNRnL47
 depends_on:
   - site-audit
 requires_approval: false

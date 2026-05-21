@@ -55,11 +55,7 @@ class EnvironmentVariables {
 
   @IsOptional()
   @IsString()
-  AGENT_PROVIDER_OVERRIDE?: string;
-
-  @IsOptional()
-  @IsString()
-  SHADOW_MODE_STEPS?: string;
+  MANAGED_AGENT_ENVIRONMENT_ID?: string;
 
   @IsOptional()
   @IsString()

@@ -43,7 +43,10 @@ export class PageSpeedService {
   }
 
   async getCruxData(origin: string): Promise<unknown> {
-    if (!this.apiKey) throw new Error('PAGESPEED_API_KEY is not configured for CrUX');
+    if (!this.apiKey) {
+      this.logger.warn('PAGESPEED_API_KEY is not configured — CrUX field data unavailable, falling back to lab data only');
+      return null;
+    }
 
     this.logger.debug(`CrUX API: ${origin}`);
 

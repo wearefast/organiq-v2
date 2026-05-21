@@ -4,10 +4,14 @@ step_key: content-article
 model: claude-opus-4
 provider: anthropic
 tier: 3
+execution_type: agent-with-tools
+skill: seo-content-writing
 thinking_budget: 32000
 temperature: 0.4
 max_iterations: 8
 credit_cost: 30
+prompt_id: pulse_content_article
+managed_agent_id: agent_01Q78TEVykFFcCQX77htsFzp
 depends_on:
   - content-brief
 requires_approval: true

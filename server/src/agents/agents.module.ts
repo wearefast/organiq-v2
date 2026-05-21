@@ -2,17 +2,16 @@ import { Global, Module } from '@nestjs/common';
 import { ToolRegistry } from './tool.registry';
 import { ToolSandbox } from './tool.sandbox';
 import { ToolBootstrap } from './tool.bootstrap';
-import { AgentRuntime } from './agent.runtime';
+import { ManagedAgentRuntime } from './managed-agent.runtime';
 import { AgentRegistry } from './agent.registry';
 import { OutputValidator } from './output.validator';
-import { OpenAiProvider } from './openai.provider';
-import { AnthropicProvider } from './anthropic.provider';
+import { SkillService } from './skill.service';
 import { IntegrationsModule } from '../features/integrations/integrations.module';
 
 @Global()
 @Module({
   imports: [IntegrationsModule],
-  providers: [ToolRegistry, ToolSandbox, ToolBootstrap, AgentRuntime, AgentRegistry, OutputValidator, OpenAiProvider, AnthropicProvider],
-  exports: [ToolRegistry, ToolSandbox, AgentRuntime, AgentRegistry, OutputValidator, OpenAiProvider, AnthropicProvider],
+  providers: [ToolRegistry, ToolSandbox, ToolBootstrap, ManagedAgentRuntime, AgentRegistry, OutputValidator, SkillService],
+  exports: [ToolRegistry, ToolSandbox, ManagedAgentRuntime, AgentRegistry, OutputValidator, SkillService],
 })
 export class AgentsModule {}

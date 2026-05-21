@@ -28,11 +28,41 @@ export class FirecrawlService {
   }
 
   async crawl(url: string, limit: number = 50): Promise<unknown> {
-    return this.post('/crawl', {
+    // Submit the async crawl job
+    const submission = await this.post('/crawl', {
       url,
       limit,
       scrapeOptions: { formats: ['markdown'], onlyMainContent: true },
-    });
+    }) as { id?: string; success?: boolean };
+
+    const crawlId = submission?.id;
+    if (!crawlId) {
+      throw new Error('Firecrawl crawl submission did not return a job ID');
+    }
+
+    this.logger.log(`Firecrawl crawl job submitted: ${crawlId}, polling for completion...`);
+
+    // Poll until status === 'completed' (max 3 minutes, 10-second intervals)
+    const maxWaitMs = 3 * 60 * 1000;
+    const pollIntervalMs = 10_000;
+    const deadline = Date.now() + maxWaitMs;
+
+    while (Date.now() < deadline) {
+      await new Promise<void>(resolve => setTimeout(resolve, pollIntervalMs));
+
+      const status = await this.get(`/crawl/${crawlId}`) as { status?: string; data?: unknown };
+      this.logger.debug(`Firecrawl crawl ${crawlId}: status=${status?.status}`);
+
+      if (status?.status === 'completed') {
+        return status;
+      }
+      if (status?.status === 'failed') {
+        throw new Error(`Firecrawl crawl job failed: ${crawlId}`);
+      }
+      // status === 'scraping' — continue polling
+    }
+
+    throw new Error(`Firecrawl crawl timed out after 3 minutes: ${crawlId}`);
   }
 
   async getCrawlStatus(crawlId: string): Promise<unknown> {

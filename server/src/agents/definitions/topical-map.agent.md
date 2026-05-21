@@ -4,10 +4,13 @@ step_key: topical-map
 model: claude-opus-4
 provider: anthropic
 tier: 2
+execution_type: agent-only
+skill: topical-map-architecture
 thinking_budget: 32000
 temperature: 0.3
 max_iterations: 8
 credit_cost: 40
+prompt_id: pulse_topical_map
 depends_on:
   - verdict-strategy
 requires_approval: true
