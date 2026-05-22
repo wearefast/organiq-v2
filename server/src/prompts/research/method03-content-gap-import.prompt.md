@@ -28,9 +28,15 @@ Method 02 results (for dedup):
 
 Process the content gap import.
 
-## CRITICAL: Output Schema Enforcement
+## CRITICAL: Output Submission
 
-You MUST return a flat JSON object with EXACTLY these top-level keys: `importedKeywords`, `importStats`, `bySource`, `topicClusters`, `summary`.
+When your analysis is complete, call the `return_output` tool with your complete JSON result as the `data` parameter. This is required — the workflow engine reads from this tool call, not from text.
+
+Call `return_output` ONCE as your absolute last action.
+
+## Output Schema
+
+Your `data` object MUST have EXACTLY these top-level keys: `importedKeywords`, `importStats`, `bySource`, `topicClusters`, `summary`.
 
 Do NOT use `keywords`, `keywordList`, or any other name in place of `importedKeywords` — the key is `importedKeywords`, exactly.
 Do NOT use snake_case field names anywhere in the output. The correct camelCase names are: `funnelStage` (not `funnel_stage`), `opportunityScore` (not `opportunity_score`), `isNew` (not `is_new`).

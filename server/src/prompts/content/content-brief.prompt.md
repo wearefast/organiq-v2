@@ -79,9 +79,15 @@ Select the single highest-priority item from the topical map calendar (month 1, 
 
 Research the target keyword using the available tools. Analyze the SERP landscape and top-ranking content. Then produce a comprehensive content brief as structured JSON.
 
-## CRITICAL: Output Schema Enforcement
+## CRITICAL: Output Submission
 
-You MUST return a flat JSON object with EXACTLY these top-level keys: `targetKeyword`, `secondaryKeywords`, `searchIntent`, `serpAnalysis`, `contentStructure`, `wordCountTarget`, `keywordTargets`, `schemaMarkup`, `internalLinks`, `externalReferences`, `competitiveGaps`, `paaQuestions`, `ctaRecommendations`, `metaTitle`, `metaDescription`, `summary`.
+When your analysis is complete, call the `return_output` tool with your complete JSON result as the `data` parameter. This is required — the workflow engine reads from this tool call, not from text.
+
+Call `return_output` ONCE as your absolute last action.
+
+## Output Schema
+
+Your `data` object MUST have EXACTLY these top-level keys: `targetKeyword`, `secondaryKeywords`, `searchIntent`, `serpAnalysis`, `contentStructure`, `wordCountTarget`, `keywordTargets`, `schemaMarkup`, `internalLinks`, `externalReferences`, `competitiveGaps`, `paaQuestions`, `ctaRecommendations`, `metaTitle`, `metaDescription`, `summary`.
 
 Do NOT omit any field — use empty arrays, empty strings, or 0 for fields you cannot determine.
 Do NOT return `serpAnalysis` as an array — it MUST be an object.

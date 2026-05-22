@@ -42,9 +42,15 @@ You have access to Ahrefs (competing domains), Serper (search), and Firecrawl (s
 
 Identify and classify competitors. Use Ahrefs to find competing domains, verify via search, and classify into strategic buckets.
 
-## CRITICAL: Output Schema Enforcement
+## CRITICAL: Output Submission
 
-You MUST return a flat JSON object with EXACTLY these top-level keys: `buckets`, `totalCompetitors`, `topThreats`, `contentGapDomains`, `summary`.
+When your analysis is complete, call the `return_output` tool with your complete JSON result as the `data` parameter. This is required — the workflow engine reads from this tool call, not from text.
+
+Call `return_output` ONCE as your absolute last action.
+
+## Output Schema
+
+Your `data` object MUST have EXACTLY these top-level keys: `buckets`, `totalCompetitors`, `topThreats`, `contentGapDomains`, `summary`.
 
 Do NOT return `buckets` as a flat array of competitors — it MUST be an object with exactly four keys: `direct`, `indirect`, `content`, `aspirational`, each containing a `competitors` array.
 Do NOT omit competitors' `domain` field — every competitor object must have at minimum `domain`, `name`, `positioning`, `keywordOverlap`, and `threatLevel`.

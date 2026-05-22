@@ -123,6 +123,14 @@ export class WorkflowProcessor extends WorkerHost {
 
         this.workflowGateway.emitStepCompleted(workflowRunId, stepKey, 'completed');
         await this.materializer.materialize(workflowRunId, stepKey);
+
+        // Store pipeline output in workflow context so downstream steps can read it
+        if (pipelineOutput != null) {
+          await this.workflowService.setContext(workflowRunId, stepKey, pipelineOutput);
+        }
+
+        // Enqueue downstream steps that are now unblocked
+        await this.workflowService.enqueuePendingSteps(workflowRunId);
         return;
       }
 
@@ -138,6 +146,13 @@ export class WorkflowProcessor extends WorkerHost {
 
       // Load skill content for all agent execution types
       const skillContent = agentDef.skill ? await this.skillService.loadSkill(agentDef.skill) : null;
+
+      // Guard: reject agents without a valid managed_agent_id
+      if (!agentDef.managedAgentId || agentDef.managedAgentId === 'TBD') {
+        throw new Error(
+          `Agent "${stepKey}" has no managed_agent_id configured. Create it on Claude Platform first.`,
+        );
+      }
 
       if (executionType === 'pipeline-then-agent') {
         // Step 1: Run pipeline to fetch raw data

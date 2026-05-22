@@ -39,9 +39,15 @@ High-opportunity keywords:
 
 Establish the Phase 1 keyword baseline.
 
-## CRITICAL: Output Schema Enforcement
+## CRITICAL: Output Submission
 
-You MUST return a flat JSON object with EXACTLY these top-level keys: `currentRankings`, `keywordGaps`, `quickWins`, `competitorOverlap`, `intentDistribution`, `summary`.
+When your analysis is complete, call the `return_output` tool with your complete JSON result as the `data` parameter. This is required — the workflow engine reads from this tool call, not from text.
+
+Call `return_output` ONCE as your absolute last action.
+
+## Output Schema
+
+Your `data` object MUST have EXACTLY these top-level keys: `currentRankings`, `keywordGaps`, `quickWins`, `competitorOverlap`, `intentDistribution`, `summary`.
 
 Do NOT use `quickWinOpportunities`, `quickWinKeywords`, or any other variant — the key is `quickWins`, exactly.
 Do NOT populate `topKeywords` or `keywordGaps` with metadata field names (e.g. `domainRating`, `liveRefDomains`, `crawledPages`). Every entry must be an actual keyword string returned by the tool calls.

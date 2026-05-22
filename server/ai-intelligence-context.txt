@@ -1,0 +1,38 @@
+I'll run all the required tool calls in parallel — AI inference tests, page scrapes, and competitive search queries — to build a comprehensive AI visibility analysis for Mashreq.
+
+**Launching Phase 1: All independent data collection calls simultaneously.**Good, I have strong data. Let me now run a 6th AI inference query for completeness, plus one more scrape for deeper content assessment.All data collected. Let me now compile the comprehensive analysis.The AI Visibility analysis for **mashreq.com** is complete. Here's the executive summary:
+
+---
+
+## Mashreq AI Visibility Report — Score: **32/100** 🔴
+
+### The Critical Problem
+Mashreq was **absent from 5 of 6 AI-generated responses** to high-intent banking queries its customers ask. Only when "Mashreq" was explicitly in the query did AI recognize it. Meanwhile:
+
+| Competitor | AI Mentions (out of 6 queries) |
+|---|---|
+| **Emirates NBD** | 6/6 ✅ |
+| **FAB** | 5/6 |
+| **ADCB** | 5/6 |
+| **RAK Bank** | 5/6 |
+| **Mashreq** | **1/6** ❌ |
+
+### Dimension Scores
+| Dimension | Score | Key Issue |
+|---|---|---|
+| **Structured Data** | 12/100 | Zero Schema.org markup on any page |
+| **Content Clarity** | 45/100 | No blog/educational content; savings FAQ is strong but isolated |
+| **Authority Signals** | 50/100 | 57-year heritage undermined by ~2/5 Trustpilot and no E-E-A-T signals |
+| **Citability Format** | 32/100 | JS-rendered SPA; no comparison tables; mostly promotional copy |
+| **Brand Presence** | 18/100 | Invisible to AI for all non-branded queries |
+
+### The Paradox
+Mashreq offers the **highest savings rate in the UAE (6.25% p.a.)** and appears in Google's answer box — yet AI models recommend competitors with lower rates because those competitors have better-structured, more citable content.
+
+### Top 4 Priorities
+1. **Deploy Schema.org structured data** — especially FAQPage on the savings page (20+ existing FAQs with zero markup)
+2. **Build a financial education content hub** — the site has zero informational content vs. 8 identified content gaps
+3. **Create comparison pages** — "Mashreq vs Emirates NBD" content where AI models currently cite no first-party source
+4. **Ensure server-side rendering** — React SPA may be invisible to AI crawlers
+
+The full JSON report has been saved to the output directory.

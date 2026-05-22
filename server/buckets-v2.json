@@ -1,0 +1,17 @@
+{
+  "buckets": {
+    "direct": {
+      "competitors": 5
+    },
+    "content": {
+      "competitors": 3
+    },
+    "indirect": {
+      "competitors": 3
+    },
+    "aspirational": {
+      "competitors": 3
+    }
+  },
+  "totalCompetitors": 14
+}

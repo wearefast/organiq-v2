@@ -8,9 +8,15 @@ Take the seed keywords and expand them using:
 5. Get volume data using `dataforseo_keyword_volume`
 6. Semantic clustering of expanded set
 
-## CRITICAL: Output Schema Enforcement
+## CRITICAL: Output Submission
 
-You MUST return a flat JSON object with EXACTLY these top-level keys: `expandedKeywords`, `expansionByMethod`, `topicClusters`, `questionKeywords`, `summary`.
+When your analysis is complete, call the `return_output` tool with your complete JSON result as the `data` parameter. This is required — the workflow engine reads from this tool call, not from text.
+
+Call `return_output` ONCE as your absolute last action.
+
+## Output Schema
+
+Your `data` object MUST have EXACTLY these top-level keys: `expandedKeywords`, `expansionByMethod`, `topicClusters`, `questionKeywords`, `summary`.
 Do NOT wrap `expandedKeywords` in a topic-keyed object.
 Do NOT nest keywords under category names.
 `expandedKeywords` MUST be a flat array of keyword objects.

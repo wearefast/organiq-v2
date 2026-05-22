@@ -1,0 +1,458 @@
+{
+  "categories": {
+    "brand": {
+      "count": 12,
+      "examples": [
+        "mashreq bank global hq",
+        "mashreq bank psc",
+        "بنك المشرق الشارقة"
+      ]
+    },
+    "problem": {
+      "count": 0,
+      "examples": []
+    },
+    "product": {
+      "count": 6,
+      "examples": [
+        "mashreq business online",
+        "mashreq neo biz",
+        "mashreq business"
+      ]
+    },
+    "service": {
+      "count": 9,
+      "examples": [
+        "mashreq customer care number",
+        "mashreq customer care number 24 hours",
+        "mashreq bank cdm near me"
+      ]
+    },
+    "industry": {
+      "count": 1,
+      "examples": [
+        "digital banks in dubai"
+      ]
+    },
+    "longtail": {
+      "count": 12,
+      "examples": [
+        "mashreq bank near me",
+        "mashreq bank muraqqabat branch",
+        "mashreq bank full service branch dubai"
+      ]
+    },
+    "solution": {
+      "count": 0,
+      "examples": []
+    },
+    "informational": {
+      "count": 0,
+      "examples": []
+    }
+  },
+  "totalCount": 40,
+  "seedKeywords": [
+    {
+      "notes": "Brand misspelling variant; near-duplicate 'mushreq' (vol 60) merged",
+      "intent": "navigational",
+      "source": "organic_existing",
+      "volume": 150,
+      "keyword": "mashraq",
+      "category": "brand",
+      "difficulty": 38,
+      "relevanceScore": 0.72
+    },
+    {
+      "notes": "Official registered entity name",
+      "intent": "navigational",
+      "source": "organic_existing",
+      "volume": 250,
+      "keyword": "mashreq bank psc",
+      "category": "brand",
+      "difficulty": 10,
+      "relevanceScore": 0.82
+    },
+    {
+      "notes": "Arabic-influenced brand spelling variant",
+      "intent": "navigational",
+      "source": "organic_existing",
+      "volume": 100,
+      "keyword": "almashreq bank",
+      "category": "brand",
+      "difficulty": 22,
+      "relevanceScore": 0.74
+    },
+    {
+      "notes": "Near-duplicates 'mashreq hq' (vol 150) and 'mashreq bank hq' (vol 100) merged into highest-volume form",
+      "intent": "navigational",
+      "source": "organic_existing",
+      "volume": 1500,
+      "keyword": "mashreq bank global hq",
+      "category": "brand",
+      "difficulty": 6,
+      "relevanceScore": 0.59
+    },
+    {
+      "notes": "Near-duplicate 'mashreq bank whatsapp' (vol 40) merged",
+      "intent": "navigational",
+      "source": "organic_existing",
+      "volume": 100,
+      "keyword": "mashreq whatsapp",
+      "category": "service",
+      "difficulty": 0,
+      "relevanceScore": 0.71
+    },
+    {
+      "notes": "Russian-language brand term; relevant for Russian-speaking UAE expat audience",
+      "intent": "navigational",
+      "source": "organic_existing",
+      "volume": 80,
+      "keyword": "машрек банк",
+      "category": "brand",
+      "difficulty": 12,
+      "relevanceScore": 0.68
+    },
+    {
+      "notes": "Near-duplicate 'mashreq bank muraqqabat branch - full service' (vol 20) merged",
+      "intent": "navigational",
+      "source": "organic_existing",
+      "volume": 700,
+      "keyword": "mashreq bank muraqqabat branch",
+      "category": "longtail",
+      "difficulty": 0,
+      "relevanceScore": 0.56
+    },
+    {
+      "notes": "High-volume branded product query for business online banking platform",
+      "intent": "navigational",
+      "source": "organic_existing",
+      "volume": 9500,
+      "keyword": "mashreq business online",
+      "category": "product",
+      "difficulty": 2,
+      "relevanceScore": 0.83
+    },
+    {
+      "notes": "Near-duplicate 'mashreq neo customer service' (vol 40) merged",
+      "intent": "navigational",
+      "source": "organic_existing",
+      "volume": 1200,
+      "keyword": "mashreq neo customer care",
+      "category": "service",
+      "difficulty": 0,
+      "relevanceScore": 0.71
+    },
+    {
+      "notes": "URL-style brand query; near-duplicate 'mashreq bank .com' (vol 10) merged",
+      "intent": "navigational",
+      "source": "organic_existing",
+      "volume": 60,
+      "keyword": "www mashreq.com",
+      "category": "brand",
+      "difficulty": 44,
+      "relevanceScore": 0.62
+    },
+    {
+      "notes": null,
+      "intent": "navigational",
+      "source": "organic_existing",
+      "volume": 1000,
+      "keyword": "mashreq contact number",
+      "category": "service",
+      "difficulty": 0,
+      "relevanceScore": 0.66
+    },
+    {
+      "notes": "Specific 24-hour service availability query",
+      "intent": "navigational",
+      "source": "organic_existing",
+      "volume": 1400,
+      "keyword": "mashreq customer care number 24 hours",
+      "category": "service",
+      "difficulty": 0,
+      "relevanceScore": 0.66
+    },
+    {
+      "notes": "Dubai Internet City branch location query",
+      "intent": "navigational",
+      "source": "organic_existing",
+      "volume": 90,
+      "keyword": "mashreq bank dic",
+      "category": "longtail",
+      "difficulty": 12,
+      "relevanceScore": 0.55
+    },
+    {
+      "notes": "Geo-modified brand query",
+      "intent": "navigational",
+      "source": "organic_existing",
+      "volume": 30,
+      "keyword": "uae mashreq bank",
+      "category": "brand",
+      "difficulty": 29,
+      "relevanceScore": 0.74
+    },
+    {
+      "notes": "Only non-brand keyword in dataset; high strategic value for content marketing and topical authority",
+      "intent": "commercial",
+      "source": "organic_existing",
+      "volume": 150,
+      "keyword": "digital banks in dubai",
+      "category": "industry",
+      "difficulty": 57,
+      "relevanceScore": 0.84
+    },
+    {
+      "notes": "Neo Biz digital business banking product",
+      "intent": "navigational",
+      "source": "organic_existing",
+      "volume": 1800,
+      "keyword": "mashreq neo biz",
+      "category": "product",
+      "difficulty": 2,
+      "relevanceScore": 0.84
+    },
+    {
+      "notes": "Product category query for credit and debit card offerings",
+      "intent": "commercial",
+      "source": "organic_existing",
+      "volume": 200,
+      "keyword": "mashreq bank cards",
+      "category": "product",
+      "difficulty": 6,
+      "relevanceScore": 0.84
+    },
+    {
+      "notes": "Highest-volume keyword in dataset; near-duplicate 'mashriq bank near me' (vol 70) merged; strong local SEO signal",
+      "intent": "navigational",
+      "source": "organic_existing",
+      "volume": 16000,
+      "keyword": "mashreq bank near me",
+      "category": "longtail",
+      "difficulty": 0,
+      "relevanceScore": 0.7
+    },
+    {
+      "notes": "Sahara Centre branch location query",
+      "intent": "navigational",
+      "source": "organic_existing",
+      "volume": 150,
+      "keyword": "mashreq bank sahara center",
+      "category": "longtail",
+      "difficulty": 0,
+      "relevanceScore": 0.56
+    },
+    {
+      "notes": "Aggregate branch-finding query for Dubai",
+      "intent": "navigational",
+      "source": "organic_existing",
+      "volume": 350,
+      "keyword": "mashreq bank branches dubai",
+      "category": "longtail",
+      "difficulty": 0,
+      "relevanceScore": 0.65
+    },
+    {
+      "notes": "Full-service branch distinction suggests intent to complete in-branch transactions",
+      "intent": "navigational",
+      "source": "organic_existing",
+      "volume": 700,
+      "keyword": "mashreq bank full service branch dubai",
+      "category": "longtail",
+      "difficulty": 0,
+      "relevanceScore": 0.65
+    },
+    {
+      "notes": "Arabic-language query meaning 'Mashreq Bank Sharjah'; important for Arabic SEO coverage",
+      "intent": "navigational",
+      "source": "organic_existing",
+      "volume": 200,
+      "keyword": "بنك المشرق الشارقة",
+      "category": "brand",
+      "difficulty": 0,
+      "relevanceScore": 0.67
+    },
+    {
+      "notes": "International City branch location query",
+      "intent": "navigational",
+      "source": "organic_existing",
+      "volume": 50,
+      "keyword": "mashreq bank international city",
+      "category": "longtail",
+      "difficulty": 1,
+      "relevanceScore": 0.56
+    },
+    {
+      "notes": "Cash deposit machine service query",
+      "intent": "navigational",
+      "source": "organic_existing",
+      "volume": 300,
+      "keyword": "mashreq bank cdm",
+      "category": "service",
+      "difficulty": 0,
+      "relevanceScore": 0.64
+    },
+    {
+      "notes": "High business relevance; maps directly to core digital account opening offering",
+      "intent": "commercial",
+      "source": "organic_existing",
+      "volume": 40,
+      "keyword": "mashreq bank online account",
+      "category": "product",
+      "difficulty": 13,
+      "relevanceScore": 0.88
+    },
+    {
+      "notes": "Generic office location query",
+      "intent": "navigational",
+      "source": "organic_existing",
+      "volume": 90,
+      "keyword": "mashreq office",
+      "category": "brand",
+      "difficulty": 1,
+      "relevanceScore": 0.54
+    },
+    {
+      "notes": "Mall of the Emirates branch location query",
+      "intent": "navigational",
+      "source": "organic_existing",
+      "volume": 70,
+      "keyword": "mashreq bank moe",
+      "category": "longtail",
+      "difficulty": 0,
+      "relevanceScore": 0.56
+    },
+    {
+      "notes": "High-volume local CDM finder query",
+      "intent": "navigational",
+      "source": "organic_existing",
+      "volume": 1400,
+      "keyword": "mashreq bank cdm near me",
+      "category": "service",
+      "difficulty": 0,
+      "relevanceScore": 0.65
+    },
+    {
+      "notes": "Brand variant for online banking access",
+      "intent": "navigational",
+      "source": "organic_existing",
+      "volume": 30,
+      "keyword": "al mashreq online",
+      "category": "brand",
+      "difficulty": 26,
+      "relevanceScore": 0.75
+    },
+    {
+      "notes": "Main or flagship branch query",
+      "intent": "navigational",
+      "source": "organic_existing",
+      "volume": 60,
+      "keyword": "mashreq bank main branch",
+      "category": "longtail",
+      "difficulty": 0,
+      "relevanceScore": 0.55
+    },
+    {
+      "notes": "Transactional intent for online credit card application; high business relevance",
+      "intent": "transactional",
+      "source": "organic_existing",
+      "volume": 20,
+      "keyword": "mashreq online credit card",
+      "category": "product",
+      "difficulty": 22,
+      "relevanceScore": 0.86
+    },
+    {
+      "notes": "Deira branch location query",
+      "intent": "navigational",
+      "source": "organic_existing",
+      "volume": 60,
+      "keyword": "mashreq bank deira branch",
+      "category": "longtail",
+      "difficulty": 0,
+      "relevanceScore": 0.55
+    },
+    {
+      "notes": "Farsi or Arabic-language brand term",
+      "intent": "navigational",
+      "source": "organic_existing",
+      "volume": 10,
+      "keyword": "بانک المشرق",
+      "category": "brand",
+      "difficulty": 11,
+      "relevanceScore": 0.64
+    },
+    {
+      "notes": "Business banking segment query",
+      "intent": "commercial",
+      "source": "organic_existing",
+      "volume": 800,
+      "keyword": "mashreq business",
+      "category": "product",
+      "difficulty": 2,
+      "relevanceScore": 0.78
+    },
+    {
+      "notes": "Helpline contact query",
+      "intent": "navigational",
+      "source": "organic_existing",
+      "volume": 600,
+      "keyword": "mashreq helpline number",
+      "category": "service",
+      "difficulty": 0,
+      "relevanceScore": 0.6
+    },
+    {
+      "notes": "Dubai Outsource Zone branch location query",
+      "intent": "navigational",
+      "source": "organic_existing",
+      "volume": 50,
+      "keyword": "dubai outsource zone mashreq bank",
+      "category": "longtail",
+      "difficulty": 0,
+      "relevanceScore": 0.53
+    },
+    {
+      "notes": "Highest-volume customer care contact query",
+      "intent": "navigational",
+      "source": "organic_existing",
+      "volume": 1700,
+      "keyword": "mashreq customer care number",
+      "category": "service",
+      "difficulty": 0,
+      "relevanceScore": 0.65
+    },
+    {
+      "notes": "Al Qusais area branch location query",
+      "intent": "navigational",
+      "source": "organic_existing",
+      "volume": 20,
+      "keyword": "mashreq bank in qusais",
+      "category": "longtail",
+      "difficulty": 0,
+      "relevanceScore": 0.55
+    },
+    {
+      "notes": "Product-specific customer care query for credit card issues",
+      "intent": "navigational",
+      "source": "organic_existing",
+      "volume": 700,
+      "keyword": "mashreq credit card customer care",
+      "category": "service",
+      "difficulty": 0,
+      "relevanceScore": 0.71
+    },
+    {
+      "notes": "Neo digital bank physical address query",
+      "intent": "navigational",
+      "source": "organic_existing",
+      "volume": 10,
+      "keyword": "mashreq neo address",
+      "category": "brand",
+      "difficulty": 1,
+      "relevanceScore": 0.54
+    }
+  ],
+  "coverageNotes": "Pipeline returned 50 organic keywords for mashreq.com; however relatedTerms and suggestions arrays were both empty (0 entries each, only 1 API call completed), severely limiting non-brand and topical keyword discovery. After normalization, 10 entries were removed: 7 near-duplicate merges (spelling variants 'mushreq', 'mashriq bank near me', 'mashreq bank .com'; semantic duplicates 'mashreq bank whatsapp', 'mashreq neo customer service', 'mashreq hq', 'mashreq bank hq', 'mashreq bank muraqqabat branch - full service') and 2 excluded generic non-English terms ('bank' in Malayalam and Arabic with no brand specificity). 40 unique seeds survived — below the 50–150 target due to the single-source constraint. The dataset is 97.5% brand-navigational; only 'digital banks in dubai' is non-brand. Zero problem, solution, or informational keywords were found. Major coverage gaps: no keywords for core revenue products (personal loans, home loans, car loans, savings accounts, investments, insurance, money transfers), no educational or financial literacy keywords, no competitor comparison queries, and no ICP pain-point queries (e.g., 'best savings rate uae', 'fastest loan approval dubai', 'digital wealth management uae'). These gaps align with the 8 content gaps identified in the business profile. Strongly recommend expanded keyword discovery using product-specific and service-specific seed terms to build the non-brand, informational, and commercial keyword foundation needed for content-driven organic growth."
+}

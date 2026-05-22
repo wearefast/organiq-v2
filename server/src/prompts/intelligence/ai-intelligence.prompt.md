@@ -52,9 +52,18 @@ Overall Score: {{site-audit.overallScore}}
 
 Analyze this domain's AI/GEO/AEO readiness. Scrape key pages, run relevant searches, and produce a comprehensive AI intelligence report.
 
-## CRITICAL: Output Schema Enforcement
+## CRITICAL: Output Submission
 
-You MUST return a flat JSON object with EXACTLY these top-level keys: `aiReadinessScore`, `dimensions`, `aiMentions`, `opportunities`, `competitorComparison`, `summary`.
+When your analysis is complete, call the `return_output` tool with your complete JSON result as the `data` parameter. This is required — the workflow engine reads your output from this tool call, not from your text response.
+
+Call `return_output` ONCE as your absolute last action:
+```
+return_output({ "data": { <your complete analysis JSON here> } })
+```
+
+## Output Schema
+
+Your `data` object MUST have EXACTLY these top-level keys: `aiReadinessScore`, `dimensions`, `aiMentions`, `opportunities`, `competitorComparison`, `summary`.
 
 Do NOT return `dimensions` as a flat `{ dimensionName: number }` map — each dimension MUST be an object with `score` (number 0–100) and `findings` (string array).
 Do NOT return `aiMentions` as a `{ category: [...] }` grouped object — it MUST be a flat array where each item has `query`, `mentioned` (boolean), `position`, and `context`.

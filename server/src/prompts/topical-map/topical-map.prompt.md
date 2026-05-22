@@ -53,9 +53,15 @@ Before writing any JSON: write out every cluster from the clusters list above as
 
 Build the complete topical map.
 
-## CRITICAL: Output Schema Enforcement
+## CRITICAL: Output Submission
 
-You MUST return a flat JSON object with EXACTLY these top-level keys: `pillars`, `calendar`, `linkingArchitecture`, `stats`, `summary`.
+When your analysis is complete, call the `return_output` tool with your complete JSON result as the `data` parameter. This is required — the workflow engine reads from this tool call, not from text.
+
+Call `return_output` ONCE as your absolute last action.
+
+## Output Schema
+
+Your `data` object MUST have EXACTLY these top-level keys: `pillars`, `calendar`, `linkingArchitecture`, `stats`, `summary`.
 
 Do NOT use `contentPillars` in place of `pillars` or `contentCalendar` in place of `calendar` — these exact key names are required.
 Do NOT represent clusters as a string key or as a keyed object. `clusters` inside each pillar MUST be an array of objects, each with a `name` string field — never a plain string label used as an object key.

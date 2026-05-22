@@ -50,9 +50,15 @@ Before writing any JSON: count the clusters listed above and note the number. Yo
 
 Produce the strategic verdict and plan.
 
-## CRITICAL: Output Schema Enforcement
+## CRITICAL: Output Submission
 
-You MUST return a flat JSON object with EXACTLY these top-level keys: `executiveSummary`, `swot`, `verdict`, `aiGeoReadiness`, `riskAssessment`, `priorityMatrix`, `actionPlan`, `kpis`, `budgetAllocation`.
+When your analysis is complete, call the `return_output` tool with your complete JSON result as the `data` parameter. This is required — the workflow engine reads from this tool call, not from text.
+
+Call `return_output` ONCE as your absolute last action.
+
+## Output Schema
+
+Your `data` object MUST have EXACTLY these top-level keys: `executiveSummary`, `swot`, `verdict`, `aiGeoReadiness`, `riskAssessment`, `priorityMatrix`, `actionPlan`, `kpis`, `budgetAllocation`.
 
 Do NOT use `swotAnalysis` in place of `swot`, `strategicVerdict` in place of `verdict`, or `kpiTargets` in place of `kpis` — these exact key names are required.
 Do NOT return SWOT entries as plain strings. Every item inside `swot.strengths`, `swot.weaknesses`, `swot.opportunities`, and `swot.threats` MUST be an object with exactly three keys: `factor`, `evidence`, `impact`.
