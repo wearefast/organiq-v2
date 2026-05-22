@@ -316,6 +316,23 @@ export class ToolBootstrap implements OnModuleInit {
         },
         execute: (input: any) => this.openai.generateImage(input.prompt, input.size),
       },
+      // --- Structured output submission ---
+      {
+        name: 'return_output',
+        description:
+          'Submit your final structured JSON output. Call this tool ONCE as your absolute last action, passing your complete result object as the `data` parameter. The workflow engine captures `data` directly — no text parsing is needed.',
+        inputSchema: {
+          type: 'object',
+          properties: {
+            data: {
+              type: 'object',
+              description: 'Your complete structured JSON output conforming to the required output schema.',
+            },
+          },
+          required: ['data'],
+        },
+        execute: async (_input: unknown) => ({ received: true }),
+      },
     ];
 
     for (const tool of tools) {

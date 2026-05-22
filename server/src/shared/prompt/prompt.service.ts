@@ -210,7 +210,9 @@ export class PromptService {
   }
 
   private parseAgentDefinition(raw: string, fallbackKey: string): AgentDefinition {
-    const fmMatch = raw.match(/^---\n([\s\S]*?)\n---\n([\s\S]*)$/);
+    // The trailing \n after the closing --- is optional to support files with no body
+    // and no trailing newline (common when only YAML frontmatter is present).
+    const fmMatch = raw.match(/^---\n([\s\S]*?)\n---\n?([\s\S]*)$/);
     if (!fmMatch) {
       throw new Error(`Invalid agent definition: missing YAML frontmatter in ${fallbackKey}`);
     }

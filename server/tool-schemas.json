@@ -1,5 +1,19 @@
 [
   {
+    "name": "return_output",
+    "description": "Submit your final structured JSON output. Call this tool ONCE as your absolute last action, passing your complete result object as the `data` parameter.",
+    "input_schema": {
+      "type": "object",
+      "properties": {
+        "data": {
+          "type": "object",
+          "description": "Your complete structured result object"
+        }
+      },
+      "required": ["data"]
+    }
+  },
+  {
     "name": "ahrefs_domain_rating",
     "description": "Get domain rating and authority metrics for a domain",
     "input_schema": {

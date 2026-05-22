@@ -41,15 +41,24 @@ You have access to Firecrawl (crawling/scraping), PageSpeed Insights, CrUX data,
 
 Perform a complete technical SEO audit. Use your tools to crawl the site, test performance, and analyze on-page factors.
 
-## CRITICAL: Output Schema Enforcement
+## CRITICAL: Output Submission
 
-You MUST return a JSON object with these top-level keys: `audit_meta`, `overallScore`, `scores`, `coreWebVitals`, `issues`, `topPages`, `siteStats`, `summary`.
+When your analysis is complete, you MUST call the `return_output` tool with your complete audit JSON as the `data` parameter. This is how the workflow engine receives your results — it reads the tool call input directly. Do NOT rely on text output.
+
+Call `return_output` ONCE as your absolute last action:
+```
+return_output({ "data": { <your complete audit JSON here> } })
+```
+
+## Output Schema
+
+Your `data` object MUST contain these top-level keys: `audit_meta`, `overallScore`, `scores`, `coreWebVitals`, `issues`, `topPages`, `siteStats`, `summary`.
 
 Do NOT wrap dimension scores as plain numbers — each dimension inside `scores` MUST be an object with `score`, `weight`, and `weighted`.
 Do NOT use string labels like `"LCP: 2.5s"` as the top-level CWV values. Each CWV entry MUST be an object with `value` (string, e.g. `"2.5s"`) and `rating` (`"good"`, `"needs-improvement"`, or `"poor"`).
 `overallScore` = sum of all `weighted` values, rounded to the nearest integer. Weights must always sum to 100; `weighted` = `score × (weight / 100)`, rounded to one decimal.
 
-Return ONLY valid JSON with this exact structure:
+The JSON MUST match this exact structure:
 
 ```json
 {

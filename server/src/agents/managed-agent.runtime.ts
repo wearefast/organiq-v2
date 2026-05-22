@@ -72,6 +72,7 @@ export class ManagedAgentRuntime {
     let outputText = '';
     let totalTokens = 0;
     let thinkingEvents = 0;
+    let capturedOutput: unknown = undefined; // set when agent calls return_output
 
     if (config.pipelineData !== undefined) {
       toolCalls.push({
@@ -132,6 +133,15 @@ export class ManagedAgentRuntime {
 
             this.logger.debug(`Tool call: ${toolName} (session: ${sessionId})`);
             const start = Date.now();
+
+            // Capture structured output when the agent calls return_output
+            if (toolName === 'return_output') {
+              const data = (toolInput as any)?.data;
+              if (data !== undefined) {
+                capturedOutput = data;
+                this.logger.debug(`Captured structured output via return_output for ${config.stepKey}`);
+              }
+            }
 
             // Execute via our existing ToolSandbox (validates allowed tools + executes)
             const toolResult = await this.toolSandbox.execute(
@@ -214,8 +224,10 @@ export class ManagedAgentRuntime {
         }
       }
 
-      // 5. Parse the output
-      const output = this.extractJson(outputText);
+      // 5. Parse the output — prefer captured return_output over text parsing
+      const output = capturedOutput !== undefined
+        ? capturedOutput
+        : this.extractJson(outputText);
 
       this.logger.log(
         `Session completed: ${config.stepKey} (${toolCalls.length} tool calls, session: ${sessionId})`,
@@ -438,10 +450,58 @@ export class ManagedAgentRuntime {
       // Try extracting from ```json ... ``` blocks
       const jsonBlockMatch = content.match(/```(?:json)?\s*\n([\s\S]*?)\n```/);
       if (jsonBlockMatch) {
-        return JSON.parse(jsonBlockMatch[1]);
+        try {
+          return JSON.parse(jsonBlockMatch[1]);
+        } catch {
+          // Sanitize: fix unescaped control characters inside string values then retry
+          try {
+            return JSON.parse(this.sanitizeJsonString(jsonBlockMatch[1]));
+          } catch {
+            // Fall through to raw text
+          }
+        }
       }
-      // Return raw text if no JSON found
+      // Return raw text if no JSON found or unfixable
       return content;
     }
+  }
+
+  /**
+   * Fix literal newlines/carriage-returns/tabs that appear inside JSON string values.
+   * Uses a simple state machine to avoid touching whitespace outside strings.
+   */
+  private sanitizeJsonString(json: string): string {
+    let result = '';
+    let inString = false;
+    let prevBackslashes = 0;
+
+    for (let i = 0; i < json.length; i++) {
+      const ch = json[i];
+
+      if (ch === '"') {
+        // A quote is a string delimiter only if preceded by an even number of backslashes
+        if (prevBackslashes % 2 === 0) {
+          inString = !inString;
+        }
+        result += ch;
+        prevBackslashes = 0;
+      } else if (ch === '\\') {
+        result += ch;
+        prevBackslashes += 1;
+      } else if (inString) {
+        prevBackslashes = 0;
+        switch (ch) {
+          case '\n': result += '\\n'; break;
+          case '\r': result += '\\r'; break;
+          case '\t': result += '\\t'; break;
+          default:   result += ch;
+        }
+      } else {
+        result += ch;
+        prevBackslashes = 0;
+      }
+    }
+
+    return result;
   }
 }

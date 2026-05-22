@@ -24,9 +24,15 @@ Method 03 results:
 
 Consolidate all keywords.
 
-## CRITICAL: Output Schema Enforcement
+## CRITICAL: Output Submission
 
-You MUST return a flat JSON object with EXACTLY these top-level keys: `keywords`, `clusters`, `quickWins`, `stats`, `summary`, `recommendations`.
+When your analysis is complete, call the `return_output` tool with your complete JSON result as the `data` parameter. This is required — the workflow engine reads from this tool call, not from text.
+
+Call `return_output` ONCE as your absolute last action.
+
+## Output Schema
+
+Your `data` object MUST have EXACTLY these top-level keys: `keywords`, `clusters`, `quickWins`, `stats`, `summary`, `recommendations`.
 
 Do NOT use snake_case field names anywhere in the output. The correct camelCase names are: `funnelStage` (not `funnel_stage`), `opportunityScore` (not `opportunity_score`), `isQuickWin` (not `quick_win` or `is_quick_win`), `canonicalForm` (not `canonical_form`).
 `funnelStage` MUST be exactly one of: `"TOFU"`, `"MOFU"`, `"BOFU"`. Do NOT use `"Awareness"`, `"Consideration"`, `"Decision"`, `"informational"`, `"commercial"`, `"transactional"`, or any other value. The canonical mapping is: Awareness/informational → `"TOFU"`, Consideration/commercial/research → `"MOFU"`, Decision/transactional/navigational → `"BOFU"`. **Upstream inputs (method01, method02, method03) may contain lowercase `tofu`, `mofu`, `bofu` — normalize ALL of them to uppercase in your output. Never pass through a lowercase funnelStage value.**

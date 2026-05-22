@@ -1,0 +1,47 @@
+Execution trace
+
+Managed agent: agent_016q4DrPJUmNf3yK3RGEzaFP
+- Allowed tools: none
+- Skill context supplied: yes
+- System instructions supplied: yes
+- Task instructions supplied: yes
+- Workflow context keys: business-profile, competitor-buckets, country, domain, industry, language, seed-keywords, site-audit
+- Managed-agent thinking progress events observed: 5
+
+Inputs sent to the agent
+{
+  "stepKey": "competitor-buckets",
+  "managedAgentId": "agent_016q4DrPJUmNf3yK3RGEzaFP",
+  "allowedTools": [],
+  "hasSkillContext": true,
+  "hasSystemPrompt": true,
+  "hasUserPrompt": true,
+  "workflowContextKeys": [
+    "business-profile",
+    "competitor-buckets",
+    "country",
+    "domain",
+    "industry",
+    "language",
+    "seed-keywords",
+    "site-audit"
+  ]
+}
+
+Pipeline evidence available to the agent
+{
+  "metadata": {
+    "domain": "mashreq.com",
+    "country": "AE",
+    "searchQueriesRun": 1,
+    "apiCallCount": 2,
+    "durationMs": 3480
+  },
+  "rawData": {
+    "domain": "mashreq.com"
+  }
+}
+
+Sessions API note
+Anthropic Managed Agents exposes tool-use and progress events, but it does not expose private chain-of-thought text.
+This panel therefore shows the exact input package sent to the agent and the rationale it returned explicitly in structured fields.
