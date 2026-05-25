@@ -9,6 +9,7 @@ import { DatabaseModule } from './shared/database/database.module';
 import { HealthModule } from './shared/health/health.module';
 import { PromptModule } from './shared/prompt/prompt.module';
 import { VerificationModule } from './shared/verification/verification.module';
+import { WebCrawlerModule } from './shared/web-crawler/web-crawler.module';
 import { AuthModule } from './features/auth/auth.module';
 import { OrganizationsModule } from './features/organizations/organizations.module';
 import { CreditsModule } from './features/credits/credits.module';
@@ -71,6 +72,7 @@ function resolveEnvFilePaths() {
     HealthModule,
     PromptModule,
     VerificationModule,
+    WebCrawlerModule,
     AuthModule,
     OrganizationsModule,
     CreditsModule,

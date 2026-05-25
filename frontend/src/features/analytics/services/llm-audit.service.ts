@@ -67,9 +67,9 @@ export interface AuditHistoryEntry {
   auditedAt: string;
 }
 
-export async function runLlmAudit(projectId: string, url: string): Promise<AuditRunSummary> {
+export async function runLlmAudit(projectId: string): Promise<AuditRunSummary> {
   return apiFetch<AuditRunSummary>(
-    `/projects/${projectId}/audit/llm/run?url=${encodeURIComponent(url)}`,
+    `/projects/${projectId}/audit/llm/run`,
     { method: 'POST' },
   );
 }
@@ -80,4 +80,8 @@ export async function fetchLatestAudit(projectId: string): Promise<AuditRunSumma
 
 export async function fetchAuditHistory(projectId: string): Promise<AuditHistoryEntry[]> {
   return apiFetch<AuditHistoryEntry[]>(`/projects/${projectId}/audit/llm/history`);
+}
+
+export async function refreshProjectSitemap(projectId: string): Promise<void> {
+  await apiFetch(`/projects/${projectId}/refresh-sitemap`, { method: 'POST' });
 }

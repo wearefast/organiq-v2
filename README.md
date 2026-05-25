@@ -13,7 +13,7 @@ Agent-led SEO/GEO/AEO strategy consultant operating system for agencies.
 | **Architecture** | [System Design](docs/architecture/system-design.md) | Runtime topology, service ports, design principles |
 | **Architecture** | [Frontend](docs/architecture/frontend-architecture.md) | Next.js 15 App Router, feature modules, design tokens |
 | **Architecture** | [Backend](docs/architecture/backend-architecture.md) | NestJS modules, agent runtime, workflow orchestration |
-| **Architecture** | [Data Models](docs/architecture/data-models.md) | Drizzle schema, ERD, 14 core tables |
+| **Architecture** | [Data Models](docs/architecture/data-models.md) | Drizzle schema, ERD, 31 tables |
 | **Architecture** | [API Reference](docs/architecture/api-reference.md) | Complete REST API surface (all endpoints) |
 | **Architecture** | [Dependencies](docs/architecture/dependencies.md) | All packages, external services, env variables |
 | **Features** | [Workflows](docs/features/workflows.md) | 18-step agent pipeline, step states, dependency graph |
@@ -24,6 +24,12 @@ Agent-led SEO/GEO/AEO strategy consultant operating system for agencies.
 | **Features** | [Integrations](docs/features/integrations.md) | All 8 external services, retry logic, tool registry |
 | **Features** | [Auth & Orgs](docs/features/auth.md) | Clerk SSO, webhooks, idempotency |
 | **Features** | [Credits](docs/features/credits.md) | Credit system, ledger, debit flow |
+| **Features** | [Billing](docs/features/billing.md) | Stripe subscriptions, credit packs, customer portal |
+| **Features** | [Audit](docs/features/audit.md) | Site audit (workflow step) + LLM audit |
+| **Features** | [LLM Traffic](docs/features/llm-traffic.md) | AI engine traffic tracking and analytics |
+| **Features** | [Notifications](docs/features/notifications.md) | Decay alerts, workflow events, in-app notifications |
+| **Features** | [On-Demand Agents](docs/features/on-demand-agents.md) | Ad-hoc agent execution outside workflow |
+| **Features** | [Leads](docs/features/leads.md) | Lead generation from audit reports |
 | **Changelog** | [Changelog](docs/changelog.md) | All fixes and updates with details |
 | **Planning** | [Implementation Plan](docs/implementation-plan.md) | Master task checklist (90 tasks, all complete) |
 | **Planning** | [Technical Debt](docs/technical-debt.md) | Deferred work tracker |

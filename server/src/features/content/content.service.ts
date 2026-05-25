@@ -1,8 +1,9 @@
 import { Injectable, Logger, NotFoundException, BadRequestException } from '@nestjs/common';
-import { eq, and, sql, desc } from 'drizzle-orm';
+import { eq, and, sql, desc, inArray } from 'drizzle-orm';
 import { DatabaseService } from '../../shared/database/database.service';
 import { contentPieces, contentImages } from '../../db/schema';
 import { TopicalMapsService } from '../topical-maps/topical-maps.service';
+import { SerperService } from '../integrations/serper/serper.service';
 
 @Injectable()
 export class ContentService {
@@ -11,6 +12,7 @@ export class ContentService {
   constructor(
     private readonly db: DatabaseService,
     private readonly topicalMapsService: TopicalMapsService,
+    private readonly serper: SerperService,
   ) {}
 
   async findAllByProject(projectId: string) {
@@ -231,6 +233,88 @@ export class ContentService {
     return this.db.db.query.contentImages.findMany({
       where: eq(contentImages.contentPieceId, contentPieceId),
       orderBy: (img, { asc }) => [asc(img.index)],
+    });
+  }
+
+  /**
+   * Return all images for every content piece in a project (for the Assets tab).
+   * Omits the base64 blob from the list to keep the response lightweight;
+   * callers can load individual images on demand.
+   */
+  async findAllImagesByProject(projectId: string) {
+    const pieces = await this.db.db
+      .select({ id: contentPieces.id, title: contentPieces.title })
+      .from(contentPieces)
+      .where(eq(contentPieces.projectId, projectId));
+
+    if (pieces.length === 0) return [];
+
+    const pieceIds = pieces.map((p) => p.id);
+    const images = await this.db.db
+      .select({
+        id: contentImages.id,
+        contentPieceId: contentImages.contentPieceId,
+        index: contentImages.index,
+        altText: contentImages.altText,
+        prompt: contentImages.prompt,
+        base64: contentImages.base64,
+        size: contentImages.size,
+        createdAt: contentImages.createdAt,
+      })
+      .from(contentImages)
+      .where(inArray(contentImages.contentPieceId, pieceIds))
+      .orderBy(desc(contentImages.createdAt));
+
+    const pieceMap = Object.fromEntries(pieces.map((p) => [p.id, p.title]));
+    return images.map((img) => ({ ...img, contentPieceTitle: pieceMap[img.contentPieceId] ?? '' }));
+  }
+
+  /**
+   * Set (or clear) the scheduled publish date for a content piece.
+   */
+  async scheduleContent(id: string, projectId: string, scheduledPublishAt: Date | null) {
+    await this.findById(id, projectId);
+    const [updated] = await this.db.db
+      .update(contentPieces)
+      .set({ scheduledPublishAt, updatedAt: new Date() })
+      .where(and(eq(contentPieces.id, id), eq(contentPieces.projectId, projectId)))
+      .returning();
+    return updated;
+  }
+
+  /**
+   * Search public Reddit threads relevant to the project via Serper.
+   * Returns up to `limit` organic results scoped to reddit.com.
+   */
+  async searchForumThreads(projectId: string, query: string, country = 'us') {
+    if (!query || query.trim().length === 0) {
+      throw new BadRequestException('query is required');
+    }
+
+    const q = `site:reddit.com ${query.trim()}`;
+    const raw = (await this.serper.search({ query: q, country, num: 20 })) as {
+      organic?: Array<{
+        title?: string;
+        link?: string;
+        snippet?: string;
+        position?: number;
+      }>;
+    };
+
+    const organic = raw.organic ?? [];
+    return organic.map((r) => {
+      const subreddit = r.link?.match(/reddit\.com\/r\/([^/]+)/)?.[1] ?? null;
+      const isQuestion =
+        (r.title ?? '').includes('?') ||
+        /\b(how|what|why|where|when|can|should|does|is|are|will|help)\b/i.test(r.title ?? '');
+      return {
+        title: r.title ?? '',
+        url: r.link ?? '',
+        snippet: r.snippet ?? '',
+        subreddit,
+        position: r.position ?? 0,
+        isQuestion,
+      };
     });
   }
 }

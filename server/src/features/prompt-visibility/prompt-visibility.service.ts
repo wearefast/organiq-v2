@@ -1,7 +1,8 @@
-import { Injectable, Logger } from '@nestjs/common';
+import { Injectable, Logger, NotFoundException } from '@nestjs/common';
+import { ConfigService } from '@nestjs/config';
 import { eq, desc, and, gte } from 'drizzle-orm';
 import { DatabaseService } from '../../shared/database/database.service';
-import { trackedPrompts, promptVisibilityResults, projects } from '../../db/schema';
+import { trackedPrompts, promptVisibilityResults, projects, workflowRuns, stepArtifacts } from '../../db/schema';
 import { EngineQueryService, SupportedEngine, SUPPORTED_ENGINES } from './engine-query.service';
 import { VisibilityParserService } from './visibility-parser.service';
 
@@ -45,6 +46,7 @@ export class PromptVisibilityService {
     private readonly db: DatabaseService,
     private readonly engineQuery: EngineQueryService,
     private readonly parser: VisibilityParserService,
+    private readonly config: ConfigService,
   ) {}
 
   // ─── CRUD: Tracked Prompts ───────────────────────────────
@@ -243,6 +245,122 @@ export class PromptVisibilityService {
         this.logger.error(`Error checking prompt ${promptId} on ${engine}: ${e}`);
       }
     }
+  }
+
+  // ─── Prompt Suggestions ──────────────────────────────────
+
+  async generateSuggestions(projectId: string): Promise<Array<{ text: string; intent: string; category: string }>> {
+    const project = await this.db.db.query.projects.findFirst({
+      where: eq(projects.id, projectId),
+    });
+    if (!project) throw new NotFoundException('Project not found');
+
+    // Try to get richer business profile from the most recent workflow run
+    let businessProfile: Record<string, unknown> | null = null;
+    const latestRun = await this.db.db
+      .select({ id: workflowRuns.id })
+      .from(workflowRuns)
+      .where(eq(workflowRuns.projectId, projectId))
+      .orderBy(desc(workflowRuns.createdAt))
+      .limit(1);
+
+    if (latestRun.length > 0) {
+      const artifact = await this.db.db
+        .select({ data: stepArtifacts.data })
+        .from(stepArtifacts)
+        .where(
+          and(
+            eq(stepArtifacts.workflowRunId, latestRun[0].id),
+            eq(stepArtifacts.stepKey, 'business-profile'),
+          ),
+        )
+        .orderBy(desc(stepArtifacts.version))
+        .limit(1);
+      if (artifact.length > 0) {
+        businessProfile = artifact[0].data as Record<string, unknown>;
+      }
+    }
+
+    // Build context string
+    const bp = businessProfile;
+    const context = bp
+      ? [
+          `Brand: ${project.name}`,
+          `Domain: ${project.domain}`,
+          `Industry: ${project.industry ?? 'unknown'}`,
+          `Country: ${project.country ?? 'global'}`,
+          `Brand Identity: ${bp['brandIdentity'] ?? ''}`,
+          `Target Market: ${bp['targetMarket'] ?? ''}`,
+          `Services: ${Array.isArray(bp['services']) ? (bp['services'] as string[]).join(', ') : ''}`,
+          `Geography: ${bp['geography'] ?? ''}`,
+          `Seed Keywords: ${Array.isArray(bp['seedKeywords']) ? (bp['seedKeywords'] as string[]).join(', ') : ''}`,
+        ].join('\n')
+      : [
+          `Brand: ${project.name}`,
+          `Domain: ${project.domain}`,
+          `Industry: ${project.industry ?? 'unknown'}`,
+          `Country: ${project.country ?? 'global'}`,
+        ].join('\n');
+
+    const apiKey = this.config.get<string>('OPENAI_API_KEY');
+    if (!apiKey) return this.templateSuggestions(project);
+
+    const systemPrompt = `You are an AI visibility strategist. Generate exactly 6 realistic search queries a potential customer might type into an AI search engine (Perplexity, ChatGPT, Gemini) when researching products or services like this brand. Queries must be conversational, specific to the brand's industry and geography, and NOT generic.
+
+Return ONLY a JSON object with this structure: { "suggestions": [ { "text": "the query", "intent": "awareness|consideration|decision", "category": "2-3 word label" } ] }
+
+Intent:
+- awareness: learning about the space (top of funnel)
+- consideration: comparing options (mid funnel)
+- decision: ready to buy or sign up (bottom funnel)
+
+Mix intents across the 6 results. Categories: e.g. "Brand Discovery", "Competitive", "Use Case", "Regional", "Feature Research", "Purchase Intent".`;
+
+    try {
+      const response = await fetch('https://api.openai.com/v1/chat/completions', {
+        method: 'POST',
+        headers: { Authorization: `Bearer ${apiKey}`, 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          model: 'gpt-4o-mini',
+          response_format: { type: 'json_object' },
+          messages: [
+            { role: 'system', content: systemPrompt },
+            { role: 'user', content: `Generate 6 AI visibility prompts for this brand:\n\n${context}` },
+          ],
+          temperature: 0.7,
+          max_tokens: 800,
+        }),
+      });
+
+      if (response.ok) {
+        const data = (await response.json()) as { choices: Array<{ message: { content: string } }> };
+        const parsed = JSON.parse(data.choices?.[0]?.message?.content ?? '{}') as { suggestions?: unknown[] };
+        const suggestions = parsed.suggestions;
+        if (Array.isArray(suggestions) && suggestions.length > 0) {
+          return suggestions.slice(0, 6) as Array<{ text: string; intent: string; category: string }>;
+        }
+      }
+    } catch (e) {
+      this.logger.warn(`Suggestion generation failed: ${e}`);
+    }
+
+    return this.templateSuggestions(project);
+  }
+
+  private templateSuggestions(
+    project: { name: string; industry?: string | null; country?: string | null },
+  ): Array<{ text: string; intent: string; category: string }> {
+    const industry = project.industry ?? 'software';
+    const brand = project.name;
+    const geo = project.country ? ` in ${project.country}` : '';
+    return [
+      { text: `best ${industry} tools${geo}`, intent: 'awareness', category: 'Brand Discovery' },
+      { text: `${brand} alternatives`, intent: 'consideration', category: 'Competitive' },
+      { text: `how to choose a ${industry} platform${geo}`, intent: 'consideration', category: 'Buying Guide' },
+      { text: `top ${industry} software for teams${geo}`, intent: 'awareness', category: 'Category' },
+      { text: `${brand} review and pricing`, intent: 'decision', category: 'Purchase Intent' },
+      { text: `best ${industry} solution for small business${geo}`, intent: 'decision', category: 'Use Case' },
+    ];
   }
 
   // ─── Check all active prompts (batch) ────────────────────

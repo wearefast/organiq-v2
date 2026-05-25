@@ -13,28 +13,42 @@ frontend/src/
 │   ├── globals.css                 Tailwind + design tokens
 │   ├── (dashboard)/                Authenticated route group
 │   │   ├── layout.tsx              Dashboard shell (top bar, side rail)
-│   │   ├── page.tsx                Dashboard home
-│   │   ├── workspaces/
-│   │   │   ├── page.tsx            Workspace list
-│   │   │   └── [id]/
-│   │   │       ├── page.tsx        Workspace detail
-│   │   │       └── projects/
-│   │   │           ├── page.tsx    Project list
-│   │   │           └── [id]/
-│   │   │               ├── page.tsx        Project detail
-│   │   │               └── workflows/
-│   │   │                   ├── page.tsx    Workflow runs list
-│   │   │                   └── [runId]/
-│   │   │                       └── page.tsx  Workflow shell
-│   │   ├── keywords/               Keyword ledger
-│   │   ├── content/                Content management
-│   │   ├── reports/                Report generation
-│   │   ├── credits/                Credit management
-│   │   └── settings/               Org/workspace settings
+│   │   ├── billing/
+│   │   │   └── page.tsx            Subscription management (Stripe)
+│   │   ├── settings/
+│   │   │   └── page.tsx            User/org settings
+│   │   └── workspaces/
+│   │       ├── page.tsx            Workspace list
+│   │       └── [wId]/
+│   │           └── projects/
+│   │               ├── page.tsx    Project list
+│   │               └── [pId]/
+│   │                   ├── overview/page.tsx      Project overview
+│   │                   ├── workflows/
+│   │                   │   ├── page.tsx           Workflow runs list
+│   │                   │   └── [runId]/page.tsx   Workflow run detail
+│   │                   ├── keywords/page.tsx      Keyword explorer
+│   │                   ├── content/page.tsx       Content management
+│   │                   ├── topical-map/page.tsx   Topical map viewer
+│   │                   ├── reports/page.tsx       Reports list
+│   │                   ├── research/page.tsx      Research dashboard
+│   │                   ├── agents/
+│   │                   │   ├── page.tsx           On-demand agents
+│   │                   │   └── scheduled/page.tsx Scheduled workflows
+│   │                   ├── ai-search/page.tsx     AI search features
+│   │                   ├── analytics/
+│   │                   │   ├── page.tsx           Analytics overview
+│   │                   │   ├── traffic/page.tsx   LLM traffic
+│   │                   │   ├── visibility/page.tsx Prompt visibility
+│   │                   │   └── llm-audit/page.tsx LLM audit
+│   │                   ├── technical/
+│   │                   │   ├── page.tsx           Technical SEO
+│   │                   │   └── llm-audit/page.tsx LLM audit detail
+│   │                   └── settings/page.tsx      Project settings
 │   ├── sign-in/                    Clerk sign-in
 │   └── sign-up/                    Clerk sign-up
 ├── features/
-│   ├── workflow/                   Main workflow feature
+│   ├── workflow/                   Core workflow viewer
 │   │   ├── components/
 │   │   │   ├── workflow-shell.tsx  Shell layout
 │   │   │   ├── step-rail.tsx      Step navigation (18 steps, 4 phases)
@@ -44,34 +58,41 @@ frontend/src/
 │   │   │   ├── tool-call-trail.tsx Audit trail (expandable)
 │   │   │   ├── progress-bar.tsx   Step timing/progress
 │   │   │   └── start-run.tsx      Create new run flow
-│   │   ├── renderers/             17 artifact renderers (one per step)
+│   │   ├── renderers/             18 artifact renderers (one per step)
 │   │   ├── hooks/
 │   │   │   ├── use-workflow.ts    Workflow state management
 │   │   │   └── use-workflow-ws.ts WebSocket connection
+│   │   ├── services/
+│   │   │   └── workflow.service.ts API calls
+│   │   └── types.ts               WorkflowRun, Step, Artifact types
+│   ├── agents/                     On-demand agents + scheduling
+│   │   ├── components/
 │   │   └── services/
-│   │       └── workflow.service.ts API calls
-│   ├── workspace/                  Workspace management
-│   ├── project/                    Project management
-│   ├── keywords/                   Keyword ledger UI
-│   ├── content/                    Content editor + scoring
-│   ├── reports/                    Report generation UI
-│   └── credits/                    Credit display + purchase
+│   ├── analytics/                  LLM traffic, audit, visibility dashboards
+│   │   ├── hooks/
+│   │   └── services/
+│   ├── billing/                    Stripe integration
+│   │   └── services/
+│   ├── content/                    Content CRUD
+│   │   └── services/
+│   └── reports/                    Report generation/download
+│       └── services/
 └── shared/
     ├── components/                 Design system components
     │   ├── command-palette.tsx     ⌘K palette
     │   ├── top-bar.tsx            48px top bar
     │   ├── side-nav.tsx           56px icon rail (expands to 240px)
-    │   ├── score-badge.tsx        Color-coded score display
     │   ├── status-badge.tsx       Step/workflow status
-    │   ├── data-table.tsx         Reusable data table
-    │   └── ...
+    │   ├── button.tsx             CVA-based variants
+    │   ├── card.tsx               Content containers
+    │   └── ...                    (15 components total)
     ├── hooks/
     │   ├── use-keyboard-shortcuts.ts  Global shortcuts
-    │   ├── use-theme.ts              Dark/light mode
-    │   └── ...
+    │   └── use-theme.ts              Dark/light mode
     └── utils/
-        ├── api.ts                 Typed fetch wrapper
-        └── ...
+        ├── api.ts                 Typed fetch wrapper (apiFetch<T>)
+        ├── cn.ts                  Class name merge utility
+        └── countries.ts           ISO country data
 ```
 
 ## Design System

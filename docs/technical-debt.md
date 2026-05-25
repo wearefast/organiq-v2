@@ -19,3 +19,4 @@
 | 10 | Archival | No archival or retention strategy for old workflow runs, step artifacts, or tool call logs | Schema design | Low |
 | 11 | Cascade deletes | Deletion cascade rules not documented — what happens when a project or workspace is deleted? | Data model review | Medium |
 | 12 | Credit purchase | No Stripe/payment integration for credit purchases — `POST /credits/purchase` exists but no payment gateway | Phase A implementation | High |
+| 13 | LLM traffic CORS | `POST /llm-traffic/ingest` is called via `navigator.sendBeacon` from customer sites (cross-origin). Current CORS policy only allows `FRONTEND_URL`. Needs either: (a) a dedicated `/ingest` endpoint registered with permissive CORS and no auth requirement, or (b) a per-project `allowedOrigins[]` allowlist stored in the projects table. Without this, cross-origin ingest events from customer domains are blocked in production. | CTO audit / CORS lockdown | High |

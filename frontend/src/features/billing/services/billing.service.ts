@@ -1,4 +1,6 @@
-const API_BASE = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:3002';
+import { API_URL } from '@/shared/utils/api';
+
+const API_BASE = API_URL;
 
 export async function getSubscription(organizationId: string, token: string) {
   const res = await fetch(`${API_BASE}/billing/${organizationId}/subscription`, {

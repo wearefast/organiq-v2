@@ -8,7 +8,13 @@ import { EngineQueryService } from './engine-query.service';
 import { VisibilityParserService } from './visibility-parser.service';
 
 @Module({
-  imports: [BullModule.registerQueue({ name: 'prompt-visibility' })],
+  imports: [BullModule.registerQueue({
+    name: 'prompt-visibility',
+    defaultJobOptions: {
+      removeOnComplete: 100,
+      removeOnFail: 500,
+    },
+  })],
   controllers: [PromptVisibilityController],
   providers: [
     PromptVisibilityService,

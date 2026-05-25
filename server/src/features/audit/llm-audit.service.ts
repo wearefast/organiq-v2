@@ -1,8 +1,8 @@
-import { Injectable, Logger, BadRequestException } from '@nestjs/common';
+import { Injectable, Logger } from '@nestjs/common';
 import { eq, desc } from 'drizzle-orm';
-import { lookup } from 'dns/promises';
 import * as cheerio from 'cheerio';
 import { DatabaseService } from '../../shared/database/database.service';
+import { WebCrawlerService } from '../../shared/web-crawler/web-crawler.service';
 import { llmAuditResults, projects } from '../../db/schema';
 import { randomUUID } from 'crypto';
 
@@ -74,45 +74,131 @@ const LLM_BOTS = ['GPTBot', 'ClaudeBot', 'PerplexityBot', 'Google-Extended', 'Ap
 
 // ─── Service ─────────────────────────────────────────────────
 
+/** Batch size for concurrent page fetches — keeps concurrency sane without hammering the target site */
+const AUDIT_BATCH_SIZE = 5;
+
 @Injectable()
 export class LlmAuditService {
   private readonly logger = new Logger(LlmAuditService.name);
 
-  constructor(private readonly db: DatabaseService) {}
+  constructor(
+    private readonly db: DatabaseService,
+    private readonly webCrawler: WebCrawlerService,
+  ) {}
 
   // ─── Main entry point ────────────────────────────────────
 
-  async runAudit(projectId: string, targetUrl: string): Promise<AuditRunSummary> {
-    // SSRF protection: validate URL points to public internet
-    await this.validateUrlSafety(targetUrl);
-
-    // Verify project exists
+  /**
+   * Audit the project's site using the sitemap URLs already stored on the project.
+   * If no sitemap has been discovered yet, falls back to live sitemap discovery.
+   *
+   * The sitemap is stored on the project during creation (and domain updates),
+   * so this method avoids re-crawling the sitemap on every audit run.
+   */
+  async runAudit(projectId: string): Promise<AuditRunSummary> {
+    // Load project — owns the domain and stored sitemap
     const project = await this.db.db.query.projects.findFirst({
       where: eq(projects.id, projectId),
     });
     if (!project) throw new Error(`Project ${projectId} not found`);
 
+    const siteUrl = `https://${project.domain}`;
+    const origin = new URL(siteUrl).origin;
     const auditRunId = randomUUID();
-    const siteUrl = new URL(targetUrl).origin;
 
-    // Fetch robots.txt and sitemap
-    const robotsTxt = await this.fetchText(`${siteUrl}/robots.txt`);
-    const sitemapXml = await this.fetchText(`${siteUrl}/sitemap.xml`);
+    // Always fetch fresh robots.txt (needed for bot permission checks, tiny payload)
+    const robotsTxt = await this.webCrawler.fetchText(`${origin}/robots.txt`);
 
-    // Fetch the target page
-    const pageHtml = await this.fetchText(targetUrl);
+    // Use stored sitemap URLs if available; otherwise fall back to live discovery
+    let pageUrls: string[];
+    let sitemapXml = '';
 
-    // Run 6 deterministic checks
+    if (project.sitemapUrls && project.sitemapUrls.length > 0) {
+      pageUrls = project.sitemapUrls;
+      this.logger.log(
+        `runAudit: using ${pageUrls.length} stored sitemap URL(s) for ${origin}`,
+      );
+    } else {
+      this.logger.log(`runAudit: no stored sitemap for ${origin}, discovering live`);
+      const discovery = await this.webCrawler.discoverSitePages(siteUrl, 25);
+      pageUrls = discovery.pageUrls;
+      sitemapXml = discovery.sitemapXml;
+    }
+
+    this.logger.log(`runAudit: auditing ${pageUrls.length} page(s) on ${origin}`);
+
+    // Bot permissions are site-wide — evaluate once against robots.txt
     const botPermissions = this.checkBotPermissions(robotsTxt);
+    const botIssues = this.botPermissionIssues(botPermissions);
+
+    // Audit pages in batches of AUDIT_BATCH_SIZE to cap concurrency
+    const results: PageAuditResult[] = [];
+    for (let i = 0; i < pageUrls.length; i += AUDIT_BATCH_SIZE) {
+      const batch = pageUrls.slice(i, i + AUDIT_BATCH_SIZE);
+      const batchResults = await Promise.all(
+        batch.map((url) => this.auditSinglePage(url, botPermissions, botIssues, sitemapXml, origin)),
+      );
+      results.push(...batchResults.filter((r): r is PageAuditResult => r !== null));
+    }
+
+    if (results.length === 0) {
+      throw new Error(`Could not fetch any pages from ${origin} — the site may be unreachable`);
+    }
+
+    // Persist all page results in a single insert
+    await this.db.db.insert(llmAuditResults).values(
+      results.map((r) => ({
+        projectId,
+        auditRunId,
+        pageUrl: r.pageUrl,
+        aiIndexabilityScore: r.aiIndexabilityScore,
+        botPermissions: r.botPermissions,
+        contentChecks: r.contentChecks,
+        trustSignals: r.trustSignals,
+        contentChunking: r.contentChunking,
+        issues: r.issues,
+      })),
+    );
+
+    const overallScore = Math.round(
+      results.reduce((sum, r) => sum + r.aiIndexabilityScore, 0) / results.length,
+    );
+
+    return {
+      auditRunId,
+      projectId,
+      overallScore,
+      pageCount: results.length,
+      results,
+      auditedAt: new Date().toISOString(),
+    };
+  }
+
+  /**
+   * Fetch and audit a single page.
+   * Returns null if the page is unreachable (caller skips it gracefully).
+   */
+  private async auditSinglePage(
+    pageUrl: string,
+    botPermissions: BotPermissions,
+    botIssues: AuditIssue[],
+    sitemapXml: string,
+    origin: string,
+  ): Promise<PageAuditResult | null> {
+    const pageHtml = await this.webCrawler.fetchText(pageUrl);
+    if (!pageHtml) {
+      this.logger.warn(`auditSinglePage: skipping unreachable page ${pageUrl}`);
+      return null;
+    }
+
     const contentChecks = this.checkContentStructure(pageHtml);
-    const trustSignals = this.checkTrustSignals(pageHtml, siteUrl);
+    const trustSignals = this.checkTrustSignals(pageHtml, origin);
     const contentChunking = this.checkContentChunking(pageHtml);
     const schemaIssues = this.checkSchemaMarkup(pageHtml);
-    const sitemapIssues = this.checkSitemap(sitemapXml, targetUrl);
+    const sitemapIssues = this.checkSitemap(sitemapXml, pageUrl);
 
-    // Collect all issues
     const issues: AuditIssue[] = [
-      ...this.botPermissionIssues(botPermissions),
+      ...botIssues,
       ...this.structureIssues(contentChecks),
       ...this.trustIssues(trustSignals),
       ...this.chunkingIssues(contentChunking),
@@ -120,40 +206,14 @@ export class LlmAuditService {
       ...sitemapIssues,
     ];
 
-    // Calculate weighted score
-    const aiIndexabilityScore = this.calculateScore(botPermissions, contentChecks, trustSignals, contentChunking);
-
-    const result: PageAuditResult = {
-      pageUrl: targetUrl,
-      aiIndexabilityScore,
+    const aiIndexabilityScore = this.calculateScore(
       botPermissions,
       contentChecks,
       trustSignals,
       contentChunking,
-      issues,
-    };
+    );
 
-    // Persist
-    await this.db.db.insert(llmAuditResults).values({
-      projectId,
-      auditRunId,
-      pageUrl: targetUrl,
-      aiIndexabilityScore,
-      botPermissions,
-      contentChecks,
-      trustSignals,
-      contentChunking,
-      issues,
-    });
-
-    return {
-      auditRunId,
-      projectId,
-      overallScore: aiIndexabilityScore,
-      pageCount: 1,
-      results: [result],
-      auditedAt: new Date().toISOString(),
-    };
+    return { pageUrl, aiIndexabilityScore, botPermissions, contentChecks, trustSignals, contentChunking, issues };
   }
 
   // ─── Read ────────────────────────────────────────────────
@@ -560,71 +620,4 @@ export class LlmAuditService {
     return Math.min(100, botScore + contentScore + trustScore + chunkScore);
   }
 
-  // ─── SSRF protection ─────────────────────────────────────
-
-  private async validateUrlSafety(url: string): Promise<void> {
-    const parsed = new URL(url);
-
-    // Only allow http/https
-    if (!['http:', 'https:'].includes(parsed.protocol)) {
-      throw new BadRequestException('Only HTTP/HTTPS URLs are allowed');
-    }
-
-    // Block localhost and common internal hostnames
-    const hostname = parsed.hostname.toLowerCase();
-    const blockedHostnames = ['localhost', '127.0.0.1', '0.0.0.0', '[::1]', 'metadata.google.internal'];
-    if (blockedHostnames.includes(hostname)) {
-      throw new BadRequestException('Internal URLs are not allowed');
-    }
-
-    // Resolve DNS and block private/internal IPs
-    try {
-      const { address } = await lookup(hostname);
-      if (this.isPrivateIp(address)) {
-        throw new BadRequestException('URLs resolving to private IP ranges are not allowed');
-      }
-    } catch (e) {
-      if (e instanceof BadRequestException) throw e;
-      throw new BadRequestException(`Cannot resolve hostname: ${hostname}`);
-    }
-  }
-
-  private isPrivateIp(ip: string): boolean {
-    const parts = ip.split('.').map(Number);
-    if (parts.length !== 4) return true; // IPv6 or invalid — block by default
-
-    // 10.0.0.0/8
-    if (parts[0] === 10) return true;
-    // 172.16.0.0/12
-    if (parts[0] === 172 && parts[1] >= 16 && parts[1] <= 31) return true;
-    // 192.168.0.0/16
-    if (parts[0] === 192 && parts[1] === 168) return true;
-    // 127.0.0.0/8 (loopback)
-    if (parts[0] === 127) return true;
-    // 169.254.0.0/16 (link-local / AWS metadata)
-    if (parts[0] === 169 && parts[1] === 254) return true;
-    // 0.0.0.0/8
-    if (parts[0] === 0) return true;
-
-    return false;
-  }
-
-  // ─── Fetch helper ────────────────────────────────────────
-
-  private async fetchText(url: string): Promise<string> {
-    try {
-      const controller = new AbortController();
-      const timeout = setTimeout(() => controller.abort(), 10000);
-      const response = await fetch(url, {
-        signal: controller.signal,
-        headers: { 'User-Agent': 'PulseBot/1.0 (LLM Audit)' },
-      });
-      clearTimeout(timeout);
-      if (!response.ok) return '';
-      return await response.text();
-    } catch {
-      this.logger.warn(`Failed to fetch ${url}`);
-      return '';
-    }
-  }
 }

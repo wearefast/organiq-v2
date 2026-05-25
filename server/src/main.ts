@@ -27,9 +27,7 @@ async function bootstrap() {
         callback(null, true);
         return;
       }
-      // Allow any origin for public endpoints (tracker ingest uses sendBeacon)
-      // NestJS CORS applies globally; auth guards protect dashboard routes
-      callback(null, true);
+      callback(new Error(`Origin ${origin} not allowed by CORS`));
     },
     credentials: false,
   });

@@ -107,9 +107,9 @@ Step 13 → Step 14 → Step 15 → Step 16 → Step 17 → Step 18
 ### Agent-Led Design
 
 - **Orchestrator** = deterministic code (BullMQ + NestJS): step sequencing, dependency gates, credit metering, data persistence
-- **Executors** = AI agents (one per step): interpret data, classify, synthesize, score, generate
-- **No frameworks**: Custom ~200-line execution loop using OpenAI function calling API
-- Each agent has: system prompt (`.agent.md`), tool permissions, output schema, max iterations, credit cost
+- **Executors** = Anthropic Managed Agents (one per step): interpret data, classify, synthesize, score, generate
+- **Execution types**: `pipeline-only`, `pipeline-then-agent`, `agent-with-tools`, `agent-only`
+- Each agent has: managed agent ID, execution type, skill mapping, tool permissions, output schema, credit cost
 
 ### Runtime Topology
 
@@ -148,20 +148,21 @@ Pulse/
 │       │   └── (dashboard)/   Authenticated routes
 │       ├── features/          Feature modules
 │       │   ├── workflow/      Workflow shell, renderers, hooks
-│       │   ├── workspace/     Workspace management
-│       │   ├── project/       Project management
-│       │   ├── keywords/      Keyword ledger
+│       │   ├── agents/        On-demand agent UI
+│       │   ├── analytics/     LLM traffic, audit, visibility dashboards
+│       │   ├── billing/       Payment integration (Stripe)
 │       │   ├── content/       Content editor
-│       │   ├── reports/       Report generation
-│       │   └── credits/       Credit management
+│       │   └── reports/       Report generation
 │       └── shared/            Shared UI, hooks, utilities
 ├── server/                    NestJS 10 API + agent runtime
 │   └── src/
 │       ├── agents/            Agent runtime engine
 │       │   ├── definitions/   18 .agent.md files
-│       │   ├── agent.runtime.ts
+│       │   ├── managed-agent.runtime.ts
 │       │   ├── agent.registry.ts
+│       │   ├── skill.service.ts
 │       │   ├── tool.registry.ts
+│       │   ├── tool.bootstrap.ts
 │       │   ├── tool.sandbox.ts
 │       │   └── output.validator.ts
 │       ├── prompts/           Tunable prompt files (~51 files)
@@ -177,8 +178,9 @@ Pulse/
 │       │   ├── reports/
 │       │   └── scoring/
 │       ├── db/                Drizzle schema, client, seed
-│       ├── features/          Feature modules
+│       ├── features/          Feature modules (18)
 │       │   ├── auth/          Clerk webhook + guard
+│       │   ├── billing/       Stripe subscriptions + credit packs
 │       │   ├── organizations/ Org CRUD + membership
 │       │   ├── credits/       Credit system
 │       │   ├── workspaces/    Workspace CRUD
@@ -188,7 +190,13 @@ Pulse/
 │       │   ├── topical-maps/  Topical map storage
 │       │   ├── content/       Content CRUD
 │       │   ├── reports/       Report generation
-│       │   └── integrations/  External API services
+│       │   ├── integrations/  External API services
+│       │   ├── llm-audit/     LLM audit (AI indexability checks)
+│       │   ├── llm-traffic/   LLM traffic session tracking + stats
+│       │   ├── notifications/ In-app notifications (decay, workflow, system)
+│       │   ├── on-demand-agents/ Ad-hoc agent execution
+│       │   ├── prompt-visibility/ Brand mention tracking across AI engines
+│       │   └── scheduled-workflows/ Cron-based workflow scheduling + delivery
 │       │       ├── ahrefs/
 │       │       ├── dataforseo/
 │       │       ├── firecrawl/
@@ -210,16 +218,23 @@ Pulse/
 
 ```yaml
 ---
-name: business-profile
+name: Business Profile Analyst
 step_key: business-profile
-model: gpt-4o
-temperature: 0.3
-max_iterations: 3
+execution_type: pipeline-then-agent
+managed_agent_id: agent_01CNd6MVXJvzcXMbgRdpfZuC
+skill: business-profile-analysis
 credit_cost: 30
 depends_on: []
 requires_approval: true
+tools: []
 ---
 ```
+
+**Execution types**:
+- `pipeline-only` — Data pipeline only (no LLM agent), e.g., competitor-metrics, search-demand
+- `pipeline-then-agent` — Run data pipeline, pass context to Anthropic managed agent
+- `agent-with-tools` — Agent has tool-calling capabilities (site-audit, ai-intelligence, content-article)
+- `agent-only` — Just agent execution with minimal pipeline (consolidated-keywords, verdict-strategy, topical-map)
 
 Body sections: Role, Tools Available, Context Provided, Rubrics to Apply, Execution Plan, Output Schema, Guardrails.
 
@@ -247,13 +262,17 @@ Each agent can only call tools listed in its definition. ~40 tools registered ac
 
 ---
 
-## Database Schema (Core Tables)
+## Database Schema (31 Tables)
+
+### Core Tables
 
 | Table | Purpose |
 |-------|---------|
 | `organizations` | Multi-tenant org container |
 | `org_members` | User-to-org membership + roles |
 | `credit_ledger` | Credit transactions |
+| `subscriptions` | Stripe recurring subscriptions |
+| `purchases` | One-time credit pack purchases |
 | `workspaces` | Client containers within an org |
 | `projects` | Domain-level project |
 | `workflow_runs` | 18-step workflow execution |
@@ -265,7 +284,26 @@ Each agent can only call tools listed in its definition. ~40 tools registered ac
 | `keywords` | Keyword ledger |
 | `topical_maps` | Pillar/cluster maps |
 | `content_pieces` | Brief/article storage |
+| `content_images` | Images per content piece |
 | `reports` | Generated PDF reports |
+| `gsc_connections` | Google Search Console OAuth |
+| `gsc_keyword_data` | GSC performance data |
+| `dlq_failed_steps` | Dead letter queue for failed steps |
+
+### R5 Feature Tables
+
+| Table | Purpose |
+|-------|---------|
+| `keyword_decay_alerts` | Position/click drop monitoring |
+| `notifications` | In-app notifications |
+| `llm_traffic_sessions` | Individual LLM traffic sessions |
+| `llm_traffic_stats` | Daily aggregated LLM traffic |
+| `llm_audit_results` | LLM audit per page |
+| `tracked_prompts` | Prompts monitored for brand visibility |
+| `prompt_visibility_results` | Visibility check results per engine |
+| `agent_runs` | On-demand agent execution history |
+| `scheduled_workflows` | Cron-scheduled workflow definitions |
+| `workflow_run_history` | Scheduled workflow execution history |
 
 ---
 
@@ -297,6 +335,9 @@ Editable artifacts: Steps 1, 2, 5, 6, 12, 13, 15. Revision re-runs agent with no
 | Credits | GET | `/credits/balance` | Current balance |
 | Credits | GET | `/credits/transactions` | Transaction history |
 | Credits | POST | `/credits/purchase` | Add credits |
+| Billing | GET | `/billing/subscription` | Current subscription |
+| Billing | POST | `/billing/checkout` | Create Stripe checkout |
+| Billing | POST | `/billing/portal` | Customer portal session |
 | Workspaces | CRUD | `/workspaces` | Workspace management |
 | Projects | CRUD | `/projects` | Project management |
 | Workflows | POST | `/workflows` | Create workflow run |
@@ -312,6 +353,17 @@ Editable artifacts: Steps 1, 2, 5, 6, 12, 13, 15. Revision re-runs agent with no
 | Reports | POST | `/reports/generate` | Generate PDF |
 | Reports | GET | `/reports` | List reports |
 | Reports | GET | `/reports/:id/download` | Download PDF |
+| On-Demand | POST | `/on-demand-agents/run` | Execute ad-hoc agent |
+| On-Demand | GET | `/on-demand-agents/runs` | List agent runs |
+| Scheduled | CRUD | `/scheduled-workflows` | Manage scheduled workflows |
+| LLM Traffic | GET | `/llm-traffic/sessions` | LLM traffic sessions |
+| LLM Traffic | GET | `/llm-traffic/stats` | Aggregated LLM stats |
+| LLM Audit | POST | `/llm-audit/run` | Run LLM audit |
+| LLM Audit | GET | `/llm-audit/results` | Get audit results |
+| Prompt Vis. | CRUD | `/prompt-visibility/prompts` | Tracked prompts |
+| Prompt Vis. | GET | `/prompt-visibility/results` | Visibility results |
+| Notifications | GET | `/notifications` | List notifications |
+| Notifications | PATCH | `/notifications/:id/read` | Mark as read |
 
 ---
 

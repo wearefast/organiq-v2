@@ -63,6 +63,11 @@ export class PromptVisibilityController {
     return this.service.getOverview(projectId);
   }
 
+  @Get('suggestions')
+  async getSuggestions(@Param('projectId') projectId: string) {
+    return this.service.generateSuggestions(projectId);
+  }
+
   @Get('engines')
   getEngines() {
     return { engines: SUPPORTED_ENGINES };

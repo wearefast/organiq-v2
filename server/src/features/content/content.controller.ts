@@ -6,6 +6,7 @@ import {
   Delete,
   Param,
   Body,
+  Query,
   UseGuards,
 } from '@nestjs/common';
 import { ApiTags, ApiBearerAuth } from '@nestjs/swagger';
@@ -28,6 +29,20 @@ export class ContentController {
   @Get('stats')
   async getStats(@Param('projectId') projectId: string) {
     return this.contentService.getStats(projectId);
+  }
+
+  @Get('all-images')
+  async getAllImages(@Param('projectId') projectId: string) {
+    return this.contentService.findAllImagesByProject(projectId);
+  }
+
+  @Get('forums')
+  async searchForums(
+    @Param('projectId') projectId: string,
+    @Query('q') q: string,
+    @Query('country') country?: string,
+  ) {
+    return this.contentService.searchForumThreads(projectId, q ?? '', country);
   }
 
   @Get(':id')
@@ -105,6 +120,16 @@ export class ContentController {
     @Body() body: { status: 'draft' | 'review' | 'approved' | 'published' },
   ) {
     return this.contentService.updateStatus(id, projectId, body.status);
+  }
+
+  @Patch(':id/schedule')
+  async schedule(
+    @Param('projectId') projectId: string,
+    @Param('id') id: string,
+    @Body() body: { scheduledPublishAt: string | null },
+  ) {
+    const date = body.scheduledPublishAt ? new Date(body.scheduledPublishAt) : null;
+    return this.contentService.scheduleContent(id, projectId, date);
   }
 
   @Delete(':id')

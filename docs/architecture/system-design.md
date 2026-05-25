@@ -8,7 +8,7 @@ Pulse OS is an agent-led SEO/GEO/AEO strategy operating system. It runs an 18-st
 
 1. **Agent-led, human-approved** — AI does the work, humans validate
 2. **Deterministic orchestration** — BullMQ + NestJS handles step sequencing, not LLMs
-3. **No AI frameworks** — Custom ~200-line execution loop, no LangChain/AutoGen
+3. **No AI frameworks** — Custom managed agent runtime (Anthropic), no LangChain/AutoGen
 4. **Tool sandboxing** — Each agent only accesses its declared tools
 5. **Credit-metered** — Every operation has a cost; pre-check before execution
 6. **Multi-tenant** — Organization → Workspace → Project → Run hierarchy
