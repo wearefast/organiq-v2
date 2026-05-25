@@ -68,3 +68,13 @@ export async function fetchVisibilityOverview(projectId: string): Promise<Visibi
 export async function fetchSupportedEngines(projectId: string): Promise<{ engines: string[] }> {
   return apiFetch<{ engines: string[] }>(`/projects/${projectId}/prompts/engines`);
 }
+
+export interface PromptSuggestion {
+  text: string;
+  intent: string;
+  category: string;
+}
+
+export async function fetchPromptSuggestions(projectId: string): Promise<PromptSuggestion[]> {
+  return apiFetch<PromptSuggestion[]>(`/projects/${projectId}/prompts/suggestions`);
+}

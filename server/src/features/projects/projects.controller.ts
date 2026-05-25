@@ -40,4 +40,9 @@ export class ProjectsController {
   async remove(@Param('id') id: string, @Req() req: any) {
     return this.projectsService.remove(id, req.org.id);
   }
+
+  @Post(':id/refresh-sitemap')
+  async refreshSitemap(@Param('id') id: string, @Req() req: any) {
+    return this.projectsService.refreshSitemap(id, req.org.id);
+  }
 }

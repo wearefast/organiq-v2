@@ -118,7 +118,7 @@ export class WorkflowProcessor extends WorkerHost {
             description: `Pipeline: ${stepKey}`,
             workflowRunId,
             stepKey,
-          });
+          }, tx);
         });
 
         this.workflowGateway.emitStepCompleted(workflowRunId, stepKey, 'completed');
@@ -352,7 +352,7 @@ export class WorkflowProcessor extends WorkerHost {
           description: `Step: ${stepKey}`,
           workflowRunId,
           stepKey,
-        });
+        }, tx);
 
         // 11. Update step status
         const newStatus = agentDef.requiresApproval ? 'awaiting_approval' : 'completed';
@@ -425,6 +425,9 @@ export class WorkflowProcessor extends WorkerHost {
             eq(workflowSteps.stepKey, stepKey),
           ),
         );
+
+      // Re-throw so BullMQ triggers retry attempts
+      throw error;
     }
   }
 

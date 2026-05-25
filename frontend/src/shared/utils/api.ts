@@ -5,8 +5,19 @@ const LEGACY_LOCAL_DEV_API_URL_PATTERN = /^http:\/\/(localhost|127\.0\.0\.1):300
 let _authToken: string | null = null;
 let _getTokenFn: (() => Promise<string | null>) | null = null;
 
+// Resolves the first time a real token is stored (Clerk initialized).
+// Already-resolved after that, so subsequent awaits return immediately.
+let _firstTokenResolve: (() => void) | null = null;
+const _firstTokenReady: Promise<void> = new Promise<void>((resolve) => {
+  _firstTokenResolve = resolve;
+});
+
 export function setAuthToken(token: string | null): void {
   _authToken = token;
+  if (token && _firstTokenResolve) {
+    _firstTokenResolve();
+    _firstTokenResolve = null;
+  }
 }
 
 export function setGetTokenFn(fn: (() => Promise<string | null>) | null): void {
@@ -38,7 +49,19 @@ function resolveApiUrl(): string {
 
 const API_URL = resolveApiUrl();
 
+/** The resolved API base URL. Import this instead of hardcoding the URL. */
+export { API_URL };
+
 export async function apiFetch<T>(path: string, init?: RequestInit): Promise<T> {
+  // If Clerk hasn't initialized yet, wait up to 5s for the first token.
+  // This prevents 401s on initial page load before AuthSync has run.
+  if (!_authToken) {
+    await Promise.race([
+      _firstTokenReady,
+      new Promise<void>((r) => setTimeout(r, 5000)),
+    ]);
+  }
+
   const headers: Record<string, string> = {
     'Content-Type': 'application/json',
   };

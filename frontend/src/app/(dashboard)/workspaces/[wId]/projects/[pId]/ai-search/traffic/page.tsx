@@ -17,6 +17,7 @@ import {
   Area,
 } from 'recharts';
 import { Bot, TrendingUp, Globe, Code } from 'lucide-react';
+import { API_URL } from '@/shared/utils/api';
 import {
   TrafficOverview,
   EngineInfo,
@@ -217,7 +218,7 @@ function MetricCard({ icon, label, value }: { icon: React.ReactNode; label: stri
 }
 
 function EmptyState({ projectId }: { projectId: string }) {
-  const apiUrl = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:3002';
+  const apiUrl = API_URL;
   const appUrl = process.env.NEXT_PUBLIC_APP_URL || 'http://localhost:3001';
 
   return (

@@ -12,9 +12,11 @@ server/src/
 ├── app.module.ts              Root module composition
 ├── agents/                    Agent runtime engine
 │   ├── definitions/           18 .agent.md files (one per workflow step)
-│   ├── agent.runtime.ts       Execution loop (~200 LOC)
+│   ├── managed-agent.runtime.ts  Anthropic managed agent execution
 │   ├── agent.registry.ts      Load/cache agent definitions
+│   ├── skill.service.ts       Maps agent skills to pipeline executors
 │   ├── tool.registry.ts       Register ~40 tools from integration services
+│   ├── tool.bootstrap.ts      Registers all tools at startup
 │   ├── tool.sandbox.ts        Per-agent tool access control
 │   └── output.validator.ts    JSON Schema validation of agent output
 ├── prompts/                   Tunable prompt files (~51 files)
@@ -76,29 +78,28 @@ server/src/
 
 ## Agent Runtime
 
-### Provider Adapter Pattern
+### Managed Agent Architecture
 
 ```
-AgentRuntime
-  ├── resolveProvider(config) → LlmProvider
-  │     ├── AGENT_PROVIDER_OVERRIDE env (takes precedence)
-  │     ├── config.provider from .agent.md frontmatter
-  │     └── default: 'openai'
-  │
-  ├── OpenAiProvider (wraps OpenAiService)
-  │     └── complete() / completeTier2()
-  │
-  └── AnthropicProvider (wraps AnthropicService)
-        └── complete() / completeTier2() (with extended thinking)
+WorkflowProcessor (BullMQ)
+  → AgentRegistry.getAgent(stepKey) → AgentDefinition
+  → SkillService.execute(definition, context):
+      ├── pipeline-only:       Run data pipeline, return output directly
+      ├── pipeline-then-agent: Run pipeline → pass to ManagedAgentRuntime
+      ├── agent-with-tools:    ManagedAgentRuntime with tool calling
+      └── agent-only:          ManagedAgentRuntime (minimal pipeline)
+  → ManagedAgentRuntime:
+      └── Anthropic API (claude) with tool-calling loop
 ```
 
-### Tier-Based Routing
+### Execution Types
 
-| Tier | Execution Path | Use Case |
-|------|---------------|----------|
-| Tier 1 | Pipeline (no LLM) | Deterministic batch API calls |
-| Tier 2 | Single-shot, no tool loop | Synthesis/consolidation with extended thinking |
-| Tier 3 | Full tool-calling loop | Discovery agents needing real-time data |
+| Type | Pipeline | Agent | Use Case |
+|------|----------|-------|----------|
+| `pipeline-only` | ✅ | ❌ | Deterministic batch API calls (competitor-metrics, search-demand) |
+| `pipeline-then-agent` | ✅ | ✅ | Data gathering + synthesis (business-profile, seed-keywords, phase1-baseline) |
+| `agent-with-tools` | ❌ | ✅ (tools) | Discovery agents needing real-time data (site-audit, ai-intelligence) |
+| `agent-only` | ❌ | ✅ | Pure synthesis/consolidation (consolidated-keywords, verdict-strategy) |
 
 ### Execution Flow
 
@@ -108,16 +109,17 @@ AgentRuntime
 3. Load agent definition (.agent.md)
 4. Load system prompt (.prompt.md) + rubrics
 5. Hydrate context from previous step artifacts
-6. Resolve LLM provider (env override > frontmatter > default)
-7. Route by tier:
-   - Tier 1: Execute pipeline (no LLM call)
-   - Tier 2: Single-shot provider.completeTier2() (thinking enabled)
-   - Tier 3: Execute loop with tool calling
-8. Persist artifact (versioned) + metadata (provenance, thinking trace)
+6. Route by execution_type:
+   - pipeline-only: Execute pipeline (no LLM call), return output
+   - pipeline-then-agent: Execute pipeline → build context → call Anthropic managed agent
+   - agent-with-tools: Call Anthropic managed agent with tool-calling loop
+   - agent-only: Call Anthropic managed agent with context only
+7. Validate output against schema
+8. Persist artifact (versioned) + reasoning
 9. Log all tool calls to step_tool_calls
 10. Debit credits (only on verified success)
 11. Emit WebSocket event (step complete / awaiting approval)
-12. On final failure (3 attempts): capture to DLQ
+12. On final failure: capture to dlq_failed_steps
 ```
 
 ### Agent Definition Format
@@ -125,27 +127,34 @@ AgentRuntime
 YAML frontmatter in `.agent.md`:
 ```yaml
 ---
-name: consolidated-keywords
-step_key: consolidated-keywords
-model: claude-opus-4-20250514
-temperature: 1
-max_iterations: 1
-credit_cost: 150
-depends_on:
-  - method01-competitor-pages
-  - method02-seed-expansion
-requires_approval: true
+name: Technical SEO Auditor
+step_key: site-audit
+execution_type: agent-with-tools
+managed_agent_id: agent_01FFVEzvSFoTPhF1BXFC2Ye8
+skill: technical-seo-auditing
 tools:
-provider: anthropic
-tier: tier2
-thinking_budget: 32000
+  - firecrawl_crawl
+  - firecrawl_map_site
+  - pagespeed_analyze
+  - pagespeed_crux
+  - dataforseo_onpage_task
+  - dataforseo_onpage_summary
+  - return_output
+depends_on:
+  - business-profile
+credit_cost: 60
+requires_approval: true
 ---
 ```
 
-New fields (backward-compatible — all optional):
-- `provider`: `openai` | `anthropic` (default: openai)
-- `tier`: `tier1` | `tier2` | `tier3` (default: inferred from tools presence)
-- `thinking_budget`: Token budget for extended thinking (Anthropic only)
+Fields:
+- `execution_type`: `pipeline-only` | `pipeline-then-agent` | `agent-with-tools` | `agent-only`
+- `managed_agent_id`: Anthropic managed agent ID (omitted for `pipeline-only`)
+- `skill`: Maps to pipeline executor in SkillService
+- `tools`: Sandboxed tool allowlist (agent can only call these)
+- `depends_on`: Step keys that must complete before this step runs
+- `credit_cost`: Credits debited on successful execution
+- `requires_approval`: Whether step enters `awaiting_approval` state
 
 ## Workflow Orchestration
 

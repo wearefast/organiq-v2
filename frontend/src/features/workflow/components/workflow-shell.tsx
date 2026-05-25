@@ -104,33 +104,9 @@ export function WorkflowShell({
 
   // Approval handlers
   const handleApprove = useCallback(
-    async (stepKey: string, notes?: string) => {
+    async (stepKey: string) => {
       try {
-        await workflowApi.approveStep(runId, stepKey, notes);
-        await fetchRun();
-      } catch {
-        // Error is handled in the API layer
-      }
-    },
-    [runId, fetchRun],
-  );
-
-  const handleRevise = useCallback(
-    async (stepKey: string, notes: string) => {
-      try {
-        await workflowApi.reviseStep(runId, stepKey, notes);
-        await fetchRun();
-      } catch {
-        // Error is handled in the API layer
-      }
-    },
-    [runId, fetchRun],
-  );
-
-  const handleReject = useCallback(
-    async (stepKey: string, notes: string) => {
-      try {
-        await workflowApi.rejectStep(runId, stepKey, notes);
+        await workflowApi.approveStep(runId, stepKey);
         await fetchRun();
       } catch {
         // Error is handled in the API layer
@@ -295,8 +271,6 @@ export function WorkflowShell({
           step={activeStep}
           allSteps={run.steps}
           onApprove={handleApprove}
-          onRevise={handleRevise}
-          onReject={handleReject}
           onRerun={handleRerun}
           renderArtifact={renderArtifact}
         />

@@ -1,33 +1,60 @@
 # Audit Feature
 
-## Status: Deprecated in v2
+## Overview
 
-The standalone audit pipeline (lead-magnet flow where visitors submit a URL and receive a free SEO/GEO/AEO report) has been **removed** in the OS-version1 greenfield rewrite.
+The audit module has two distinct aspects:
 
-`server/src/features/audit/` is an **empty directory** — no controller, service, or module exists.
+1. **Workflow Step 3 (`site-audit`)** — A GEO+SEO technical audit run as part of the 18-step workflow pipeline
+2. **LLM Audit (`llm-audit`)** — A standalone feature that audits pages for AI bot indexability, content checks, and trust signals
 
-## Where Audit Functionality Lives Now
+## Workflow Step: Site Audit (Step 3)
 
-Site-audit capabilities have been absorbed into the **18-step workflow pipeline** as **Step 3 — `site-audit`**:
+Site-audit capabilities run as **Step 3** of the workflow pipeline via the `site-audit` agent.
 
-| Aspect | Old (v1 Lead Magnet) | New (v2 Workflow Step) |
-|--------|----------------------|------------------------|
-| Entry point | Public URL submission form | Project-scoped workflow run |
-| Execution | `AuditProcessor` (9-step pipeline) | `site-audit` agent (`.agent.md`) |
-| Data flow | Self-contained `rawData` blob | Workflow context shared with downstream steps |
-| Output | Standalone audit report page | Step artifact reviewed via human-in-the-loop approval |
-| Credit cost | Free (lead magnet) | 60 credits |
-| Dependencies | None (first action) | Depends on Step 1 (`business-profile`) |
-| Tools used | Firecrawl, PageSpeed/CrUX, Lighthouse | Same tools via tool sandbox |
+| Aspect | Details |
+|--------|---------|
+| Agent file | `server/src/agents/definitions/site-audit.agent.md` |
+| Execution type | `agent-with-tools` |
+| Managed agent ID | `agent_01FFVEzvSFoTPhF1BXFC2Ye8` |
+| Tools | firecrawl_crawl, firecrawl_map_site, pagespeed_analyze, pagespeed_crux, dataforseo_onpage_task, dataforseo_onpage_summary, return_output |
+| Depends on | `business-profile` (Step 1) |
+| Credit cost | 60 |
+| Requires approval | Yes |
 
-## Agent Definition
+## LLM Audit Feature
 
-- **File**: `server/src/agents/definitions/site-audit.agent.md`
-- **Model**: GPT-4o
-- **Credit cost**: 60
-- **Depends on**: `business-profile` (Step 1)
-- **Requires approval**: Yes (human reviews before downstream steps use the data)
+Standalone service that audits project pages for AI engine discoverability.
 
-## What the Old Pipeline Docs Described
+### Key Files
 
-The remainder of this file previously documented a 9-step audit pipeline (scrape → profile → deep-read → PageSpeed → keyword chain → SERP discovery → competitor metrics → organic analysis → content gap), a control-room visualization UI, and a 5-tab results page. None of these exist in the current codebase.
+| File | Purpose |
+|------|---------|
+| `server/src/features/audit/llm-audit.controller.ts` | REST endpoints |
+| `server/src/features/audit/llm-audit.service.ts` | Audit logic |
+| `server/src/features/audit/llm-audit.module.ts` | Module registration |
+
+### Data Model
+
+**Table: `llm_audit_results`**
+
+| Column | Type | Purpose |
+|--------|------|---------|
+| id | uuid | PK |
+| project_id | uuid | FK → projects |
+| audit_run_id | text | Groups pages in a single audit run |
+| page_url | text | Audited page URL |
+| ai_indexability_score | integer | 0-100 score |
+| bot_permissions | jsonb | Robot.txt/meta robot analysis |
+| content_checks | jsonb | Content structure analysis |
+| trust_signals | jsonb | Authority/trust indicators |
+| content_chunking | jsonb | How content is chunked for LLMs |
+| issues | jsonb | Array of detected issues |
+| audited_at | timestamp | When the audit was performed |
+
+### What It Checks
+
+- **AI Indexability**: Whether AI bots can access and understand the page
+- **Bot Permissions**: robots.txt rules, meta robots tags, X-Robots headers
+- **Content Checks**: Structure, readability, schema markup presence
+- **Trust Signals**: Author attribution, citations, freshness signals
+- **Content Chunking**: How well content segments for LLM retrieval

@@ -1,4 +1,4 @@
-import { apiFetch } from '@/shared/utils/api';
+import { apiFetch, API_URL } from '@/shared/utils/api';
 
 export interface GscStatus {
   connected: boolean;
@@ -30,8 +30,7 @@ export interface GscPerformanceSummary {
 }
 
 export function getGscConnectUrl(projectId: string, organizationId: string): string {
-  const apiUrl = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:3002';
-  return `${apiUrl}/projects/${projectId}/gsc/connect?organizationId=${organizationId}`;
+  return `${API_URL}/projects/${projectId}/gsc/connect?organizationId=${organizationId}`;
 }
 
 export async function fetchGscStatus(projectId: string): Promise<GscStatus> {

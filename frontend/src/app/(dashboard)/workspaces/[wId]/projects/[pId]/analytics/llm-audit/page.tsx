@@ -5,7 +5,7 @@ export default function RedirectPage() {
   const router = useRouter();
   const p = useParams<{ wId: string; pId: string }>();
   useEffect(() => {
-    router.replace(`/workspaces/${p.wId}/projects/${p.pId}/technical/llm-audit`);
+    router.replace(`/workspaces/${p.wId}/projects/${p.pId}/ai-search/llm-audit`);
   }, [router, p.wId, p.pId]);
   return null;
 }

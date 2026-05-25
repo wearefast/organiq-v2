@@ -243,6 +243,10 @@ export const projects = pgTable(
     country: text('country').default('US').notNull(),
     language: text('language').default('en').notNull(),
     industry: text('industry'),
+    /** Page URLs discovered from the site's sitemap.xml — populated on project create/domain-update */
+    sitemapUrls: text('sitemap_urls').array(),
+    /** When the sitemap was last crawled */
+    sitemapDiscoveredAt: timestamp('sitemap_discovered_at'),
     createdAt: timestamp('created_at').defaultNow().notNull(),
     updatedAt: timestamp('updated_at').defaultNow().notNull(),
   },
@@ -439,6 +443,7 @@ export const contentPieces = pgTable(
     articleData: jsonb('article_data'),
     scores: jsonb('scores'),
     wordCount: integer('word_count'),
+    scheduledPublishAt: timestamp('scheduled_publish_at'),
     createdAt: timestamp('created_at').defaultNow().notNull(),
     updatedAt: timestamp('updated_at').defaultNow().notNull(),
   },

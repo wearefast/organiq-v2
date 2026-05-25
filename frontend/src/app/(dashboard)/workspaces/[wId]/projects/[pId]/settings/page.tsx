@@ -11,7 +11,7 @@ export default function SettingsPage() {
         </div>
         <div className="rounded-lg border border-zinc-800 bg-zinc-900/50 p-6">
           <h2 className="text-sm font-semibold text-zinc-300">Tracking Script</h2>
-          <p className="mt-2 text-sm text-zinc-500">Install the Pulse tracking snippet to enable real-time monitoring.</p>
+          <p className="mt-2 text-sm text-zinc-500">Install the OrganiQ tracking snippet to enable real-time monitoring.</p>
         </div>
       </div>
     </div>

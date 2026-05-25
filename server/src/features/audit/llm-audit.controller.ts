@@ -1,4 +1,4 @@
-import { Controller, Get, Post, Param, Query, UseGuards, BadRequestException } from '@nestjs/common';
+import { Controller, Get, Post, Param, UseGuards } from '@nestjs/common';
 import { ApiTags, ApiBearerAuth } from '@nestjs/swagger';
 import { LlmAuditService } from './llm-audit.service';
 import { ClerkGuard } from '../auth/clerk.guard';
@@ -12,19 +12,8 @@ export class LlmAuditController {
   constructor(private readonly llmAuditService: LlmAuditService) {}
 
   @Post('run')
-  async runAudit(
-    @Param('projectId') projectId: string,
-    @Query('url') url?: string,
-  ) {
-    if (!url) {
-      throw new BadRequestException('Query param "url" is required');
-    }
-    try {
-      new URL(url);
-    } catch {
-      throw new BadRequestException('Invalid URL format');
-    }
-    return this.llmAuditService.runAudit(projectId, url);
+  async runAudit(@Param('projectId') projectId: string) {
+    return this.llmAuditService.runAudit(projectId);
   }
 
   @Get('latest')

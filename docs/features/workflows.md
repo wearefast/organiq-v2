@@ -116,22 +116,20 @@ Each agent is defined as a `.agent.md` file in `server/src/agents/definitions/`:
 
 ```yaml
 ---
-name: seed-keywords
+name: Seed Keywords Generator
 step_key: seed-keywords
-model: claude-opus-4
-provider: anthropic
 execution_type: pipeline-then-agent
-thinking_budget: 32000
-temperature: 0.3
+managed_agent_id: agent_016cC7oU7XoFSs13kqYAwHSN
+skill: seed-keyword-discovery
+depends_on:
+  - business-profile
 credit_cost: 40
-max_iterations: 5
-dependencies: []
-required_approval: true
+requires_approval: true
 ---
 
 # Seed Keywords Agent
 
-You are an SEO keyword research specialist who reviews the provided pipeline evidence and returns the final seed keyword artifact...
+You are an SEO keyword research specialist...
 [agent instructions in markdown]
 ```
 

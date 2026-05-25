@@ -10,7 +10,6 @@ import {
   Bot,
   Eye,
   Activity,
-  Wrench,
   FlaskConical,
   CreditCard,
   Workflow,
@@ -76,22 +75,15 @@ function getProjectItems(wId: string, pId: string): NavItem[] {
       icon: Eye,
       label: 'AI Search',
       children: [
-        { href: `${base}/ai-search/visibility`, label: 'Prompt Visibility' },
-        { href: `${base}/ai-search/traffic`,    label: 'LLM Traffic' },
+        { href: `${base}/ai-search/visibility`,  label: 'Prompt Visibility' },
+        { href: `${base}/ai-search/traffic`,     label: 'LLM Traffic' },
+        { href: `${base}/ai-search/llm-audit`,   label: 'LLM Audit' },
       ],
     },
     {
       href: `${base}/analytics`,
       icon: Activity,
       label: 'Analytics',
-    },
-    {
-      href: `${base}/technical/llm-audit`,
-      icon: Wrench,
-      label: 'Technical',
-      children: [
-        { href: `${base}/technical/llm-audit`, label: 'LLM Audit' },
-      ],
     },
     {
       href: `${base}/agents`,
@@ -103,9 +95,15 @@ function getProjectItems(wId: string, pId: string): NavItem[] {
       ],
     },
     {
-      href: `${base}/content`,
+      href: `${base}/content/articles`,
       icon: FileText,
       label: 'Content',
+      children: [
+        { href: `${base}/content/articles`, label: 'Articles' },
+        { href: `${base}/content/assets`,   label: 'Assets' },
+        { href: `${base}/content/calendar`, label: 'Calendar' },
+        { href: `${base}/content/forums`,   label: 'Forums' },
+      ],
     },
     {
       href: `${base}/keywords`,

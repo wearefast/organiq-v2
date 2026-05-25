@@ -10,7 +10,13 @@ import { OnDemandAgentsModule } from '../on-demand-agents/on-demand-agents.modul
 
 @Module({
   imports: [
-    BullModule.registerQueue({ name: 'scheduled-workflows' }),
+    BullModule.registerQueue({
+      name: 'scheduled-workflows',
+      defaultJobOptions: {
+        removeOnComplete: 100,
+        removeOnFail: 500,
+      },
+    }),
     OnDemandAgentsModule,
   ],
   controllers: [ScheduledWorkflowsController],

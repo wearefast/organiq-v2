@@ -2,8 +2,9 @@
 
 import { useEffect, useRef, useCallback, useState } from 'react';
 import { io, Socket } from 'socket.io-client';
+import { API_URL } from '@/shared/utils/api';
 
-const WS_URL = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:3002';
+const WS_URL = API_URL;
 
 export type StepEvent =
   | { type: 'step:started'; stepKey: string }
