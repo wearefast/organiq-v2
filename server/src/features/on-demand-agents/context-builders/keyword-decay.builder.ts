@@ -1,7 +1,7 @@
 import { Injectable } from '@nestjs/common';
 import { sql } from 'drizzle-orm';
 import { DatabaseService } from '../../../shared/database/database.service';
-import { ContextBuilder, ContextBuilderResult } from './context-builder.registry';
+import { ContextBuilder, ContextBuilderResult } from './context-builder.types';
 
 @Injectable()
 export class KeywordDecayBuilder implements ContextBuilder {

@@ -16,19 +16,27 @@ const mockDb = {
   },
 };
 
-const mockAnthropicService = {
-  chat: vi.fn().mockResolvedValue({
-    content: '1. **Refresh homepage** — Traffic dropped 25%\n2. **Update blog post** — Position declined from 3 to 8',
-    toolUse: [],
+const mockAgentRuntime = {
+  execute: vi.fn().mockResolvedValue({
+    output: { response: 'Refresh homepage — traffic dropped 25%', recommendations: [{ title: 'Refresh homepage', rationale: 'Traffic dropped 25%' }], citedData: [] },
+    reasoning: null,
     thinkingContent: null,
-    stopReason: 'end_turn',
-    usage: { inputTokens: 500, outputTokens: 1000 },
+    toolCalls: [{ toolName: 'return_output', input: {}, output: {}, durationMs: 10, success: true }],
+    totalTokens: { input: 500, output: 1000 },
+    iterations: 1,
+    finishReason: 'completed',
   }),
 };
 
 const mockCreditsService = {
   hasCredits: vi.fn().mockResolvedValue(true),
   debit: vi.fn().mockResolvedValue(undefined),
+};
+
+const mockIntelligenceService = {
+  assembleContext: vi.fn().mockResolvedValue({}),
+  renderContextXml: vi.fn().mockReturnValue(''),
+  upsert: vi.fn().mockResolvedValue({ id: 'pi-1' }),
 };
 
 const mockContextBuilder = {
@@ -50,14 +58,15 @@ describe('OnDemandAgentsService', () => {
     vi.clearAllMocks();
     service = new OnDemandAgentsService(
       mockDb as any,
-      mockAnthropicService as any,
+      mockAgentRuntime as any,
       mockCreditsService as any,
+      mockIntelligenceService as any,
       new AgentRouterService(),
       mockContextRegistry as any,
     );
   });
 
-  it('runs an agent and returns structured response', async () => {
+  it('runs an agent via AgentRuntime and returns structured response', async () => {
     const result = await service.run({
       projectId: 'proj-1',
       organizationId: 'org-1',
@@ -68,6 +77,12 @@ describe('OnDemandAgentsService', () => {
     expect(result.id).toBe('run-1');
     expect(result.creditCost).toBe(5);
     expect(result.recommendations.length).toBeGreaterThan(0);
+    expect(mockAgentRuntime.execute).toHaveBeenCalledWith(expect.objectContaining({
+      stepKey: 'on-demand:content-refresh',
+      projectId: 'proj-1',
+      organizationId: 'org-1',
+      allowedTools: [],
+    }));
     expect(mockCreditsService.debit).toHaveBeenCalledWith({
       organizationId: 'org-1',
       amount: 5,
@@ -75,20 +90,99 @@ describe('OnDemandAgentsService', () => {
     });
   });
 
-  it('does not charge credits on failure', async () => {
-    mockAnthropicService.chat.mockResolvedValueOnce({
-      content: null,
-      toolUse: [],
+  it('writes result to PIS with targetKey on success', async () => {
+    await service.run({
+      projectId: 'proj-1',
+      organizationId: 'org-1',
+      prompt: 'Which pages need to be refreshed?',
+    });
+
+    expect(mockIntelligenceService.upsert).toHaveBeenCalledWith(expect.objectContaining({
+      projectId: 'proj-1',
+      organizationId: 'org-1',
+      dataType: 'on-demand:content-refresh',
+      targetKey: 'latest',
+      producedBy: 'on-demand:content-refresh',
+    }));
+  });
+
+  it('still charges credits and returns result when PIS write fails', async () => {
+    mockIntelligenceService.upsert.mockRejectedValueOnce(new Error('PIS timeout'));
+
+    const result = await service.run({
+      projectId: 'proj-1',
+      organizationId: 'org-1',
+      prompt: 'Which pages need to be refreshed?',
+    });
+
+    // Run completes despite PIS failure
+    expect(result.id).toBe('run-1');
+    expect(result.recommendations.length).toBeGreaterThan(0);
+    // Credits still charged (compute was consumed)
+    expect(mockCreditsService.debit).toHaveBeenCalled();
+  });
+
+  it('handles raw string output gracefully', async () => {
+    mockAgentRuntime.execute.mockResolvedValueOnce({
+      output: 'Plain text response without structured JSON',
+      reasoning: null,
       thinkingContent: null,
-      stopReason: 'end_turn',
-      usage: { inputTokens: 0, outputTokens: 0 },
+      toolCalls: [],
+      totalTokens: { input: 200, output: 100 },
+      iterations: 1,
+      finishReason: 'completed',
+    });
+
+    const result = await service.run({
+      projectId: 'proj-1',
+      organizationId: 'org-1',
+      prompt: 'Which pages need to be refreshed?',
+    });
+
+    expect(result.response).toBe('Plain text response without structured JSON');
+    expect(result.recommendations).toEqual([]);
+    expect(result.citedData).toEqual([]);
+  });
+
+  it('handles output with summary field instead of response', async () => {
+    mockAgentRuntime.execute.mockResolvedValueOnce({
+      output: { summary: 'Summary fallback text', recommendations: [{ title: 'A', rationale: 'B' }], citedData: [] },
+      reasoning: null,
+      thinkingContent: null,
+      toolCalls: [],
+      totalTokens: { input: 200, output: 100 },
+      iterations: 1,
+      finishReason: 'completed',
+    });
+
+    const result = await service.run({
+      projectId: 'proj-1',
+      organizationId: 'org-1',
+      prompt: 'Which pages need to be refreshed?',
+    });
+
+    expect(result.response).toBe('Summary fallback text');
+    expect(result.recommendations).toHaveLength(1);
+  });
+
+  it('does not charge credits or write PIS on failure', async () => {
+    mockAgentRuntime.execute.mockResolvedValueOnce({
+      output: null,
+      reasoning: null,
+      thinkingContent: null,
+      toolCalls: [],
+      totalTokens: { input: 0, output: 0 },
+      iterations: 1,
+      finishReason: 'error',
+      error: 'Connection timeout',
     });
 
     await expect(
       service.run({ projectId: 'proj-1', organizationId: 'org-1', prompt: 'test' }),
-    ).rejects.toThrow('Agent returned empty response');
+    ).rejects.toThrow('Agent runtime failed: Connection timeout');
 
     expect(mockCreditsService.debit).not.toHaveBeenCalled();
+    expect(mockIntelligenceService.upsert).not.toHaveBeenCalled();
   });
 
   it('rejects when insufficient credits', async () => {

@@ -1,8 +1,8 @@
 import { Injectable, Logger } from '@nestjs/common';
 import { Cron, CronExpression } from '@nestjs/schedule';
-import { lt, and, isNotNull } from 'drizzle-orm';
+import { lt, and, isNotNull, inArray } from 'drizzle-orm';
 import { DatabaseService } from '../../shared/database/database.service';
-import { llmTrafficSessions, agentRuns } from '../../db/schema';
+import { llmTrafficSessions, agentRuns, workflowContext, stepArtifacts, workflowRuns } from '../../db/schema';
 
 @Injectable()
 export class RetentionService {
@@ -35,8 +35,40 @@ export class RetentionService {
         ),
       );
 
+    // Purge workflow_context rows for runs older than 90 days.
+    // Context JSONB values can reach 100 KB+ per step; keeping them indefinitely
+    // bloats the table and slows context lookups for active runs.
+    const oldRunIds = await this.db.db
+      .select({ id: workflowRuns.id })
+      .from(workflowRuns)
+      .where(lt(workflowRuns.createdAt, traffic90d));
+
+    let contextDeleted = 0;
+    let artifactDeleted = 0;
+
+    if (oldRunIds.length > 0) {
+      const ids = oldRunIds.map((r) => r.id);
+
+      const contextResult = await this.db.db
+        .delete(workflowContext)
+        .where(inArray(workflowContext.workflowRunId, ids));
+      contextDeleted = (contextResult as any).rowCount ?? 0;
+
+      // Purge step_artifacts for the same old runs.
+      // step_artifacts.data can contain large JSON blobs (article body, keyword arrays).
+      // The content_images base64 should already have been stripped at approval time,
+      // but purging removes any residual data accumulated before that fix was deployed.
+      const artifactResult = await this.db.db
+        .delete(stepArtifacts)
+        .where(inArray(stepArtifacts.workflowRunId, ids));
+      artifactDeleted = (artifactResult as any).rowCount ?? 0;
+    }
+
     this.logger.log(
-      `Retention purge complete — traffic sessions (>90d): ${(trafficResult as any).rowCount ?? 0} removed, agent run responses (>30d): ${(thinkingResult as any).rowCount ?? 0} cleared`,
+      `Retention purge complete — traffic sessions (>90d): ${(trafficResult as any).rowCount ?? 0} removed, ` +
+        `agent run responses (>30d): ${(thinkingResult as any).rowCount ?? 0} cleared, ` +
+        `workflow context rows (>90d): ${contextDeleted} removed, ` +
+        `step artifacts (>90d): ${artifactDeleted} removed`,
     );
   }
 }

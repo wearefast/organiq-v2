@@ -1,13 +1,18 @@
 import { Injectable, Logger } from '@nestjs/common';
-import { existsSync } from 'fs';
+import { existsSync, statSync } from 'fs';
 import { readFile } from 'fs/promises';
 import { join } from 'path';
+
+interface CachedSkill {
+  content: string;
+  mtime: number;
+}
 
 @Injectable()
 export class SkillService {
   private readonly logger = new Logger(SkillService.name);
   private readonly skillsDir: string;
-  private readonly cache = new Map<string, string>();
+  private readonly cache = new Map<string, CachedSkill>();
 
   constructor() {
     this.skillsDir = this.resolveSkillsDir();
@@ -25,12 +30,11 @@ export class SkillService {
   /**
    * Load skill content from server/src/skills/{skillId}/skill.md.
    * Returns null if the skill file does not exist (some steps have no skill).
+   * Cache entries are validated against the file's mtime on each call so that
+   * skill edits take effect without a server restart (same pattern as PromptService).
    */
   async loadSkill(skillId: string | undefined): Promise<string | null> {
     if (!skillId) return null;
-
-    const cached = this.cache.get(skillId);
-    if (cached !== undefined) return cached;
 
     const filePath = join(this.skillsDir, skillId, 'skill.md');
     if (!existsSync(filePath)) {
@@ -38,8 +42,14 @@ export class SkillService {
       return null;
     }
 
+    const currentMtime = statSync(filePath).mtimeMs;
+    const cached = this.cache.get(skillId);
+    if (cached !== undefined && cached.mtime === currentMtime) {
+      return cached.content;
+    }
+
     const content = await readFile(filePath, 'utf-8');
-    this.cache.set(skillId, content);
+    this.cache.set(skillId, { content, mtime: currentMtime });
     this.logger.debug(`Loaded skill: ${skillId}`);
     return content;
   }

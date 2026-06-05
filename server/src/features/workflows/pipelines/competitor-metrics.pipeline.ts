@@ -65,34 +65,68 @@ export class CompetitorMetricsPipeline implements Pipeline {
       }),
     );
 
-    // Also fetch the target domain for comparison
-    const [targetRating, targetBacklinks] = await Promise.all([
-      this.ahrefs.getDomainRating(domain).catch(() => null),
-      this.ahrefs.getBacklinksStats(domain).catch(() => null),
-    ]);
+    // Also fetch the target domain for comparison —
+    // business-profile pipeline already ran getDomainRating + getBacklinksStats for this domain;
+    // read from context instead of making duplicate Ahrefs calls.
+    // context['business-profile'] is the Claude agent output whose top-level schema has
+    // `domain_authority: { domain_rating, referring_domains }` — NOT rawData.domainAuthority.
+    const bpCtx = context['business-profile'] as {
+      domain_authority?: { domain_rating?: number | null; referring_domains?: number | null } | null;
+    } | undefined;
+    const targetDomainRating = bpCtx?.domain_authority?.domain_rating ?? 0;
+    const targetReferringDomains = bpCtx?.domain_authority?.referring_domains ?? 0;
 
     // Align output with the competitorMetrics agent definition schema
-    const competitorMetrics = results.map((r) => ({
-      domain: r.domain,
-      bucket: 'direct' as const,
-      domainRating: (r.domainRating as { domainRating?: number } | null)?.domainRating ?? 0,
-      organicKeywords: Array.isArray(r.topKeywords) ? r.topKeywords.length : 0,
-      organicTraffic: 0,
-      referringDomains:
-        (r.backlinks as { liveRefDomains?: number } | null)?.liveRefDomains ?? 0,
-      backlinks: r.backlinks ?? { live: 0, allTime: 0, liveRefDomains: 0, allTimeRefDomains: 0 },
-      topPages: Array.isArray(r.topKeywords)
-        ? (r.topKeywords as Array<{ url?: string; traffic?: number; keyword?: string }>).slice(0, 5).map((k) => ({
-            url: k.url ?? '',
-            traffic: k.traffic ?? 0,
-            keywords: 1,
-          }))
-        : [],
-      status: r.status,
-      error: (r as { error?: string }).error,
-    }));
+    const competitorMetrics = results.map((r) => {
+      // Extract top organic keywords — the raw Ahrefs response is { keywords: [{keyword, volume, keyword_difficulty, best_position, ...}] }
+      const rawKws = r.topKeywords as {
+        keywords?: Array<{
+          keyword?: string;
+          volume?: number;
+          keyword_difficulty?: number;
+          best_position?: number;
+          best_position_url?: string;
+        }>;
+      } | null;
+      const topKeywordList = (rawKws?.keywords ?? [])
+        .filter((k) => k.keyword)
+        .map((k) => ({
+          keyword: k.keyword!,
+          volume: k.volume ?? 0,
+          difficulty: k.keyword_difficulty ?? 0,
+          position: k.best_position ?? null,
+          url: k.best_position_url ?? '',
+        }));
 
-    const targetDomainRating = (targetRating as { domainRating?: number } | null)?.domainRating ?? 0;
+      return {
+        domain: r.domain,
+        bucket: 'direct' as const,
+        // Ahrefs v3 /site-explorer/domain-rating returns { domain_rating: { domain_rating: number, ahrefs_rank: number } }
+        domainRating: (r.domainRating as { domain_rating?: { domain_rating?: number } } | null)?.domain_rating?.domain_rating ?? 0,
+        ahrefsRank: (r.domainRating as { domain_rating?: { ahrefs_rank?: number } } | null)?.domain_rating?.ahrefs_rank ?? undefined,
+        organicKeywords: topKeywordList.length,
+        organicTraffic: 0,
+        // Ahrefs v3 /site-explorer/backlinks-stats returns { metrics: { live, all_time, live_refdomains, ... } }
+        referringDomains:
+          (r.backlinks as { metrics?: { live_refdomains?: number } } | null)?.metrics?.live_refdomains ?? 0,
+        backlinks: {
+          live: (r.backlinks as { metrics?: { live?: number } } | null)?.metrics?.live ?? 0,
+          allTime: (r.backlinks as { metrics?: { all_time?: number } } | null)?.metrics?.all_time ?? 0,
+          liveRefDomains: (r.backlinks as { metrics?: { live_refdomains?: number } } | null)?.metrics?.live_refdomains ?? 0,
+          allTimeRefDomains: (r.backlinks as { metrics?: { all_time_refdomains?: number } } | null)?.metrics?.all_time_refdomains ?? 0,
+        },
+        // Preserve the actual keyword list so downstream steps (method01) can use it for gap analysis
+        keywords: topKeywordList,
+        topPages: topKeywordList.slice(0, 5).map((k) => ({
+          url: k.url,
+          traffic: k.volume,
+          topKeyword: k.keyword,
+        })),
+        status: r.status,
+        error: (r as { error?: string }).error,
+      };
+    });
+
     const avgCompetitorDR =
       competitorMetrics.length > 0
         ? Math.round(competitorMetrics.reduce((s, c) => s + c.domainRating, 0) / competitorMetrics.length)
@@ -105,8 +139,8 @@ export class CompetitorMetricsPipeline implements Pipeline {
         organicKeywords: 0,
         organicTraffic: 0,
         referringDomains:
-          (targetBacklinks as { liveRefDomains?: number } | null)?.liveRefDomains ?? 0,
-        backlinks: targetBacklinks ?? { live: 0, allTime: 0, liveRefDomains: 0, allTimeRefDomains: 0 },
+          targetReferringDomains,
+        backlinks: { live: 0, allTime: 0, liveRefDomains: targetReferringDomains, allTimeRefDomains: 0 },
         topPages: [],
       },
       competitorMetrics,

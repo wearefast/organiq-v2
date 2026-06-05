@@ -13,6 +13,8 @@ export interface AnthropicChatOptions {
   maxTokens?: number;
   tools?: AnthropicToolDef[];
   thinkingBudget?: number;
+  /** AbortSignal to cancel the in-flight SDK call (e.g. on step timeout). */
+  signal?: AbortSignal;
 }
 
 export interface AnthropicToolDef {
@@ -98,7 +100,7 @@ export class AnthropicService {
           delete params.temperature;
         }
 
-        const response = await this.client.messages.create(params) as Anthropic.Message;
+        const response = await this.client.messages.create(params, { signal: options.signal }) as Anthropic.Message;
 
         return this.parseResponse(response);
       } catch (error: unknown) {

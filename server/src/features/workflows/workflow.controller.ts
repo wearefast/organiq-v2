@@ -1,5 +1,6 @@
 import { Controller, Get, Post, Patch, Query, Param, Body, UseGuards, Req } from '@nestjs/common';
 import { ApiTags, ApiBearerAuth } from '@nestjs/swagger';
+import { Throttle } from '@nestjs/throttler';
 import { WorkflowService } from './workflow.service';
 import { WorkflowGateway } from './workflow.gateway';
 import { WorkflowMaterializerService } from './workflow-materializer.service';
@@ -26,11 +27,13 @@ export class WorkflowController {
   }
 
   @Post()
-  async createRun(@Body() body: { projectId: string; organizationId: string }) {
-    return this.workflowService.createRun(body.projectId, body.organizationId);
+  async createRun(@Body() body: { projectId: string; organizationId: string; targetKey?: string }) {
+    return this.workflowService.createRun(body.projectId, body.organizationId, body.targetKey);
   }
 
   @Post(':id/start')
+  // Starting a run enqueues 17 BullMQ jobs and deducts credits — stricter limit.
+  @Throttle({ default: { limit: 5, ttl: 60_000 } })
   async startRun(@Param('id') id: string) {
     return this.workflowService.startRun(id);
   }

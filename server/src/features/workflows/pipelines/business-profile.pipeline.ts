@@ -1,6 +1,7 @@
 ﻿import { Injectable, Logger } from '@nestjs/common';
 import { Pipeline } from './pipeline.interface';
 import { FirecrawlService } from '../../integrations/firecrawl/firecrawl.service';
+import { AhrefsService } from '../../integrations/ahrefs/ahrefs.service';
 
 /**
  * V7 Pipeline: Business Profile
@@ -12,7 +13,10 @@ export class BusinessProfilePipeline implements Pipeline {
   stepKey = 'business-profile';
   private readonly logger = new Logger(BusinessProfilePipeline.name);
 
-  constructor(private readonly firecrawl: FirecrawlService) {}
+  constructor(
+    private readonly firecrawl: FirecrawlService,
+    private readonly ahrefs: AhrefsService,
+  ) {}
 
   async execute(context: Record<string, unknown>): Promise<unknown> {
     const domain = context.domain as string | undefined;
@@ -50,6 +54,27 @@ export class BusinessProfilePipeline implements Pipeline {
       rawData: {
         domain,
         scrapedPages: scrapedPages.filter((p) => p.data !== null),
+        ...(await (async () => {
+          try {
+            const [drData, backlinkData] = await Promise.all([
+              this.ahrefs.getDomainRating(domain),
+              this.ahrefs.getBacklinksStats(domain),
+            ]);
+            const dr = drData as Record<string, unknown>;
+            const bl = backlinkData as Record<string, unknown>;
+            return {
+              domainAuthority: {
+                domain_rating: dr?.domainRating ?? null,
+                referring_domains: bl?.liveRefDomains ?? null,
+                backlinks: bl?.live ?? null,
+                data_source: 'ahrefs',
+              },
+            };
+          } catch (err) {
+            this.logger.warn(`Ahrefs enrichment failed for ${domain}: ${(err as Error).message}`);
+            return {};
+          }
+        })()),
       },
       metadata: {
         domain,

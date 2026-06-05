@@ -55,10 +55,6 @@ class EnvironmentVariables {
 
   @IsOptional()
   @IsString()
-  MANAGED_AGENT_ENVIRONMENT_ID?: string;
-
-  @IsOptional()
-  @IsString()
   PROMPT_SOURCE?: string;
 
   @IsOptional()

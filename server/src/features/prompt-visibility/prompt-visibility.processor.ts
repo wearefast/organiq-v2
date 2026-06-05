@@ -18,7 +18,7 @@ export class PromptVisibilityProcessor extends WorkerHost {
         await this.service.checkAllActivePrompts();
         break;
       case 'check-single':
-        await this.service.checkPrompt(job.data.promptId);
+        await this.service.checkPrompt(job.data.promptId, job.data.force === true);
         break;
       default:
         this.logger.warn(`Unknown job: ${job.name}`);

@@ -21,6 +21,9 @@ import {
   CompetitorBucketsPipeline,
   Phase1BaselinePipeline,
   ContentBriefPipeline,
+  SiteAuditPipeline,
+  ContentArticlePipeline,
+  AiIntelligencePipeline,
 } from './pipelines';
 import { CreditsModule } from '../credits/credits.module';
 import { KeywordsModule } from '../keywords/keywords.module';
@@ -29,6 +32,7 @@ import { ContentModule } from '../content/content.module';
 import { AhrefsModule } from '../integrations/ahrefs/ahrefs.module';
 import { DataForSeoModule } from '../integrations/dataforseo/dataforseo.module';
 import { IntegrationsModule } from '../integrations/integrations.module';
+import { ProjectsModule } from '../projects/projects.module';
 
 /**
  * Dependency direction: WorkflowsModule → feature modules (Keywords, TopicalMaps, Content).
@@ -52,6 +56,7 @@ import { IntegrationsModule } from '../integrations/integrations.module';
     AhrefsModule,
     DataForSeoModule,
     IntegrationsModule,
+    ProjectsModule,
   ],
   controllers: [WorkflowController, DlqController],
   providers: [
@@ -61,7 +66,8 @@ import { IntegrationsModule } from '../integrations/integrations.module';
     Method01CompetitorPagesPipeline, Method02SeedExpansionPipeline, Method03ContentGapPipeline,
     BusinessProfilePipeline,
     SeedKeywordsPipeline, SerpNicheMapPipeline, CompetitorBucketsPipeline,
-    Phase1BaselinePipeline, ContentBriefPipeline,
+    Phase1BaselinePipeline, ContentBriefPipeline, SiteAuditPipeline,
+    ContentArticlePipeline, AiIntelligencePipeline,
   ],
   exports: [WorkflowService, WorkflowGateway, DlqService],
 })

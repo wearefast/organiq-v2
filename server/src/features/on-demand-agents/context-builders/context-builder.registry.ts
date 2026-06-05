@@ -1,5 +1,6 @@
 import { Injectable } from '@nestjs/common';
 import { AgentType } from '../agent-router.service';
+import { ContextBuilder } from './context-builder.types';
 import { ContentRefreshBuilder } from './content-refresh.builder';
 import { AiSearchVisibilityBuilder } from './ai-search-visibility.builder';
 import { TechnicalIssuesBuilder } from './technical-issues.builder';
@@ -8,15 +9,7 @@ import { GoogleVsAiBuilder } from './google-vs-ai.builder';
 import { KeywordDecayBuilder } from './keyword-decay.builder';
 import { CompetitorAnalysisBuilder } from './competitor-analysis.builder';
 
-export interface ContextBuilderResult {
-  systemPrompt: string;
-  dataContext: string;
-  summary: string;
-}
-
-export interface ContextBuilder {
-  build(projectId: string, userPrompt: string): Promise<ContextBuilderResult>;
-}
+export type { ContextBuilder, ContextBuilderResult } from './context-builder.types';
 
 @Injectable()
 export class ContextBuilderRegistry {

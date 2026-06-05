@@ -53,6 +53,11 @@ export class PromptVisibilityController {
     return { success: true };
   }
 
+  @Post(':promptId/run')
+  async runCheck(@Param('promptId') promptId: string) {
+    return this.service.runCheck(promptId);
+  }
+
   @Get(':promptId/history')
   async getHistory(@Param('promptId') promptId: string) {
     return this.service.getPromptHistory(promptId);
@@ -71,5 +76,19 @@ export class PromptVisibilityController {
   @Get('engines')
   getEngines() {
     return { engines: SUPPORTED_ENGINES };
+  }
+
+  @Get('schedule')
+  async getSchedule() {
+    return this.service.getSchedule();
+  }
+
+  @Patch('schedule')
+  async updateSchedule(@Body() body: { hour: number }) {
+    const hour = Number(body.hour);
+    if (!Number.isInteger(hour) || hour < 0 || hour > 23) {
+      throw new BadRequestException('hour must be an integer between 0 and 23');
+    }
+    return this.service.updateSchedule(hour);
   }
 }

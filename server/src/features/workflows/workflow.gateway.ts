@@ -15,6 +15,9 @@ import { WorkflowService } from './workflow.service';
 @WebSocketGateway({
   cors: {
     origin: (origin: string | undefined, callback: (err: Error | null, allowed?: boolean) => void) => {
+      // NOTE: @WebSocketGateway decorators are evaluated at class definition time,
+      // before NestJS DI is available. process.env is intentional and correct here;
+      // ConfigService cannot be injected into decorator metadata.
       const allowed = process.env.FRONTEND_URL || 'http://localhost:3001';
       if (!origin || origin === allowed) {
         callback(null, true);

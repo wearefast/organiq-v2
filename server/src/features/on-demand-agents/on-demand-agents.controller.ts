@@ -1,5 +1,6 @@
 import { Controller, Post, Get, Body, Param, Query, Req, UseGuards } from '@nestjs/common';
 import { IsString, IsNotEmpty, IsOptional, MaxLength } from 'class-validator';
+import { Throttle } from '@nestjs/throttler';
 import { OnDemandAgentsService } from './on-demand-agents.service';
 import { AgentRouterService } from './agent-router.service';
 import { ClerkGuard } from '../auth/clerk.guard';
@@ -25,6 +26,8 @@ export class OnDemandAgentsController {
   ) {}
 
   @Post('run')
+  // Each on-demand run invokes Claude — stricter limit to protect Anthropic spend.
+  @Throttle({ default: { limit: 10, ttl: 60_000 } })
   async runAgent(
     @Param('projectId') projectId: string,
     @Body() dto: RunAgentDto,

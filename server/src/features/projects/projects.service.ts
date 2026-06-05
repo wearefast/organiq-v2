@@ -107,4 +107,36 @@ export class ProjectsService {
     if (!deleted) throw new NotFoundException('Project not found');
     return deleted;
   }
+
+  async updateTargets(
+    id: string,
+    organizationId: string,
+    targets: Array<{ key: string; domain: string; country: string; language: string }>,
+  ) {
+    // Validate targets array
+    if (!Array.isArray(targets) || targets.length > 20) {
+      throw new Error('targets must be an array with at most 20 entries');
+    }
+    const seenKeys = new Set<string>();
+    for (const t of targets) {
+      if (!t.key || !t.domain || !t.country || !t.language) {
+        throw new Error('Each target must have key, domain, country, and language');
+      }
+      if (t.key.length > 64 || !/^[a-z0-9_-]+$/.test(t.key)) {
+        throw new Error(`Invalid target key "${t.key}": must be lowercase alphanumeric/dash/underscore, max 64 chars`);
+      }
+      if (seenKeys.has(t.key)) {
+        throw new Error(`Duplicate target key: "${t.key}"`);
+      }
+      seenKeys.add(t.key);
+    }
+
+    const [updated] = await this.db.db
+      .update(projects)
+      .set({ targets, updatedAt: new Date() })
+      .where(and(eq(projects.id, id), eq(projects.organizationId, organizationId)))
+      .returning();
+    if (!updated) throw new NotFoundException('Project not found');
+    return updated;
+  }
 }

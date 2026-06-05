@@ -2,7 +2,7 @@ import { Injectable, Logger } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { readFile } from 'fs/promises';
 import { join } from 'path';
-import { existsSync } from 'fs';
+import { existsSync, statSync } from 'fs';
 
 interface ParsedPrompt {
   system: string;
@@ -28,7 +28,6 @@ interface AgentDefinition {
   skill?: string;
   thinkingBudget?: number;
   promptId?: string;
-  managedAgentId?: string;
 }
 
 type PromptSourceMode = 'local' | 'console' | 'hybrid';
@@ -224,7 +223,7 @@ export class PromptService {
     return {
       name: frontmatter.name ?? fallbackKey,
       stepKey: frontmatter.step_key ?? fallbackKey,
-      model: frontmatter.model ?? 'gpt-4o',
+      model: frontmatter.model ?? 'claude-sonnet-4',
       temperature: parseFloat(frontmatter.temperature ?? '0.3'),
       maxIterations: parseInt(frontmatter.max_iterations ?? '3', 10),
       creditCost: parseInt(frontmatter.credit_cost ?? '50', 10),
@@ -239,7 +238,6 @@ export class PromptService {
       skill: frontmatter.skill ?? undefined,
       thinkingBudget: frontmatter.thinking_budget ? parseInt(String(frontmatter.thinking_budget), 10) : undefined,
       promptId: frontmatter.prompt_id ?? undefined,
-      managedAgentId: frontmatter.managed_agent_id ?? undefined,
     };
   }
 
@@ -342,7 +340,10 @@ export class PromptService {
       const value = this.resolvePath(vars, path.trim());
       if (value === undefined || value === null) return '';
       if (typeof value === 'object') return JSON.stringify(value, null, 2);
-      return String(value);
+      // Sanitize string values: strip {{ and }} to prevent user-controlled data
+      // from injecting additional template variables (prompt injection via project
+      // fields such as domain, industry, or businessProfile).
+      return String(value).replace(/\{\{/g, '').replace(/\}\}/g, '');
     });
   }
 
@@ -367,8 +368,11 @@ export class PromptService {
       return readFile(filePath, 'utf-8');
     }
 
+    // Validate cache against actual file modification time so prompt changes
+    // are picked up without requiring a server restart in production.
+    const fileMtime = statSync(filePath).mtimeMs;
     const cached = this.cache.get(filePath);
-    if (cached) {
+    if (cached && cached.mtime === fileMtime) {
       return cached.content;
     }
 
@@ -380,7 +384,7 @@ export class PromptService {
       if (oldestKey) this.cache.delete(oldestKey);
     }
 
-    this.cache.set(filePath, { content, mtime: Date.now() });
+    this.cache.set(filePath, { content, mtime: fileMtime });
     return content;
   }
 }

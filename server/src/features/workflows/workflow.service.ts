@@ -1,7 +1,7 @@
-import { Injectable, Logger, NotFoundException, BadRequestException, OnModuleInit } from '@nestjs/common';
+import { Injectable, Logger, NotFoundException, BadRequestException, OnModuleInit, OnApplicationBootstrap } from '@nestjs/common';
 import { InjectQueue } from '@nestjs/bullmq';
 import { Queue } from 'bullmq';
-import { eq, and, inArray, asc } from 'drizzle-orm';
+import { eq, and, inArray, asc, or } from 'drizzle-orm';
 import { DatabaseService } from '../../shared/database/database.service';
 import {
   workflowRuns,
@@ -16,29 +16,28 @@ import { AgentRegistry } from '../../agents/agent.registry';
 import { CreditsService } from '../credits/credits.service';
 
 /** The 17-step workflow definition: stepKey → [stepNumber, phase, dependsOn[]] */
-const STEP_DEFINITIONS: Array<[string, number, number, string[]]> = [
-  ['business-profile', 1, 1, []],
-  ['seed-keywords', 2, 1, ['business-profile']],
-  ['site-audit', 3, 1, ['business-profile']],
-  ['ai-intelligence', 4, 1, ['site-audit']],
-  ['serp-niche-map', 5, 1, ['seed-keywords']],
-  ['competitor-buckets', 6, 1, ['serp-niche-map']],
-  ['competitor-metrics', 7, 1, ['ai-intelligence', 'competitor-buckets']],
-  ['search-demand', 8, 1, ['seed-keywords']],
-  ['phase1-baseline', 9, 2, ['competitor-metrics', 'search-demand']],
-  ['method01-competitor-pages', 10, 2, ['phase1-baseline']],
-  ['method02-seed-expansion', 11, 2, ['phase1-baseline']],
-  ['method03-content-gap-import', 12, 2, ['phase1-baseline']],
-  ['consolidated-keywords', 13, 2, ['method01-competitor-pages', 'method02-seed-expansion', 'method03-content-gap-import']],
-  ['verdict-strategy', 14, 3, ['consolidated-keywords']],
-  ['topical-map', 15, 3, ['verdict-strategy']],
-  ['content-brief', 16, 4, ['topical-map']],
-  ['content-article', 17, 4, ['content-brief']],
-  ['content-images', 18, 4, ['content-article']],
+export const STEP_DEFINITIONS: Array<[string, number, number, string[]]> = [
+  ['seed-keywords', 1, 1, []],
+  ['site-audit', 2, 1, []],
+  ['ai-intelligence', 3, 1, ['site-audit']],
+  ['serp-niche-map', 4, 1, ['seed-keywords']],
+  ['competitor-buckets', 5, 1, ['serp-niche-map']],
+  ['competitor-metrics', 6, 1, ['ai-intelligence', 'competitor-buckets']],
+  ['search-demand', 7, 1, ['seed-keywords']],
+  ['phase1-baseline', 8, 2, ['competitor-metrics', 'search-demand']],
+  ['method01-competitor-pages', 9, 2, ['phase1-baseline']],
+  ['method02-seed-expansion', 10, 2, ['phase1-baseline']],
+  ['method03-content-gap-import', 11, 2, ['phase1-baseline']],
+  ['consolidated-keywords', 12, 2, ['method01-competitor-pages', 'method02-seed-expansion', 'method03-content-gap-import']],
+  ['verdict-strategy', 13, 3, ['consolidated-keywords']],
+  ['topical-map', 14, 3, ['verdict-strategy']],
+  ['content-brief', 15, 4, ['topical-map']],
+  ['content-article', 16, 4, ['content-brief']],
+  ['content-images', 17, 4, ['content-article']],
 ];
 
 @Injectable()
-export class WorkflowService implements OnModuleInit {
+export class WorkflowService implements OnModuleInit, OnApplicationBootstrap {
   private readonly logger = new Logger(WorkflowService.name);
 
   constructor(
@@ -50,6 +49,94 @@ export class WorkflowService implements OnModuleInit {
 
   onModuleInit() {
     this.validateStepDefinitions();
+  }
+
+  /**
+   * After all modules are initialised, reconcile any runs left stuck in 'running'
+   * by a previous server instance (crash, restart, failed deploy).
+   *
+   * Strategy:
+   *  - A step that is still 'running' in the DB but has no live BullMQ job is
+   *    orphaned. Mark it 'failed' so the dependency graph can settle.
+   *  - After marking orphaned steps, if the run is now unrecoverable (no pending
+   *    step can ever become runnable), mark the run 'failed'.
+   *  - If the run still has viable pending steps (their deps are all met), re-queue
+   *    them so the workflow continues automatically.
+   */
+  async onApplicationBootstrap(): Promise<void> {
+    try {
+      await this.reconcileOrphanedRuns();
+    } catch (err) {
+      this.logger.error(`Startup reconciliation failed: ${(err as Error).message}`);
+    }
+  }
+
+  private async reconcileOrphanedRuns(): Promise<void> {
+    const stuckRuns = await this.db.db.query.workflowRuns.findMany({
+      where: eq(workflowRuns.status, 'running'),
+      with: { steps: true },
+    });
+
+    if (stuckRuns.length === 0) {
+      this.logger.log('Startup reconciliation: no running workflows to reconcile');
+      return;
+    }
+
+    this.logger.warn(`Startup reconciliation: found ${stuckRuns.length} running workflow(s) — checking for orphaned jobs`);
+
+    for (const run of stuckRuns) {
+      const statusByKey = new Map(run.steps.map((s) => [s.stepKey, s.status]));
+
+      // Any step marked 'running' in the DB has no live BullMQ job (server just started).
+      // Mark those as failed so the dependency graph can settle.
+      const orphanedRunningSteps = run.steps.filter((s) => s.status === 'running');
+      if (orphanedRunningSteps.length > 0) {
+        const orphanedKeys = orphanedRunningSteps.map((s) => s.stepKey);
+        await this.db.db
+          .update(workflowSteps)
+          .set({ status: 'failed', error: 'Orphaned: server restarted while step was running', updatedAt: new Date() })
+          .where(and(eq(workflowSteps.workflowRunId, run.id), inArray(workflowSteps.stepKey, orphanedKeys)));
+        orphanedKeys.forEach((k) => statusByKey.set(k, 'failed'));
+        this.logger.warn(`Run ${run.id}: marked ${orphanedKeys.length} orphaned step(s) as failed: [${orphanedKeys.join(', ')}]`);
+      }
+
+      // Re-evaluate the run's recoverability with the updated status map.
+      const isBlocked = (key: string, visited = new Set<string>()): boolean => {
+        if (visited.has(key)) return false;
+        visited.add(key);
+        if (statusByKey.get(key) === 'failed') return true;
+        const def = STEP_DEFINITIONS.find(([k]) => k === key);
+        return def ? def[3].some((dep) => isBlocked(dep, visited)) : false;
+      };
+
+      const runnableKeys = STEP_DEFINITIONS
+        .filter(([k, , , deps]) => {
+          const status = statusByKey.get(k);
+          if (status !== 'pending') return false;
+          return deps.every((dep) => {
+            const s = statusByKey.get(dep);
+            return s === 'completed' || s === 'approved';
+          }) && !isBlocked(k, new Set());
+        })
+        .map(([k]) => k);
+
+      if (runnableKeys.length > 0) {
+        // Resume: re-enqueue steps whose deps are now satisfied
+        this.logger.log(`Run ${run.id}: re-enqueueing ${runnableKeys.length} eligible step(s): [${runnableKeys.join(', ')}]`);
+        await this.enqueuePendingSteps(run.id);
+      } else {
+        // No step can ever run — mark the whole run as failed
+        const anyActive = run.steps.some((s) => s.status === 'pending' || s.status === 'running');
+        const hasFailure = run.steps.some((s) => s.status === 'failed');
+        if (!anyActive || hasFailure) {
+          await this.db.db
+            .update(workflowRuns)
+            .set({ status: 'failed', completedAt: new Date(), updatedAt: new Date() })
+            .where(eq(workflowRuns.id, run.id));
+          this.logger.warn(`Run ${run.id}: marked as failed (unrecoverable at startup)`);
+        }
+      }
+    }
   }
 
   /**
@@ -133,12 +220,12 @@ export class WorkflowService implements OnModuleInit {
     this.logger.log(`STEP_DEFINITIONS validated: ${STEP_DEFINITIONS.length} steps, DAG is acyclic`);
   }
 
-  async createRun(projectId: string, organizationId: string) {
+  async createRun(projectId: string, organizationId: string, targetKey?: string | null) {
     return this.db.db.transaction(async (tx) => {
       // Create the run
       const [run] = await tx
         .insert(workflowRuns)
-        .values({ projectId, organizationId, status: 'draft' })
+        .values({ projectId, organizationId, status: 'draft', targetKey: targetKey ?? null })
         .returning();
 
       // Create all 17 steps
@@ -164,7 +251,15 @@ export class WorkflowService implements OnModuleInit {
         steps: {
           orderBy: (s, { asc }) => [asc(s.stepNumber)],
           with: {
-            artifacts: { orderBy: (a, { desc }) => [desc(a.version)] },
+            artifacts: {
+                // Fetch only the latest artifact version per step.  Loading all
+                // versions on every getRun() call causes unbounded payload growth
+                // as users revise steps.  The frontend uses artifacts[0] for
+                // rendering; the version number field on that row still shows the
+                // true revision count accurately.
+                orderBy: (a, { desc }) => [desc(a.version)],
+                limit: 1,
+              },
             approvals: { orderBy: (a, { desc }) => [desc(a.createdAt)] },
           },
         },
@@ -189,7 +284,13 @@ export class WorkflowService implements OnModuleInit {
     if (!run) throw new NotFoundException('Workflow run not found');
 
     const allAgents = this.agentRegistry.getAllAgents();
-    const totalCost = allAgents.reduce((sum, a) => sum + a.creditCost, 0);
+    // Only count agents that are actual workflow steps — business-profile is a project
+    // attribute seeded into context at run start, not a workflow step, so it should not
+    // be included in the credit pre-flight check.
+    const workflowStepKeys = new Set(STEP_DEFINITIONS.map(([key]) => key));
+    const totalCost = allAgents
+      .filter((a) => workflowStepKeys.has(a.stepKey))
+      .reduce((sum, a) => sum + a.creditCost, 0);
     const balance = await this.creditsService.getBalance(run.organizationId);
     if (balance < totalCost) {
       throw new BadRequestException(
@@ -197,6 +298,37 @@ export class WorkflowService implements OnModuleInit {
       );
     }
 
+    // Load and validate project BEFORE marking the run as running.
+    // If any validation fails the run stays in 'draft' and is fully retryable.
+    const project = await this.db.db.query.projects.findFirst({
+      where: eq(projects.id, run.projectId),
+    });
+    if (!project) {
+      throw new NotFoundException(`Project not found for workflow run ${runId}`);
+    }
+
+    if (!project.businessProfile) {
+      throw new BadRequestException(
+        'No business profile found. Run the Business Profile analysis from the project overview before starting a workflow.',
+      );
+    }
+
+    // Business profile freshness check.
+    // businessProfileUpdatedAt is NULL for projects that pre-date the column —
+    // skip the check in that case so legacy projects are not incorrectly blocked.
+    const THIRTY_DAYS_MS = 30 * 24 * 60 * 60 * 1000;
+    if (project.businessProfileUpdatedAt) {
+      const ageMs = Date.now() - project.businessProfileUpdatedAt.getTime();
+      if (ageMs > THIRTY_DAYS_MS) {
+        const days = Math.floor(ageMs / (24 * 60 * 60 * 1000));
+        throw new BadRequestException(
+          `Business profile is ${days} days old. Please refresh it from the project overview ` +
+            `before starting a new workflow run so the AI analysis reflects your current business context.`,
+        );
+      }
+    }
+
+    // All validations passed — now atomically mark the run as running.
     const [updated] = await this.db.db
       .update(workflowRuns)
       .set({ status: 'running', startedAt: new Date(), updatedAt: new Date() })
@@ -206,16 +338,11 @@ export class WorkflowService implements OnModuleInit {
     if (!updated) throw new NotFoundException('Workflow run not found');
 
     // Inject project-level context for prompt interpolation
-    const project = await this.db.db.query.projects.findFirst({
-      where: eq(projects.id, updated.projectId),
-    });
-    if (!project) {
-      throw new NotFoundException(`Project not found for workflow run ${runId}`);
-    }
     await this.setContext(runId, 'domain', project.domain);
     await this.setContext(runId, 'country', project.country);
     await this.setContext(runId, 'language', project.language);
     await this.setContext(runId, 'industry', project.industry ?? '');
+    await this.setContext(runId, 'business-profile', project.businessProfile);
 
     // Enqueue the first step(s) — those with no dependencies
     await this.enqueuePendingSteps(runId);

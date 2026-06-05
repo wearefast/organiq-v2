@@ -16,6 +16,38 @@ export class Method03ContentGapPipeline implements Pipeline {
 
   async execute(context: Record<string, unknown>): Promise<unknown> {
     const domain = context.domain as string;
+
+    // This step is an import processor for externally-imported keyword data
+    // (Ahrefs Content Gap exports, GSC exports, manual CSVs).
+    // If no import data is present in context, skip all API calls immediately.
+    // The agent prompt handles empty imports gracefully with an empty result schema.
+    const importedKeywords = context['imported-keywords'];
+    if (!importedKeywords || (Array.isArray(importedKeywords) && importedKeywords.length === 0)) {
+      this.logger.log('Method 03: no imported keywords in context — skipping API calls');
+      return {
+        importedKeywords: [],
+        importStats: {
+          totalImported: 0,
+          afterCleaning: 0,
+          afterDedup: 0,
+          newUnique: 0,
+          duplicatesRemoved: 0,
+          enriched: 0,
+        },
+        bySource: [],
+        topicClusters: [],
+        summary: {
+          totalNewKeywords: 0,
+          totalVolume: 0,
+          avgDifficulty: 0,
+          avgOpportunityScore: 0,
+          topSource: '',
+          recommendation: 'No keywords imported. This step is skipped when no external keyword data has been imported.',
+        },
+        skipped: true,
+      };
+    }
+
     const bucketsCtx = context['competitor-buckets'] as {
       buckets?: {
         direct?: { competitors?: Array<{ domain: string }> };
