@@ -54,7 +54,7 @@ export class ReportsService {
    * Generate a report by:
    * 1. Loading the workflow context (all step artifacts)
    * 2. Interpolating the report template with context
-   * 3. Sending to Python sidecar for PDF generation
+   * 3. Generating PDF locally via PdfGeneratorService
    * 4. Storing the report record + PDF base64
    */
   async generate(
@@ -77,14 +77,22 @@ export class ReportsService {
     });
     if (!project) throw new NotFoundException('Project not found');
 
-    // Load workflow context (all step artifacts stored as key-value pairs)
+    // Load workflow context (all step artifacts stored as key-value pairs).
+    // Cap large string values to avoid embedding multi-KB JSON blobs verbatim
+    // in the report template — they add no readability value and can overflow
+    // template interpolation buffers.
+    const MAX_CONTEXT_VALUE_CHARS = 2000;
     const contextRows = await this.db.db.query.workflowContext.findMany({
       where: eq(workflowContext.workflowRunId, workflowRunId),
     });
 
     const context: Record<string, unknown> = {};
     for (const row of contextRows) {
-      context[row.key] = row.value;
+      const val = row.value;
+      context[row.key] =
+        typeof val === 'string' && val.length > MAX_CONTEXT_VALUE_CHARS
+          ? val.slice(0, MAX_CONTEXT_VALUE_CHARS) + '…[truncated]'
+          : val;
     }
 
     // Add project-level metadata

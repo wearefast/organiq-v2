@@ -3,6 +3,8 @@ import { VerificationRule, VerificationResult } from './verification-rule.interf
 import { ConsolidatedKeywordsRule } from './rules/consolidated-keywords.rule';
 import { VerdictStrategyRule } from './rules/verdict-strategy.rule';
 import { TopicalMapRule } from './rules/topical-map.rule';
+import { ContentBriefRule } from './rules/content-brief.rule';
+import { ContentArticleRule } from './rules/content-article.rule';
 
 @Injectable()
 export class VerificationService {
@@ -14,6 +16,8 @@ export class VerificationService {
       new ConsolidatedKeywordsRule(),
       new VerdictStrategyRule(),
       new TopicalMapRule(),
+      new ContentBriefRule(),
+      new ContentArticleRule(),
     ];
   }
 

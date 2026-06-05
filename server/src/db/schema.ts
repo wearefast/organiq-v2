@@ -247,6 +247,12 @@ export const projects = pgTable(
     sitemapUrls: text('sitemap_urls').array(),
     /** When the sitemap was last crawled */
     sitemapDiscoveredAt: timestamp('sitemap_discovered_at'),
+    /** AI-synthesized business profile — populated via the project-level refresh action */
+    businessProfile: jsonb('business_profile'),
+    /** When the business profile was last generated */
+    businessProfileUpdatedAt: timestamp('business_profile_updated_at'),
+    /** Multi-target definitions: [{key, domain, country, language}] */
+    targets: jsonb('targets').$type<Array<{ key: string; domain: string; country: string; language: string }>>().default([]),
     createdAt: timestamp('created_at').defaultNow().notNull(),
     updatedAt: timestamp('updated_at').defaultNow().notNull(),
   },
@@ -266,6 +272,7 @@ export const workflowRuns = pgTable(
     organizationId: uuid('organization_id').notNull().references(() => organizations.id, { onDelete: 'cascade' }),
     status: workflowRunStatusEnum('status').default('draft').notNull(),
     currentStep: text('current_step'),
+    targetKey: text('target_key'),
     creditsUsed: integer('credits_used').default(0).notNull(),
     startedAt: timestamp('started_at'),
     completedAt: timestamp('completed_at'),
@@ -314,6 +321,7 @@ export const stepArtifacts = pgTable(
     version: integer('version').default(1).notNull(),
     data: jsonb('data').notNull(),
     reasoning: text('reasoning'),
+    thinkingContent: text('thinking_content'),
     metadata: jsonb('metadata'),
     createdAt: timestamp('created_at').defaultNow().notNull(),
   },
@@ -583,6 +591,8 @@ export const projectsRelations = relations(projects, ({ one, many }) => ({
   topicalMaps: many(topicalMaps),
   contentPieces: many(contentPieces),
   reports: many(reports),
+  intelligence: many(projectIntelligence),
+  refreshSuggestions: many(refreshSuggestions),
 }));
 
 export const workflowRunsRelations = relations(workflowRuns, ({ one, many }) => ({
@@ -847,6 +857,7 @@ export const promptVisibilityResults = pgTable(
     checkedAt: timestamp('checked_at').notNull().defaultNow(),
     brandMentioned: boolean('brand_mentioned').notNull(),
     mentionPosition: integer('mention_position'),
+    responseText: text('response_text'),
     responseExcerpt: text('response_excerpt'),
     competitorMentions: jsonb('competitor_mentions').$type<Array<{ brand: string; position: number; domain?: string }>>(),
     visibilityPct: decimal('visibility_pct', { precision: 5, scale: 2 }),
@@ -956,4 +967,61 @@ export const scheduledWorkflowsRelations = relations(scheduledWorkflows, ({ one,
 export const workflowRunHistoryRelations = relations(workflowRunHistory, ({ one }) => ({
   workflow: one(scheduledWorkflows, { fields: [workflowRunHistory.workflowId], references: [scheduledWorkflows.id] }),
   project: one(projects, { fields: [workflowRunHistory.projectId], references: [projects.id] }),
+}));
+
+// ─── Project Intelligence Store ─────────────────────────────
+
+export const projectIntelligence = pgTable(
+  'project_intelligence',
+  {
+    id: uuid('id').primaryKey().defaultRandom(),
+    projectId: uuid('project_id').notNull().references(() => projects.id, { onDelete: 'cascade' }),
+    organizationId: uuid('organization_id').notNull().references(() => organizations.id, { onDelete: 'cascade' }),
+    targetKey: text('target_key').notNull().default('__foundation__'),
+    dataType: text('data_type').notNull(),
+    data: jsonb('data').notNull(),
+    version: integer('version').notNull().default(1),
+    producedBy: text('produced_by').notNull(),
+    workflowRunId: uuid('workflow_run_id').references(() => workflowRuns.id, { onDelete: 'set null' }),
+    createdAt: timestamp('created_at').defaultNow().notNull(),
+    updatedAt: timestamp('updated_at').defaultNow().notNull(),
+  },
+  (table) => ({
+    projectTargetDatatypeIdx: uniqueIndex('pi_project_target_datatype_unique').on(table.projectId, table.targetKey, table.dataType),
+    orgProjectIdx: index('pi_org_project_idx').on(table.organizationId, table.projectId),
+    projectTargetIdx: index('pi_project_target_idx').on(table.projectId, table.targetKey),
+  }),
+);
+
+export const projectIntelligenceRelations = relations(projectIntelligence, ({ one }) => ({
+  project: one(projects, { fields: [projectIntelligence.projectId], references: [projects.id] }),
+  organization: one(organizations, { fields: [projectIntelligence.organizationId], references: [organizations.id] }),
+  workflowRun: one(workflowRuns, { fields: [projectIntelligence.workflowRunId], references: [workflowRuns.id] }),
+}));
+
+// ─── Refresh Suggestions ─────────────────────────────────────
+
+export const refreshSuggestions = pgTable(
+  'refresh_suggestions',
+  {
+    id: uuid('id').primaryKey().defaultRandom(),
+    projectId: uuid('project_id').notNull().references(() => projects.id, { onDelete: 'cascade' }),
+    organizationId: uuid('organization_id').notNull().references(() => organizations.id, { onDelete: 'cascade' }),
+    targetKey: text('target_key'),
+    dataType: text('data_type').notNull(),
+    lastUpdated: timestamp('last_updated').notNull(),
+    reason: text('reason').notNull(),
+    suggestedBy: text('suggested_by').notNull(),
+    suggestedAt: timestamp('suggested_at').defaultNow().notNull(),
+    dismissed: boolean('dismissed').notNull().default(false),
+    refreshedAt: timestamp('refreshed_at'),
+  },
+  (table) => ({
+    projectActiveIdx: index('rs_project_active_idx').on(table.projectId),
+  }),
+);
+
+export const refreshSuggestionsRelations = relations(refreshSuggestions, ({ one }) => ({
+  project: one(projects, { fields: [refreshSuggestions.projectId], references: [projects.id] }),
+  organization: one(organizations, { fields: [refreshSuggestions.organizationId], references: [organizations.id] }),
 }));

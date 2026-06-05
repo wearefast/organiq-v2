@@ -2,6 +2,8 @@ import { Module } from '@nestjs/common';
 import { ConfigModule } from '@nestjs/config';
 import { BullModule } from '@nestjs/bullmq';
 import { ScheduleModule } from '@nestjs/schedule';
+import { ThrottlerModule, ThrottlerGuard } from '@nestjs/throttler';
+import { APP_GUARD } from '@nestjs/core';
 import { LoggerModule } from 'nestjs-pino';
 import { randomUUID } from 'crypto';
 import { resolve } from 'path';
@@ -52,6 +54,10 @@ function resolveEnvFilePaths() {
 @Module({
   imports: [
     ConfigModule.forRoot({ isGlobal: true, envFilePath: resolveEnvFilePaths(), validate: validateEnv }),
+    // Global rate limiting: 120 requests per 60 seconds per IP.
+    // Individual controllers can override with @Throttle({ default: { limit, ttl } }).
+    // Use @SkipThrottle() on read-only health/status routes if needed.
+    ThrottlerModule.forRoot([{ name: 'default', ttl: 60_000, limit: 120 }]),
     ScheduleModule.forRoot(),
     LoggerModule.forRoot({
       pinoHttp: {
@@ -92,6 +98,10 @@ function resolveEnvFilePaths() {
     OnDemandAgentsModule,
     ScheduledWorkflowsModule,
     BillingModule,
+  ],
+  providers: [
+    // Enforce global rate limiting across all controllers.
+    { provide: APP_GUARD, useClass: ThrottlerGuard },
   ],
 })
 export class AppModule {}

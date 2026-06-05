@@ -11,10 +11,10 @@ import { GoogleVsAiBuilder } from './context-builders/google-vs-ai.builder';
 import { KeywordDecayBuilder } from './context-builders/keyword-decay.builder';
 import { CompetitorAnalysisBuilder } from './context-builders/competitor-analysis.builder';
 import { CreditsModule } from '../credits/credits.module';
-import { IntegrationsModule } from '../integrations/integrations.module';
+import { ProjectsModule } from '../projects/projects.module';
 
 @Module({
-  imports: [CreditsModule, IntegrationsModule],
+  imports: [CreditsModule, ProjectsModule],
   controllers: [OnDemandAgentsController],
   providers: [
     OnDemandAgentsService,

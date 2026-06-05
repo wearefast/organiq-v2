@@ -188,16 +188,8 @@ export class ToolBootstrap implements OnModuleInit {
         execute: (input: any) => this.pagespeed.getCruxData(input.origin),
       },
       // --- DataForSEO ---
-      {
-        name: 'dataforseo_serp',
-        description: 'Get SERP results for a keyword. Location accepts country names ("United States", "Saudi Arabia") or ISO codes ("us", "sa"). Language accepts ISO 639-1 codes ("en", "ar").',
-        inputSchema: {
-          type: 'object',
-          properties: { keyword: { type: 'string' }, location: { type: 'string', description: 'Country name or ISO code, e.g. "United States" or "us"' }, language: { type: 'string', description: 'ISO 639-1 language code, e.g. "en"' } },
-          required: ['keyword'],
-        },
-        execute: (input: any) => this.dataForSeo.getSerpResults(input.keyword, input.location, input.language),
-      },
+      // Note: dataforseo_serp was removed — SERP lookups in pipelines go through
+      // the Serper.dev pipeline step. No agent definition references this tool.
       {
         name: 'dataforseo_keyword_volume',
         description: 'Get search volume data for keywords via DataForSEO. Location accepts country names or ISO codes. Language accepts ISO 639-1 codes.',

@@ -1,4 +1,6 @@
 import { Injectable, Logger, NotFoundException } from '@nestjs/common';
+import { InjectQueue } from '@nestjs/bullmq';
+import { Queue } from 'bullmq';
 import { ConfigService } from '@nestjs/config';
 import { eq, desc, and, gte } from 'drizzle-orm';
 import { DatabaseService } from '../../shared/database/database.service';
@@ -15,6 +17,17 @@ export interface CreatePromptInput {
   competitors?: string[];
 }
 
+export interface EngineStats {
+  engine: string;
+  visibilityPct: number;
+  avgPosition: number | null;
+  latestSentiment: 'positive' | 'neutral' | 'negative' | null;
+  shareOfVoice: number;
+  lastCheckedAt: string | null;
+  checks: number;
+  latestResponseText: string | null;
+}
+
 export interface PromptWithStats {
   id: string;
   promptText: string;
@@ -25,6 +38,7 @@ export interface PromptWithStats {
   latestVisibilityPct: number | null;
   latestMentionPosition: number | null;
   lastCheckedAt: string | null;
+  engineStats: EngineStats[];
 }
 
 export interface VisibilityOverview {
@@ -47,6 +61,7 @@ export class PromptVisibilityService {
     private readonly engineQuery: EngineQueryService,
     private readonly parser: VisibilityParserService,
     private readonly config: ConfigService,
+    @InjectQueue('prompt-visibility') private readonly queue: Queue,
   ) {}
 
   // ─── CRUD: Tracked Prompts ───────────────────────────────
@@ -68,41 +83,122 @@ export class PromptVisibilityService {
       })
       .returning();
 
+    // Run the first check immediately so "Last Checked" is not stuck on "Never"
+    await this.queue.add('check-single', { promptId: row.id }, { delay: 0 });
+    this.logger.log(`Queued initial visibility check for prompt ${row.id}`);
+
     return row;
   }
 
-  async getPrompts(projectId: string): Promise<PromptWithStats[]> {
-    const prompts = await this.db.db
-      .select()
-      .from(trackedPrompts)
-      .where(eq(trackedPrompts.projectId, projectId))
-      .orderBy(desc(trackedPrompts.createdAt));
+  async runCheck(promptId: string): Promise<{ queued: boolean }> {
+    const prompt = await this.db.db.query.trackedPrompts.findFirst({
+      where: eq(trackedPrompts.id, promptId),
+    });
+    if (!prompt) return { queued: false };
+    // force=true so manual checks always run regardless of isActive state
+    await this.queue.add('check-single', { promptId, force: true }, { delay: 0 });
+    return { queued: true };
+  }
 
-    // Get latest result for each prompt
-    const result: PromptWithStats[] = [];
-    for (const p of prompts) {
-      const latestResult = await this.db.db
+  async getPrompts(projectId: string): Promise<PromptWithStats[]> {
+    const [prompts, allResults] = await Promise.all([
+      this.db.db
+        .select()
+        .from(trackedPrompts)
+        .where(eq(trackedPrompts.projectId, projectId))
+        .orderBy(desc(trackedPrompts.createdAt)),
+      this.db.db
         .select()
         .from(promptVisibilityResults)
-        .where(eq(promptVisibilityResults.promptId, p.id))
-        .orderBy(desc(promptVisibilityResults.checkedAt))
-        .limit(1);
+        .where(eq(promptVisibilityResults.projectId, projectId))
+        .orderBy(desc(promptVisibilityResults.checkedAt)),
+    ]);
 
-      const latest = latestResult[0] ?? null;
-      result.push({
+    // Group all results by promptId
+    const resultsByPrompt = new Map<string, typeof allResults>();
+    for (const r of allResults) {
+      const group = resultsByPrompt.get(r.promptId) ?? [];
+      group.push(r);
+      resultsByPrompt.set(r.promptId, group);
+    }
+
+    return prompts.map((p) => {
+      const promptResults = resultsByPrompt.get(p.id) ?? [];
+      const configuredEngines = (p.engines as string[]) ?? [];
+
+      // Overall aggregate (across all engines)
+      const lastCheckedAt = promptResults[0]?.checkedAt?.toISOString() ?? null;
+      const mentioned = promptResults.filter((r) => r.brandMentioned);
+      const latestVisibilityPct =
+        promptResults.length > 0
+          ? Math.round((mentioned.length / promptResults.length) * 10000) / 100
+          : null;
+      const latestMentionPosition =
+        promptResults.find((r) => r.mentionPosition != null)?.mentionPosition ?? null;
+
+      // Group results by engine
+      const engineGroups = new Map<string, typeof allResults>();
+      for (const r of promptResults) {
+        const group = engineGroups.get(r.aiEngine) ?? [];
+        group.push(r);
+        engineGroups.set(r.aiEngine, group);
+      }
+
+      // Compute per-engine stats
+      const engineStats: EngineStats[] = configuredEngines.map((eng) => {
+        const results = engineGroups.get(eng) ?? [];
+        if (results.length === 0) {
+          return { engine: eng, visibilityPct: 0, avgPosition: null, latestSentiment: null, shareOfVoice: 0, lastCheckedAt: null, checks: 0, latestResponseText: null };
+        }
+
+        const engMentioned = results.filter((r) => r.brandMentioned);
+        const visibilityPct = Math.round((engMentioned.length / results.length) * 10000) / 100;
+
+        const positions = engMentioned
+          .filter((r) => r.mentionPosition != null)
+          .map((r) => r.mentionPosition!);
+        const avgPosition =
+          positions.length > 0
+            ? Math.round((positions.reduce((a, b) => a + b, 0) / positions.length) * 10) / 10
+            : null;
+
+        // Share of Voice: avg fraction of brand vs all brands mentioned per check
+        const sovValues = results.map((r) => {
+          const competitors = Array.isArray(r.competitorMentions) ? r.competitorMentions : [];
+          if (!r.brandMentioned) return 0;
+          return 1 / (1 + competitors.length);
+        });
+        const shareOfVoice =
+          Math.round((sovValues.reduce((a, b) => a + b, 0) / results.length) * 10000) / 100;
+
+        const latest = results[0]; // sorted desc
+        const latestSentiment = (latest?.sentiment as 'positive' | 'neutral' | 'negative' | null) ?? null;
+
+        return {
+          engine: eng,
+          visibilityPct,
+          avgPosition,
+          latestSentiment,
+          shareOfVoice,
+          lastCheckedAt: latest?.checkedAt?.toISOString() ?? null,
+          checks: results.length,
+          latestResponseText: (latest?.responseText as string | null) ?? null,
+        };
+      });
+
+      return {
         id: p.id,
         promptText: p.promptText,
         intentStage: p.intentStage,
-        engines: (p.engines as string[]) ?? [],
+        engines: configuredEngines,
         isActive: p.isActive,
         createdAt: p.createdAt.toISOString(),
-        latestVisibilityPct: latest?.visibilityPct ? parseFloat(String(latest.visibilityPct)) : null,
-        latestMentionPosition: latest?.mentionPosition ?? null,
-        lastCheckedAt: latest?.checkedAt?.toISOString() ?? null,
-      });
-    }
-
-    return result;
+        latestVisibilityPct,
+        latestMentionPosition,
+        lastCheckedAt,
+        engineStats,
+      };
+    });
   }
 
   async deletePrompt(promptId: string) {
@@ -184,16 +280,28 @@ export class PromptVisibilityService {
 
   // ─── Check Prompt (called by processor) ──────────────────
 
-  async checkPrompt(promptId: string) {
+  async checkPrompt(promptId: string, force = false) {
     const prompt = await this.db.db.query.trackedPrompts.findFirst({
       where: eq(trackedPrompts.id, promptId),
     });
-    if (!prompt || !prompt.isActive) return;
+    // Scheduled checks skip inactive prompts; manual (force=true) runs always proceed
+    if (!prompt || (!force && !prompt.isActive)) return;
 
     const project = await this.db.db.query.projects.findFirst({
       where: eq(projects.id, prompt.projectId),
     });
     if (!project) return;
+
+    // Prefer brand name from the project's business profile over the project name.
+    // Project names can have suffixes like "Mashreq 4" that AI engines never use.
+    const bp = project.businessProfile as Record<string, unknown> | null;
+    const rawBrandName =
+      (typeof bp?.companyName === 'string' && bp.companyName) ||
+      (typeof bp?.businessName === 'string' && bp.businessName) ||
+      (typeof bp?.business_name === 'string' && bp.business_name) ||
+      project.name;
+    // Also strip any trailing numeric project-copy suffixes (e.g. "Acme 3" → "Acme")
+    const brandName = rawBrandName.replace(/[\s\-_]+\d+$/, '').trim() || rawBrandName;
 
     const engines = ((prompt.engines as string[]) ?? []).filter((e) =>
       (SUPPORTED_ENGINES as readonly string[]).includes(e),
@@ -207,12 +315,35 @@ export class PromptVisibilityService {
           continue;
         }
 
+        // Per-prompt competitors take priority; fall back to business profile competitors.
+        // bp.competitors may be an array of strings OR objects { name, url, ... } depending
+        // on how the business profile was generated — normalise to string[] here.
+        const promptCompetitors = (prompt.competitors as string[]) ?? [];
+        const rawBpCompetitors = (bp?.competitors as Array<string | { name?: string }>) ?? [];
+        const bpCompetitors = rawBpCompetitors
+          .map((c) => (typeof c === 'string' ? c : (c?.name ?? '')))
+          .filter(Boolean) as string[];
+        const competitors = promptCompetitors.length > 0 ? promptCompetitors : bpCompetitors;
+
         const parseResult = this.parser.parse(
           response.text,
-          project.name,
+          brandName,
           project.domain,
-          (prompt.competitors as string[]) ?? [],
+          competitors,
         );
+
+        // AI-powered position extraction — semantically understands any response format.
+        // Falls back to the regex result if the API call fails.
+        const aiPosition = parseResult.brandMentioned
+          ? await this.aiExtractPosition(
+              response.text,
+              brandName,
+              project.domain,
+              prompt.promptText,
+              this.config.get<string>('OPENAI_API_KEY') ?? '',
+            )
+          : null;
+        const finalPosition = aiPosition ?? parseResult.mentionPosition;
 
         // Get recent results for rolling visibility
         const recentResults = await this.db.db
@@ -235,7 +366,8 @@ export class PromptVisibilityService {
           projectId: prompt.projectId,
           aiEngine: engine,
           brandMentioned: parseResult.brandMentioned,
-          mentionPosition: parseResult.mentionPosition,
+          mentionPosition: finalPosition,
+          responseText: response.text,
           responseExcerpt: parseResult.responseExcerpt,
           competitorMentions: parseResult.competitorMentions,
           visibilityPct: String(visibilityPct),
@@ -244,6 +376,76 @@ export class PromptVisibilityService {
       } catch (e) {
         this.logger.error(`Error checking prompt ${promptId} on ${engine}: ${e}`);
       }
+    }
+  }
+
+  // ─── AI Position Extraction ───────────────────────────────
+
+  /**
+   * Use GPT-4o-mini to semantically extract brand position from an AI engine response.
+   * This is the authoritative position source — it handles any response format (numbered
+   * lists, markdown headings, categorised sections, prose) without fragile regex patterns.
+   *
+   * Passes the original prompt for context so the extractor can distinguish a ranking
+   * question ("best banks in UAE") from a specific lookup ("which bank has NEO banking").
+   *
+   * Falls back to null on any error — the regex result from the parser is the fallback.
+   */
+  private async aiExtractPosition(
+    responseText: string,
+    brandName: string,
+    brandDomain: string,
+    promptText: string,
+    apiKey: string,
+  ): Promise<number | null> {
+    if (!apiKey || !responseText) return null;
+    try {
+      const cleanBrand = brandName.replace(/[\s\-_]+\d+$/, '').trim() || brandName;
+      const cleanDomain = brandDomain.replace(/^https?:\/\//, '').replace(/^www\./, '');
+      // 10 000 chars covers any realistic AI response without exceeding token budget
+      const truncated = responseText.slice(0, 10000);
+
+      const extractionPrompt = `An AI assistant responded to this question: "${promptText}"
+
+Brand to locate: "${cleanBrand}" (domain: ${cleanDomain})
+
+RESPONSE:
+---
+${truncated}
+---
+
+Determine the rank/position of "${cleanBrand}" inside any list in the response.
+
+Rules (apply the FIRST that matches):
+1. Explicit numbered list — "6. ${cleanBrand}" or "${cleanBrand} is ranked 6th" → return 6
+2. Numbered heading — "### 6. ${cleanBrand}" → return 6
+3. Sequential entries under section headings (counted in order they appear) → return that ordinal (1st entry = 1, 2nd = 2, …)
+4. Mentioned only in flowing prose, a table cell, or as a passing example (not a list item) → null
+5. Not mentioned → null
+
+Reply with ONLY valid JSON, no explanation: {"position": <integer or null>}`;
+
+      const res = await fetch('https://api.openai.com/v1/chat/completions', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${apiKey}` },
+        body: JSON.stringify({
+          model: 'gpt-4o-mini',
+          messages: [{ role: 'user', content: extractionPrompt }],
+          max_tokens: 20,
+          temperature: 0,
+          response_format: { type: 'json_object' },
+        }),
+      });
+
+      if (!res.ok) return null;
+
+      const data = (await res.json()) as { choices?: Array<{ message?: { content?: string } }> };
+      const content = data.choices?.[0]?.message?.content?.trim() ?? '';
+      const parsed = JSON.parse(content) as { position?: unknown };
+      const pos = parsed.position;
+      return typeof pos === 'number' && Number.isFinite(pos) && pos >= 1 ? Math.round(pos) : null;
+    } catch {
+      return null;
     }
   }
 
@@ -376,5 +578,34 @@ Mix intents across the 6 results. Categories: e.g. "Brand Discovery", "Competiti
     for (const prompt of active) {
       await this.checkPrompt(prompt.id);
     }
+  }
+
+  // ─── Schedule ─────────────────────────────────────────────
+
+  async getSchedule(): Promise<{ hour: number; nextRun: string | null }> {
+    try {
+      const schedulers = await this.queue.getJobSchedulers();
+      const scheduler = schedulers.find((s) => s.id === 'daily-prompt-check');
+      if (scheduler?.pattern) {
+        // pattern is "0 H * * *"
+        const parts = scheduler.pattern.split(' ');
+        const hour = parseInt(parts[1], 10);
+        const nextRun = scheduler.next != null ? new Date(Number(scheduler.next)).toISOString() : null;
+        return { hour: isNaN(hour) ? 4 : hour, nextRun };
+      }
+    } catch {
+      // fall through
+    }
+    return { hour: 4, nextRun: null };
+  }
+
+  async updateSchedule(hour: number): Promise<{ hour: number }> {
+    await this.queue.upsertJobScheduler(
+      'daily-prompt-check',
+      { pattern: `0 ${hour} * * *` },
+      { name: 'check-all', data: {} },
+    );
+    this.logger.log(`Updated daily prompt check schedule to ${hour}:00 UTC`);
+    return { hour };
   }
 }

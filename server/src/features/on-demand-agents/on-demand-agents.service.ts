@@ -1,8 +1,9 @@
 import { Injectable, Logger, ForbiddenException } from '@nestjs/common';
 import { eq, desc } from 'drizzle-orm';
 import { DatabaseService } from '../../shared/database/database.service';
-import { AnthropicService } from '../integrations/anthropic/anthropic.service';
+import { AgentRuntime } from '../../agents/agent.runtime';
 import { CreditsService } from '../credits/credits.service';
+import { ProjectIntelligenceService } from '../projects/project-intelligence.service';
 import { AgentRouterService, AgentType, AGENT_CREDIT_COSTS, AGENT_TYPE_LABELS } from './agent-router.service';
 import { ContextBuilderRegistry } from './context-builders/context-builder.registry';
 import { agentRuns } from '../../db/schema';
@@ -32,8 +33,9 @@ export class OnDemandAgentsService {
 
   constructor(
     private readonly db: DatabaseService,
-    private readonly anthropicService: AnthropicService,
+    private readonly agentRuntime: AgentRuntime,
     private readonly creditsService: CreditsService,
+    private readonly intelligenceService: ProjectIntelligenceService,
     private readonly router: AgentRouterService,
     private readonly contextRegistry: ContextBuilderRegistry,
   ) {}
@@ -63,25 +65,49 @@ export class OnDemandAgentsService {
       .returning();
 
     try {
-      // Build context
+      // Build context via type-specific builder
       const builder = this.contextRegistry.get(agentType);
       const context = await builder.build(request.projectId, request.prompt);
 
-      // Execute LLM call via AnthropicService (single-shot, no tools)
-      const chatResult = await this.anthropicService.chat({
-        system: context.systemPrompt,
-        messages: [{ role: 'user', content: context.dataContext }],
-        model: 'claude-sonnet-4-20250514',
-        temperature: 0.3,
-        maxTokens: 8192,
+      // Assemble project intelligence context
+      const pisContext = await this.intelligenceService.assembleContext({
+        projectId: request.projectId,
+        organizationId: request.organizationId,
       });
+      const intelligenceXml = this.intelligenceService.renderContextXml(pisContext);
 
-      if (!chatResult.content) {
-        throw new Error('Agent returned empty response');
+      // Execute via AgentRuntime (structured output via return_output tool)
+      // 5-minute wall-clock timeout — prevents indefinite hangs on Anthropic API delays.
+      const abortController = new AbortController();
+      const abortTimer = setTimeout(() => {
+        this.logger.error(`On-demand agent [${agentType}] exceeded 5-minute timeout — aborting`);
+        abortController.abort(new Error(`On-demand agent timed out after 5 minutes`));
+      }, 5 * 60 * 1000);
+
+      let result;
+      try {
+        result = await this.agentRuntime.execute({
+          stepKey: `on-demand:${agentType}`,
+          projectId: request.projectId,
+          organizationId: request.organizationId,
+          systemPrompt: context.systemPrompt,
+          userPrompt: request.prompt,
+          allowedTools: [],
+          pipelineData: context.dataContext,
+          intelligenceContext: intelligenceXml || undefined,
+          maxIterations: 2,
+          signal: abortController.signal,
+        });
+      } finally {
+        clearTimeout(abortTimer);
       }
 
-      // Parse the response into structured output
-      const parsed = this.parseResponse(chatResult.content);
+      if (result.finishReason === 'error') {
+        throw new Error(`Agent runtime failed: ${result.error}`);
+      }
+
+      // Extract structured output (AgentRuntime guarantees JSON via return_output)
+      const parsed = this.extractStructuredOutput(result.output);
       const durationMs = Date.now() - startTime;
 
       // Update record with success
@@ -96,12 +122,28 @@ export class OnDemandAgentsService {
         })
         .where(eq(agentRuns.id, runRecord.id));
 
-      // Debit credits only on success (AD-8)
+      // Debit credits on success (AD-8) — must charge even if PIS write fails
       await this.creditsService.debit({
         organizationId: request.organizationId,
         amount: creditCost,
         description: `Agent run: ${AGENT_TYPE_LABELS[agentType]}`,
       });
+
+      // Write result to PIS (best-effort — failure must not revert the run)
+      try {
+        await this.intelligenceService.upsert({
+          projectId: request.projectId,
+          organizationId: request.organizationId,
+          dataType: `on-demand:${agentType}`,
+          targetKey: `latest`,
+          data: { response: parsed.response, recommendations: parsed.recommendations, citedData: parsed.citedData },
+          producedBy: `on-demand:${agentType}`,
+        });
+      } catch (pisError) {
+        this.logger.warn(
+          `PIS write failed for run ${runRecord.id}: ${pisError instanceof Error ? pisError.message : 'Unknown'}`,
+        );
+      }
 
       return {
         id: runRecord.id,
@@ -141,45 +183,29 @@ export class OnDemandAgentsService {
     });
   }
 
-  private parseResponse(rawOutput: string): {
+  /**
+   * Extract structured output from AgentRuntime result.
+   * The runtime uses return_output tool, so output is typically already structured JSON.
+   * Falls back gracefully if the agent returned raw text.
+   */
+  private extractStructuredOutput(output: unknown): {
     response: string;
     recommendations: Array<{ title: string; rationale: string; action?: string }>;
     citedData: Array<{ metric: string; value: string; source: string }>;
   } {
-    // Try to extract structured JSON from the response
-    const jsonMatch = rawOutput.match(/```json\s*([\s\S]*?)```/);
-    if (jsonMatch) {
-      try {
-        const parsed = JSON.parse(jsonMatch[1]);
-        return {
-          response: parsed.response ?? parsed.summary ?? rawOutput,
-          recommendations: Array.isArray(parsed.recommendations) ? parsed.recommendations : [],
-          citedData: Array.isArray(parsed.citedData) ? parsed.citedData : [],
-        };
-      } catch {
-        // Fall through to plain text parsing
-      }
+    if (output && typeof output === 'object') {
+      const obj = output as Record<string, unknown>;
+      return {
+        response: typeof obj.response === 'string' ? obj.response : (typeof obj.summary === 'string' ? obj.summary : JSON.stringify(output)),
+        recommendations: Array.isArray(obj.recommendations) ? obj.recommendations : [],
+        citedData: Array.isArray(obj.citedData) ? obj.citedData : [],
+      };
     }
 
-    // Plain text response — extract recommendations from numbered lists
-    const recommendations: Array<{ title: string; rationale: string; action?: string }> = [];
-    const lines = rawOutput.split('\n');
-    let currentRec: { title: string; rationale: string } | null = null;
-
-    for (const line of lines) {
-      const numbered = line.match(/^\d+\.\s+\*\*(.+?)\*\*[:\s-]*(.*)/);
-      if (numbered) {
-        if (currentRec) recommendations.push(currentRec);
-        currentRec = { title: numbered[1], rationale: numbered[2] || '' };
-      } else if (currentRec && line.trim().startsWith('-')) {
-        currentRec.rationale += ' ' + line.trim().slice(1).trim();
-      }
-    }
-    if (currentRec) recommendations.push(currentRec);
-
+    // Fallback: raw string output
     return {
-      response: rawOutput,
-      recommendations: recommendations.slice(0, 10),
+      response: typeof output === 'string' ? output : JSON.stringify(output),
+      recommendations: [],
       citedData: [],
     };
   }

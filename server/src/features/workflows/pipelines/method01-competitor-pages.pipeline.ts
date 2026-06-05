@@ -41,16 +41,41 @@ export class Method01CompetitorPagesPipeline implements Pipeline {
 
     this.logger.log(`Method 01: fetching top pages from ${competitors.length} competitors`);
 
-    const competitorPagesResults: Array<{ domain: string; data: unknown }> = [];
+    // competitor-metrics step already fetched getOrganicKeywords(competitor, country, 20) for each
+    // competitor. Read keyword data from context to avoid duplicate API calls and give Claude
+    // actual keyword strings for gap analysis (pipeline-only context stores the full pipeline output).
+    const cmCtx = context['competitor-metrics'] as {
+      competitorMetrics?: Array<{
+        domain: string;
+        keywords?: Array<{ keyword: string; volume: number; difficulty: number; position: number | null; url: string }>;
+      }>;
+    } | undefined;
+    const competitorKeywordsMap = new Map<string, Array<{ keyword: string; volume: number; difficulty: number; position: number | null; url: string }>>();
+    for (const cm of (cmCtx?.competitorMetrics ?? [])) {
+      if (cm.domain && cm.keywords) {
+        competitorKeywordsMap.set(cm.domain, cm.keywords);
+      }
+    }
+
+    const competitorPagesResults: Array<{ domain: string; pages: unknown; keywords: unknown }> = [];
 
     for (const competitor of competitors) {
       try {
         const pages = await this.ahrefs.getOrganicPages(competitor, country, 50);
         apiCallCount++;
-        competitorPagesResults.push({ domain: competitor, data: pages });
+        competitorPagesResults.push({
+          domain: competitor,
+          pages,
+          // Include competitor keywords from context (already fetched by competitor-metrics)
+          keywords: competitorKeywordsMap.get(competitor) ?? [],
+        });
       } catch (err) {
         this.logger.warn(`Failed to fetch pages for ${competitor}: ${(err as Error).message}`);
-        competitorPagesResults.push({ domain: competitor, data: null });
+        competitorPagesResults.push({
+          domain: competitor,
+          pages: null,
+          keywords: competitorKeywordsMap.get(competitor) ?? [],
+        });
       }
     }
 
@@ -62,7 +87,7 @@ export class Method01CompetitorPagesPipeline implements Pipeline {
       metadata: {
         country,
         competitorsQueried: competitors.length,
-        successful: competitorPagesResults.filter((r) => r.data !== null).length,
+        successful: competitorPagesResults.filter((r) => r.pages !== null).length,
         apiCallCount,
         durationMs: Date.now() - start,
       },

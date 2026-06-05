@@ -92,6 +92,9 @@ export class WorkflowMaterializerService {
           break;
         case 'content-images':
           await this.materializeContentImages(projectId, workflowRunId, data);
+          // Strip base64 blobs from the artifact AFTER images are safely in content_images
+          // table. This prevents 15–30 MB of raw PNG data living in step_artifacts JSONB.
+          await this.stripContentImagesArtifact(workflowRunId);
           break;
       }
 
@@ -147,6 +150,46 @@ export class WorkflowMaterializerService {
   }
 
   // ─── Per-Step Materializers ──────────────────────────────────
+
+  /**
+   * After content-images materialization, replace base64 fields in the stored artifact
+   * with null so step_artifacts JSONB doesn't hold 15–30 MB of raw PNG data.
+   * The actual image bytes are now in the content_images table.
+   * Idempotent — safe to call when base64 is already null.
+   */
+  private async stripContentImagesArtifact(workflowRunId: string): Promise<void> {
+    const artifact = await this.db.db.query.stepArtifacts.findFirst({
+      where: and(
+        eq(stepArtifacts.workflowRunId, workflowRunId),
+        eq(stepArtifacts.stepKey, 'content-images'),
+      ),
+      orderBy: (a, { desc }) => [desc(a.version)],
+    });
+    if (!artifact?.data) return;
+
+    const data = artifact.data as Record<string, unknown>;
+    if (!Array.isArray(data.images)) return;
+
+    const stripped = {
+      ...data,
+      images: (data.images as Array<Record<string, unknown>>).map((img) => ({
+        ...img,
+        base64: null,
+      })),
+    };
+
+    await this.db.db
+      .update(stepArtifacts)
+      .set({ data: stripped })
+      .where(
+        and(
+          eq(stepArtifacts.workflowRunId, workflowRunId),
+          eq(stepArtifacts.stepKey, 'content-images'),
+        ),
+      );
+
+    this.logger.log(`Stripped base64 from content-images artifact for run ${workflowRunId}`);
+  }
 
   /**
    * Step 13: consolidated-keywords → keywords table

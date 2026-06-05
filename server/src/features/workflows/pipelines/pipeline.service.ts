@@ -11,6 +11,9 @@ import { SerpNicheMapPipeline } from './serp-niche-map.pipeline';
 import { CompetitorBucketsPipeline } from './competitor-buckets.pipeline';
 import { Phase1BaselinePipeline } from './phase1-baseline.pipeline';
 import { ContentBriefPipeline } from './content-brief.pipeline';
+import { SiteAuditPipeline } from './site-audit.pipeline';
+import { ContentArticlePipeline } from './content-article.pipeline';
+import { AiIntelligencePipeline } from './ai-intelligence.pipeline';
 
 @Injectable()
 export class PipelineService {
@@ -29,6 +32,9 @@ export class PipelineService {
     competitorBuckets: CompetitorBucketsPipeline,
     phase1Baseline: Phase1BaselinePipeline,
     contentBrief: ContentBriefPipeline,
+    siteAudit: SiteAuditPipeline,
+    contentArticle: ContentArticlePipeline,
+    aiIntelligence: AiIntelligencePipeline,
   ) {
     const pipelines: Pipeline[] = [
       competitorMetrics,
@@ -42,6 +48,9 @@ export class PipelineService {
       competitorBuckets,
       phase1Baseline,
       contentBrief,
+      siteAudit,
+      contentArticle,
+      aiIntelligence,
     ];
     for (const p of pipelines) {
       this.registry.set(p.stepKey, p);

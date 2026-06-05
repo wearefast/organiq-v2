@@ -120,7 +120,10 @@ export class LlmAuditService {
       );
     } else {
       this.logger.log(`runAudit: no stored sitemap for ${origin}, discovering live`);
-      const discovery = await this.webCrawler.discoverSitePages(siteUrl, 25);
+      const discovery = await this.webCrawler.discoverSitePages(siteUrl, 25, {
+        country: project.country ?? undefined,
+        language: project.language ?? undefined,
+      });
       pageUrls = discovery.pageUrls;
       sitemapXml = discovery.sitemapXml;
     }

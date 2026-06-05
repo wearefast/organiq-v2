@@ -22,16 +22,20 @@ export class ContentBriefPipeline implements Pipeline {
     const country = (context.country as string) || 'us';
     const start = Date.now();
 
-    // Target keyword comes from the content brief step context
-    // It can be set by verdict-strategy or passed directly
-    const briefCtx = context['verdict-strategy'] as {
-      contentPlan?: Array<{ targetKeyword?: string; primaryKeyword?: string }>;
+    // Target keyword comes from the topical-map calendar — the first scheduled content piece.
+    // topical-map is a guaranteed upstream dependency (STEP_DEFINITIONS: content-brief depends on topical-map).
+    // Schema: context['topical-map'].calendar[0].pieces[0].keyword
+    const topicalMap = context['topical-map'] as {
+      calendar?: Array<{
+        month?: number;
+        label?: string;
+        pieces?: Array<{ keyword?: string; title?: string }>;
+      }>;
     } | undefined;
 
     const targetKeyword =
       (context.targetKeyword as string) ||
-      briefCtx?.contentPlan?.[0]?.targetKeyword ||
-      briefCtx?.contentPlan?.[0]?.primaryKeyword ||
+      topicalMap?.calendar?.[0]?.pieces?.[0]?.keyword ||
       '';
 
     if (!targetKeyword) {

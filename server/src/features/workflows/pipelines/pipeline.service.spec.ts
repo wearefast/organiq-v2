@@ -11,6 +11,9 @@ import { SerpNicheMapPipeline } from './serp-niche-map.pipeline';
 import { CompetitorBucketsPipeline } from './competitor-buckets.pipeline';
 import { Phase1BaselinePipeline } from './phase1-baseline.pipeline';
 import { ContentBriefPipeline } from './content-brief.pipeline';
+import { SiteAuditPipeline } from './site-audit.pipeline';
+import { ContentArticlePipeline } from './content-article.pipeline';
+import { AiIntelligencePipeline } from './ai-intelligence.pipeline';
 
 // Mock dependencies
 const mockAhrefs = {
@@ -31,11 +34,27 @@ const mockDataforseo = {
 
 const mockFirecrawl = {
   scrape: vi.fn().mockResolvedValue({ markdown: 'content', metadata: {} }),
+  mapSite: vi.fn().mockResolvedValue({ links: [] }),
+  crawl: vi.fn().mockResolvedValue({ data: [] }),
+};
+
+const mockPageSpeed = {
+  analyze: vi.fn().mockResolvedValue({}),
+  getCruxData: vi.fn().mockResolvedValue(null),
+};
+
+const mockDataforSeoOnPage = {
+  createOnPageTask: vi.fn().mockResolvedValue({ tasks: [] }),
 };
 
 const mockSerper = {
   search: vi.fn().mockResolvedValue({ organic: [] }),
 };
+const mockOpenAi = {
+  inferAiBrandMention: vi.fn().mockResolvedValue({ mentioned: false, position: 'absent', mentionContext: null, aiResponse: '' }),
+  generateImage: vi.fn().mockResolvedValue({ url: 'https://example.com/image.png' }),
+};
+
 
 describe('PipelineService', () => {
   let service: PipelineService;
@@ -46,22 +65,26 @@ describe('PipelineService', () => {
     const competitorMetrics = new CompetitorMetricsPipeline(mockAhrefs as any);
     const searchDemand = new SearchDemandPipeline(mockDataforseo as any, mockAhrefs as any);
     const method01 = new Method01CompetitorPagesPipeline(mockAhrefs as any);
-    const method02 = new Method02SeedExpansionPipeline(mockAhrefs as any, mockDataforseo as any);
+    const method02 = new Method02SeedExpansionPipeline();
     const method03 = new Method03ContentGapPipeline(mockAhrefs as any);
-    const businessProfile = new BusinessProfilePipeline(mockFirecrawl as any);
+    const businessProfile = new BusinessProfilePipeline(mockFirecrawl as any, mockAhrefs as any);
     const seedKeywords = new SeedKeywordsPipeline(mockAhrefs as any, mockDataforseo as any);
     const serpNicheMap = new SerpNicheMapPipeline(mockAhrefs as any);
     const competitorBuckets = new CompetitorBucketsPipeline(mockAhrefs as any, mockSerper as any);
     const phase1Baseline = new Phase1BaselinePipeline(mockAhrefs as any);
     const contentBrief = new ContentBriefPipeline(mockSerper as any, mockFirecrawl as any);
+    const siteAudit = new SiteAuditPipeline(mockFirecrawl as any, mockDataforSeoOnPage as any, mockPageSpeed as any);
+    const contentArticle = new ContentArticlePipeline(mockSerper as any);
+    const aiIntelligence = new AiIntelligencePipeline(mockFirecrawl as any, mockSerper as any, mockOpenAi as any);
 
     service = new PipelineService(
       competitorMetrics, searchDemand, method01, method02, method03, businessProfile,
-      seedKeywords, serpNicheMap, competitorBuckets, phase1Baseline, contentBrief,
+      seedKeywords, serpNicheMap, competitorBuckets, phase1Baseline, contentBrief, siteAudit,
+      contentArticle, aiIntelligence,
     );
   });
 
-  it('registers all 11 pipelines', () => {
+  it('registers all 14 pipelines', () => {
     expect(service.getPipeline('competitor-metrics')).not.toBeNull();
     expect(service.getPipeline('search-demand')).not.toBeNull();
     expect(service.getPipeline('method01-competitor-pages')).not.toBeNull();
@@ -73,6 +96,9 @@ describe('PipelineService', () => {
     expect(service.getPipeline('competitor-buckets')).not.toBeNull();
     expect(service.getPipeline('phase1-baseline')).not.toBeNull();
     expect(service.getPipeline('content-brief')).not.toBeNull();
+    expect(service.getPipeline('site-audit')).not.toBeNull();
+    expect(service.getPipeline('content-article')).not.toBeNull();
+    expect(service.getPipeline('ai-intelligence')).not.toBeNull();
   });
 
   it('returns null for unregistered step', () => {

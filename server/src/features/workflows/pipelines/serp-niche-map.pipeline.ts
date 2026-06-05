@@ -41,8 +41,10 @@ export class SerpNicheMapPipeline implements Pipeline {
       seedKeywords = (kwData.keywords ?? []).map((k) => k.keyword).filter(Boolean);
     }
 
-    // Limit to top 50 keywords for rate limit compliance
-    const keywordsToProcess = seedKeywords.slice(0, 50);
+    // Cap at 20: niche segment quality does not improve meaningfully past 20 well-chosen
+    // seeds. Seeds beyond 20 are typically long-tail variants of already-represented intents.
+    // Saves 30 Ahrefs SERP credits and ~33s wall time per workflow run.
+    const keywordsToProcess = seedKeywords.slice(0, 20);
     this.logger.log(`SERP niche map: processing ${keywordsToProcess.length} keywords`);
 
     const serpResults: Array<{ keyword: string; data: unknown }> = [];

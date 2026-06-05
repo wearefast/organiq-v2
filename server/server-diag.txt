@@ -1,0 +1,2 @@
+[10:46:49.708] [32mINFO[39m (30424): [36mBullMQ queue event listeners initialized[39m
+    [35mcontext[39m: "WorkflowQueueListenerService"

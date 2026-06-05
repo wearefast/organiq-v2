@@ -22,7 +22,6 @@ interface AgentDefinition {
   skill?: string;
   thinkingBudget?: number;
   promptId?: string;
-  managedAgentId?: string;
 }
 
 @Injectable()

@@ -4,18 +4,18 @@ import { Job } from 'bullmq';
 import { eq, and, desc, sql } from 'drizzle-orm';
 import { DatabaseService } from '../../shared/database/database.service';
 import { PromptService } from '../../shared/prompt/prompt.service';
-import { ManagedAgentRuntime } from '../../agents/managed-agent.runtime';
+import { AgentRuntime } from '../../agents/agent.runtime';
 import { AgentRegistry } from '../../agents/agent.registry';
 import { OutputValidator } from '../../agents/output.validator';
 import { VerificationService } from '../../shared/verification/verification.service';
-import { AnthropicService } from '../integrations/anthropic/anthropic.service';
 import { PipelineService } from './pipelines/pipeline.service';
 import { SkillService } from '../../agents/skill.service';
 import { CreditsService } from '../credits/credits.service';
-import { WorkflowService } from './workflow.service';
+import { WorkflowService, STEP_DEFINITIONS } from './workflow.service';
 import { WorkflowGateway } from './workflow.gateway';
 import { WorkflowMaterializerService } from './workflow-materializer.service';
 import { DlqService } from './dlq.service';
+import { ProjectIntelligenceService } from '../projects/project-intelligence.service';
 import {
   workflowSteps,
   stepArtifacts,
@@ -36,11 +36,10 @@ export class WorkflowProcessor extends WorkerHost {
   constructor(
     private readonly db: DatabaseService,
     private readonly promptService: PromptService,
-    private readonly managedAgentRuntime: ManagedAgentRuntime,
+    private readonly agentRuntime: AgentRuntime,
     private readonly agentRegistry: AgentRegistry,
     private readonly outputValidator: OutputValidator,
     private readonly verificationService: VerificationService,
-    private readonly anthropicService: AnthropicService,
     private readonly pipelineService: PipelineService,
     private readonly creditsService: CreditsService,
     private readonly workflowService: WorkflowService,
@@ -48,13 +47,23 @@ export class WorkflowProcessor extends WorkerHost {
     private readonly materializer: WorkflowMaterializerService,
     private readonly dlqService: DlqService,
     private readonly skillService: SkillService,
+    private readonly intelligenceService: ProjectIntelligenceService,
   ) {
     super();
   }
 
+  /** Wall-clock limit per step — aborts the Anthropic SDK call if the step hangs. */
+  private static readonly STEP_TIMEOUT_MS = 30 * 60 * 1000;
+
   async process(job: Job<StepJobData>): Promise<void> {
     const { workflowRunId, stepKey, organizationId } = job.data;
     this.logger.log(`Processing step: ${stepKey} (run: ${workflowRunId})`);
+
+    const abortController = new AbortController();
+    const abortTimer = setTimeout(() => {
+      this.logger.error(`Step ${stepKey} exceeded 30-minute wall-clock timeout — aborting Anthropic call`);
+      abortController.abort(new Error(`Step ${stepKey} timed out after 30 minutes`));
+    }, WorkflowProcessor.STEP_TIMEOUT_MS);
 
     try {
       // 1. Load agent definition
@@ -147,91 +156,143 @@ export class WorkflowProcessor extends WorkerHost {
       // Load skill content for all agent execution types
       const skillContent = agentDef.skill ? await this.skillService.loadSkill(agentDef.skill) : null;
 
-      // Guard: reject agents without a valid managed_agent_id
-      if (!agentDef.managedAgentId || agentDef.managedAgentId === 'TBD') {
-        throw new Error(
-          `Agent "${stepKey}" has no managed_agent_id configured. Create it on Claude Platform first.`,
-        );
-      }
+      // Track pipeline output at outer scope so verification retries can re-use it
+      let pipelineOutput: unknown = undefined;
+
+      // Load workflow run for projectId + targetKey (needed by AgentRuntime + PIS)
+      const run = await this.db.db.query.workflowRuns.findFirst({
+        where: eq(workflowRuns.id, workflowRunId),
+      });
+      if (!run) throw new Error(`Workflow run not found: ${workflowRunId}`);
+
+      // Assemble project intelligence context
+      const pisContext = await this.intelligenceService.assembleContext({
+        projectId: run.projectId,
+        organizationId,
+        targetKey: run.targetKey ?? null,
+      });
+      const intelligenceXml = this.intelligenceService.renderContextXml(pisContext);
+
+      // Context key slicing for late-stage steps: only include the upstream outputs each
+      // step actually reads. Full context at these steps is 80–100K tokens; slicing to the
+      // required keys reduces input cost without changing output quality.
+      // When a step is not listed here, the full workflowContext is passed (backwards-compatible).
+      const STEP_CONTEXT_KEYS: Record<string, string[]> = {
+        'consolidated-keywords': [
+          'seed-keywords',
+          'method01-competitor-pages',
+          'method02-seed-expansion',
+          'method03-content-gap-import',
+          'phase1-baseline',
+        ],
+        'verdict-strategy': [
+          'business-profile',
+          'site-audit',
+          'ai-intelligence',
+          'competitor-buckets',
+          'competitor-metrics',
+          'consolidated-keywords',
+        ],
+        'topical-map': [
+          'consolidated-keywords',
+          'verdict-strategy',
+          'business-profile',
+        ],
+        // Content steps only need the topical plan and brand context — not all 14 upstream outputs.
+        'content-brief': [
+          'topical-map',
+          'business-profile',
+        ],
+        'content-article': [
+          'content-brief',
+          'business-profile',
+        ],
+        // content-images only needs alt-text suggestions + brand context, not all upstream data.
+        'content-images': [
+          'content-article',
+          'business-profile',
+        ],
+      };
+
+      // Build common AgentRuntime config
+      const baseRuntimeConfig = {
+        stepKey,
+        projectId: run.projectId,
+        organizationId,
+        targetKey: run.targetKey ?? null,
+        workflowRunId,
+        model: agentDef.model,
+        systemPrompt: prompt.system,
+        userPrompt: prompt.user,
+        skillContent,
+        intelligenceContext: intelligenceXml || undefined,
+        workflowContext: transformedContext,
+        contextKeys: STEP_CONTEXT_KEYS[stepKey],
+        thinkingBudget: agentDef.thinkingBudget,
+        maxIterations: agentDef.maxIterations,
+        signal: abortController.signal,
+      };
 
       if (executionType === 'pipeline-then-agent') {
         // Step 1: Run pipeline to fetch raw data
-        const pipelineOutput = await this.pipelineService.execute(stepKey, transformedContext);
+        pipelineOutput = await this.pipelineService.execute(stepKey, transformedContext);
 
-        // Step 2: Run managed agent to reason over pipeline data (no tools)
-        const managedResult = await this.managedAgentRuntime.execute({
-          managedAgentId: agentDef.managedAgentId ?? '',
-          stepKey,
-          runId: workflowRunId,
-          context: transformedContext,
-          systemPrompt: prompt.system,
-          userPrompt: prompt.user,
+        // Step 2: Run agent to reason over pipeline data (no tools)
+        const agentResult = await this.agentRuntime.execute({
+          ...baseRuntimeConfig,
           allowedTools: [],
-          skillContent,
           pipelineData: pipelineOutput,
         });
 
-        if (managedResult.finishReason === 'error') {
-          throw new Error(`Managed agent failed (pipeline-then-agent): ${managedResult.error}`);
+        if (agentResult.finishReason === 'error') {
+          throw new Error(`Agent failed (pipeline-then-agent): ${agentResult.error}`);
         }
 
         result = {
-          output: managedResult.output,
-          reasoning: managedResult.reasoning,
-          toolCalls: managedResult.toolCalls,
-          totalTokens: managedResult.totalTokens,
-          iterations: managedResult.toolCalls.length + 1,
-          thinkingContent: null,
+          output: agentResult.output,
+          reasoning: agentResult.reasoning,
+          toolCalls: agentResult.toolCalls,
+          totalTokens: agentResult.totalTokens.input + agentResult.totalTokens.output,
+          iterations: agentResult.iterations,
+          thinkingContent: agentResult.thinkingContent,
         };
       } else if (executionType === 'agent-only') {
-        // Managed agent reasons over prior context only, no tools, no pipeline
-        const managedResult = await this.managedAgentRuntime.execute({
-          managedAgentId: agentDef.managedAgentId ?? '',
-          stepKey,
-          runId: workflowRunId,
-          context: transformedContext,
-          systemPrompt: prompt.system,
-          userPrompt: prompt.user,
+        // Agent reasons over prior context only, no tools, no pipeline
+        const agentResult = await this.agentRuntime.execute({
+          ...baseRuntimeConfig,
           allowedTools: [],
-          skillContent,
         });
 
-        if (managedResult.finishReason === 'error') {
-          throw new Error(`Managed agent failed (agent-only): ${managedResult.error}`);
+        if (agentResult.finishReason === 'error') {
+          throw new Error(`Agent failed (agent-only): ${agentResult.error}`);
         }
 
         result = {
-          output: managedResult.output,
-          reasoning: managedResult.reasoning,
-          toolCalls: managedResult.toolCalls,
-          totalTokens: managedResult.totalTokens,
-          iterations: managedResult.toolCalls.length + 1,
-          thinkingContent: null,
+          output: agentResult.output,
+          reasoning: agentResult.reasoning,
+          toolCalls: agentResult.toolCalls,
+          totalTokens: agentResult.totalTokens.input + agentResult.totalTokens.output,
+          iterations: agentResult.iterations,
+          thinkingContent: agentResult.thinkingContent,
         };
       } else {
-        // agent-with-tools: Managed Agents Sessions API with full tool loop
-        const managedResult = await this.managedAgentRuntime.execute({
-          managedAgentId: agentDef.managedAgentId ?? '',
-          stepKey,
-          runId: workflowRunId,
-          context: transformedContext,
-          systemPrompt: prompt.system,
-          userPrompt: prompt.user,
+        // agent-with-tools: AgentRuntime with full tool loop
+        const agentResult = await this.agentRuntime.execute({
+          ...baseRuntimeConfig,
           allowedTools: agentDef.tools,
-          skillContent,
         });
 
-        if (managedResult.finishReason === 'error') {
-          throw new Error(`Managed agent failed: ${managedResult.error}`);
+        if (agentResult.finishReason === 'error') {
+          throw new Error(`Agent failed: ${agentResult.error}`);
         }
 
         result = {
-          output: managedResult.output,
-          reasoning: managedResult.reasoning,
-          toolCalls: managedResult.toolCalls,
-          totalTokens: managedResult.totalTokens,
-          iterations: managedResult.toolCalls.length + 1,
-          thinkingContent: null,
+          output: agentResult.output,
+          reasoning: agentResult.reasoning,
+          toolCalls: agentResult.toolCalls,
+          totalTokens: agentResult.totalTokens.input + agentResult.totalTokens.output,
+          iterations: agentResult.iterations,
+          thinkingContent: agentResult.thinkingContent,
         };
       }
 
@@ -257,29 +318,23 @@ export class WorkflowProcessor extends WorkerHost {
           this.logger.log(`Verification retry ${retry + 1}/${MAX_VERIFICATION_RETRIES} for ${stepKey}`);
           const feedback = `Your previous output failed verification:\n${verification.errors.join('\n')}\n\nPlease fix these issues and produce corrected output.`;
 
-          // Retry uses same execution type, passing verification feedback
-          const retryManaged = await this.managedAgentRuntime.execute({
-            managedAgentId: agentDef.managedAgentId ?? '',
-            stepKey,
-            runId: workflowRunId,
-            context: transformedContext,
-            systemPrompt: prompt.system,
-            userPrompt: prompt.user,
+          // Retry uses same execution type via AgentRuntime with feedback appended
+          const retryResult = await this.agentRuntime.execute({
+            ...baseRuntimeConfig,
             allowedTools: executionType === 'agent-with-tools' ? agentDef.tools : [],
-            skillContent,
-            ...(executionType === 'pipeline-then-agent' ? { pipelineData: null } : {}),
-            additionalInstructions: feedback,
+            userPrompt: `${prompt.user}\n\n<verification_feedback>\n${feedback}\n</verification_feedback>`,
+            ...(executionType === 'pipeline-then-agent' ? { pipelineData: pipelineOutput } : {}),
           });
-          if (retryManaged.finishReason === 'error') {
-            throw new Error(`Managed agent retry failed: ${retryManaged.error}`);
+          if (retryResult.finishReason === 'error') {
+            throw new Error(`Agent retry failed: ${retryResult.error}`);
           }
           result = {
-            output: retryManaged.output,
-            reasoning: retryManaged.reasoning,
-            toolCalls: retryManaged.toolCalls,
-            totalTokens: retryManaged.totalTokens,
-            iterations: retryManaged.toolCalls.length + 1,
-            thinkingContent: null,
+            output: retryResult.output,
+            reasoning: retryResult.reasoning,
+            toolCalls: retryResult.toolCalls,
+            totalTokens: retryResult.totalTokens.input + retryResult.totalTokens.output,
+            iterations: retryResult.iterations,
+            thinkingContent: retryResult.thinkingContent,
           };
 
           const retryVerification = this.verificationService.verify(stepKey, result.output, transformedContext);
@@ -322,8 +377,8 @@ export class WorkflowProcessor extends WorkerHost {
           version: nextVersion,
           data: result.output ?? {},
           reasoning: result.reasoning,
+          thinkingContent: result.thinkingContent ?? null,
           metadata: {
-            thinkingTrace: result.thinkingContent ?? null,
             provider: 'anthropic',
             model: agentDef.model,
             tokensUsed: result.totalTokens,
@@ -378,9 +433,16 @@ export class WorkflowProcessor extends WorkerHost {
           .where(eq(workflowRuns.id, workflowRunId));
       });
 
-      // 10. Store artifact in workflow context for downstream steps
+      // 10b. Store artifact in workflow context for downstream steps.
+      // For content-images, strip raw base64 blobs before persisting — the binary
+      // data is materialized into the content_images table by WorkflowMaterializerService.
+      // Storing 15–30 MB of base64 in workflow_context/JSONB is unnecessary and slow.
       if (result.output != null) {
-        await this.workflowService.setContext(workflowRunId, stepKey, result.output);
+        const contextValue =
+          stepKey === 'content-images'
+            ? this.stripImagesBase64(result.output)
+            : result.output;
+        await this.workflowService.setContext(workflowRunId, stepKey, contextValue);
       }
 
       // 13. Emit completion event
@@ -404,7 +466,9 @@ export class WorkflowProcessor extends WorkerHost {
 
       // Capture into DLQ on final attempt (BullMQ default: 3 attempts)
       const maxAttempts = job.opts?.attempts ?? 3;
-      if (job.attemptsMade >= maxAttempts) {
+      const isFinalAttempt = job.attemptsMade >= maxAttempts;
+
+      if (isFinalAttempt) {
         await this.dlqService.captureFailedJob({
           workflowStepId: undefined,
           workflowRunId,
@@ -426,8 +490,50 @@ export class WorkflowProcessor extends WorkerHost {
           ),
         );
 
+      // On final attempt: check if the run is now unrecoverable (no pending steps
+      // can ever become runnable because they all transitively depend on this failed step).
+      // If so, mark the run as failed so it doesn't stay stuck in 'running'.
+      if (isFinalAttempt) {
+        try {
+          const allSteps = await this.db.db.query.workflowSteps.findMany({
+            where: eq(workflowSteps.workflowRunId, workflowRunId),
+          });
+          const statusByKey = new Map(allSteps.map((s) => [s.stepKey, s.status]));
+
+          // A step is "blocked" if it or any of its ancestors is failed
+          const isBlocked = (key: string, visited = new Set<string>()): boolean => {
+            if (visited.has(key)) return false;
+            visited.add(key);
+            const status = statusByKey.get(key);
+            if (status === 'failed') return true;
+            const def = STEP_DEFINITIONS.find(([k]) => k === key);
+            if (!def) return false;
+            return def[3].some((dep) => isBlocked(dep, visited));
+          };
+
+          const anyPendingCanRun = STEP_DEFINITIONS.some(([k, , , deps]) => {
+            const status = statusByKey.get(k);
+            if (status !== 'pending' && status !== 'running') return false;
+            return !isBlocked(k, new Set());
+          });
+
+          if (!anyPendingCanRun) {
+            this.logger.error(`Run ${workflowRunId} is unrecoverable after step ${stepKey} failed — marking run as failed`);
+            await this.db.db
+              .update(workflowRuns)
+              .set({ status: 'failed', completedAt: new Date(), updatedAt: new Date() })
+              .where(eq(workflowRuns.id, workflowRunId));
+            this.workflowGateway.emitWorkflowCompleted(workflowRunId);
+          }
+        } catch (checkErr) {
+          this.logger.warn(`Failed to check run recoverability: ${(checkErr as Error).message}`);
+        }
+      }
+
       // Re-throw so BullMQ triggers retry attempts
       throw error;
+    } finally {
+      clearTimeout(abortTimer);
     }
   }
 
@@ -562,6 +668,24 @@ export class WorkflowProcessor extends WorkerHost {
     };
 
     return stepPromptMap[stepKey] ?? `${stepKey}.prompt.md`;
+  }
+
+  /**
+   * Strip base64 fields from content-images output before storing in workflow_context
+   * or step_artifacts JSONB. The raw image bytes are persisted in the content_images
+   * table by WorkflowMaterializerService; keeping them in JSONB bloats columns by 15–30 MB.
+   */
+  private stripImagesBase64(output: unknown): unknown {
+    if (!output || typeof output !== 'object') return output;
+    const data = output as Record<string, unknown>;
+    if (!Array.isArray(data.images)) return output;
+    return {
+      ...data,
+      images: (data.images as Array<Record<string, unknown>>).map((img) => ({
+        ...img,
+        base64: null,
+      })),
+    };
   }
 
   /**

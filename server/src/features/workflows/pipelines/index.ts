@@ -11,3 +11,6 @@ export { SerpNicheMapPipeline } from './serp-niche-map.pipeline';
 export { CompetitorBucketsPipeline } from './competitor-buckets.pipeline';
 export { Phase1BaselinePipeline } from './phase1-baseline.pipeline';
 export { ContentBriefPipeline } from './content-brief.pipeline';
+export { SiteAuditPipeline } from './site-audit.pipeline';
+export { ContentArticlePipeline } from './content-article.pipeline';
+export { AiIntelligencePipeline } from './ai-intelligence.pipeline';
