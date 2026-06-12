@@ -35,6 +35,15 @@ export class Method01CompetitorPagesPipeline implements Pipeline {
       competitors = (cd.competitors ?? []).map((c) => c.competitor_domain ?? '').filter(Boolean);
     }
 
+    // Fallback: if competitor-buckets yielded 0 domains, read from competitor-metrics
+    if (competitors.length === 0) {
+      const cmFallback = context['competitor-metrics'] as { competitorMetrics?: Array<{ domain: string }> } | undefined;
+      competitors = (cmFallback?.competitorMetrics ?? []).map((c) => c.domain).filter(Boolean);
+      if (competitors.length > 0) {
+        this.logger.warn(`competitor-buckets yielded 0 domains; falling back to competitor-metrics (${competitors.length})`);
+      }
+    }
+
     const country = (context.country as string) || 'us';
     const start = Date.now();
     let apiCallCount = 0;

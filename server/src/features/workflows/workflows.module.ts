@@ -24,6 +24,7 @@ import {
   SiteAuditPipeline,
   ContentArticlePipeline,
   AiIntelligencePipeline,
+  ConsolidatedKeywordsPipeline,
 } from './pipelines';
 import { CreditsModule } from '../credits/credits.module';
 import { KeywordsModule } from '../keywords/keywords.module';
@@ -68,6 +69,7 @@ import { ProjectsModule } from '../projects/projects.module';
     SeedKeywordsPipeline, SerpNicheMapPipeline, CompetitorBucketsPipeline,
     Phase1BaselinePipeline, ContentBriefPipeline, SiteAuditPipeline,
     ContentArticlePipeline, AiIntelligencePipeline,
+    ConsolidatedKeywordsPipeline,
   ],
   exports: [WorkflowService, WorkflowGateway, DlqService],
 })

@@ -27,7 +27,7 @@ export const STEP_DEFINITIONS: Array<[string, number, number, string[]]> = [
   ['phase1-baseline', 8, 2, ['competitor-metrics', 'search-demand']],
   ['method01-competitor-pages', 9, 2, ['phase1-baseline']],
   ['method02-seed-expansion', 10, 2, ['phase1-baseline']],
-  ['method03-content-gap-import', 11, 2, ['phase1-baseline']],
+  ['method03-content-gap-import', 11, 2, ['phase1-baseline', 'method01-competitor-pages', 'method02-seed-expansion']],
   ['consolidated-keywords', 12, 2, ['method01-competitor-pages', 'method02-seed-expansion', 'method03-content-gap-import']],
   ['verdict-strategy', 13, 3, ['consolidated-keywords']],
   ['topical-map', 14, 3, ['verdict-strategy']],
@@ -94,10 +94,10 @@ export class WorkflowService implements OnModuleInit, OnApplicationBootstrap {
         const orphanedKeys = orphanedRunningSteps.map((s) => s.stepKey);
         await this.db.db
           .update(workflowSteps)
-          .set({ status: 'failed', error: 'Orphaned: server restarted while step was running', updatedAt: new Date() })
+          .set({ status: 'pending', startedAt: null, error: null, updatedAt: new Date() })
           .where(and(eq(workflowSteps.workflowRunId, run.id), inArray(workflowSteps.stepKey, orphanedKeys)));
-        orphanedKeys.forEach((k) => statusByKey.set(k, 'failed'));
-        this.logger.warn(`Run ${run.id}: marked ${orphanedKeys.length} orphaned step(s) as failed: [${orphanedKeys.join(', ')}]`);
+        orphanedKeys.forEach((k) => statusByKey.set(k, 'pending'));
+        this.logger.warn(`Run ${run.id}: reset ${orphanedKeys.length} orphaned step(s) to pending for restart: [${orphanedKeys.join(', ')}]`);
       }
 
       // Re-evaluate the run's recoverability with the updated status map.

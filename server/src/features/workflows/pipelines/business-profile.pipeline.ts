@@ -60,13 +60,17 @@ export class BusinessProfilePipeline implements Pipeline {
               this.ahrefs.getDomainRating(domain),
               this.ahrefs.getBacklinksStats(domain),
             ]);
-            const dr = drData as Record<string, unknown>;
-            const bl = backlinkData as Record<string, unknown>;
+            // Ahrefs v3 /site-explorer/domain-rating returns { domain_rating: { domain_rating: number, ahrefs_rank: number } }
+            const dr = drData as { domain_rating?: { domain_rating?: number; ahrefs_rank?: number } } | null;
+            // Ahrefs v3 /site-explorer/backlinks-stats returns { metrics: { live, all_time, live_refdomains, all_time_refdomains } }
+            const bl = backlinkData as { metrics?: { live?: number; all_time?: number; live_refdomains?: number; all_time_refdomains?: number } } | null;
             return {
               domainAuthority: {
-                domain_rating: dr?.domainRating ?? null,
-                referring_domains: bl?.liveRefDomains ?? null,
-                backlinks: bl?.live ?? null,
+                domain_rating: dr?.domain_rating?.domain_rating ?? null,
+                ahrefs_rank: dr?.domain_rating?.ahrefs_rank ?? null,
+                referring_domains: bl?.metrics?.live_refdomains ?? null,
+                backlinks: bl?.metrics?.live ?? null,
+                backlinks_all_time: bl?.metrics?.all_time ?? null,
                 data_source: 'ahrefs',
               },
             };

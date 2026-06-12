@@ -1,4 +1,4 @@
-'use client';
+﻿'use client';
 
 import { useState } from 'react';
 
@@ -43,11 +43,9 @@ interface CalendarMonth {
 }
 
 interface TopicalMapData {
-  /* Renderer's expected shape */
   pillars?: Pillar[];
   calendar?: CalendarMonth[];
   linkingArchitecture?: { strategy?: string; rules?: string[] };
-  /* Agent's actual output shape */
   contentPillars?: Array<{
     pillar: string;
     clusters?: Array<{
@@ -63,7 +61,6 @@ interface TopicalMapData {
   }>;
   contentCalendar?: Array<{ month: string; contentPieces?: string[] }>;
   internalLinkingArchitecture?: Record<string, string[]>;
-  /* Shared */
   stats?: {
     totalPillars?: number;
     totalClusters?: number;
@@ -77,7 +74,6 @@ interface TopicalMapData {
   [key: string]: unknown;
 }
 
-/** Normalize agent output into the renderer's Pillar[] shape */
 function normalizePillars(d: TopicalMapData): Pillar[] {
   if (d.pillars && d.pillars.length > 0) return d.pillars;
   if (!d.contentPillars) return [];
@@ -98,7 +94,6 @@ function normalizePillars(d: TopicalMapData): Pillar[] {
   }));
 }
 
-/** Normalize agent output into CalendarMonth[] */
 function normalizeCalendar(d: TopicalMapData): CalendarMonth[] {
   if (d.calendar && d.calendar.length > 0) return d.calendar;
   if (!d.contentCalendar) return [];
@@ -108,17 +103,15 @@ function normalizeCalendar(d: TopicalMapData): CalendarMonth[] {
   }));
 }
 
-/** Normalize linking architecture */
 function normalizeLinking(d: TopicalMapData): { strategy?: string; rules?: string[] } | null {
   if (d.linkingArchitecture) return d.linkingArchitecture;
   if (!d.internalLinkingArchitecture) return null;
   const rules = Object.entries(d.internalLinkingArchitecture).map(
-    ([from, tos]) => `${from} → ${tos.join(', ')}`,
+    ([from, tos]) => `${from} â†’ ${tos.join(', ')}`,
   );
   return { strategy: 'Internal linking map between content pieces', rules };
 }
 
-/** Compute stats from normalized pillars */
 function computeStats(pillars: Pillar[], d: TopicalMapData) {
   if (d.stats) return d.stats;
   const totalClusters = pillars.reduce((s, p) => s + (p.clusters?.length ?? 0), 0);
@@ -130,11 +123,23 @@ function computeStats(pillars: Pillar[], d: TopicalMapData) {
   return { totalPillars: pillars.length, totalClusters, totalPages };
 }
 
+// Pillar accent colors â€” cycles through a palette
+const PILLAR_COLORS = [
+  { bar: 'bg-violet-500', badge: 'bg-violet-500/10 text-violet-400 border-violet-500/20', ring: 'border-violet-500/30' },
+  { bar: 'bg-blue-500',   badge: 'bg-blue-500/10 text-blue-400 border-blue-500/20',       ring: 'border-blue-500/30' },
+  { bar: 'bg-emerald-500',badge: 'bg-emerald-500/10 text-emerald-400 border-emerald-500/20', ring: 'border-emerald-500/30' },
+  { bar: 'bg-amber-500',  badge: 'bg-amber-500/10 text-amber-400 border-amber-500/20',    ring: 'border-amber-500/30' },
+  { bar: 'bg-rose-500',   badge: 'bg-rose-500/10 text-rose-400 border-rose-500/20',       ring: 'border-rose-500/30' },
+  { bar: 'bg-cyan-500',   badge: 'bg-cyan-500/10 text-cyan-400 border-cyan-500/20',       ring: 'border-cyan-500/30' },
+  { bar: 'bg-purple-500', badge: 'bg-purple-500/10 text-purple-400 border-purple-500/20', ring: 'border-purple-500/30' },
+];
+
 export function TopicalMapRenderer({ data }: { data: unknown }) {
   const d = data as TopicalMapData;
   const [expandedPillar, setExpandedPillar] = useState<string | null>(null);
   const [expandedCluster, setExpandedCluster] = useState<string | null>(null);
   const [view, setView] = useState<'map' | 'calendar'>('map');
+  const [summaryExpanded, setSummaryExpanded] = useState(false);
 
   if (!d || typeof d !== 'object') {
     return <p className="text-sm text-zinc-500">No topical map data available.</p>;
@@ -145,156 +150,236 @@ export function TopicalMapRenderer({ data }: { data: unknown }) {
   const linking = normalizeLinking(d);
   const stats = computeStats(pillars, d);
 
+  // Compute max volume for relative progress bars
+  const maxVol = pillars.reduce((m, p) => Math.max(m, p.estimatedTotalVolume ?? 0), 0);
+
   return (
-    <div className="space-y-6">
-      {/* Summary */}
-      {d.summary && (
-        <p className="whitespace-pre-line text-sm leading-relaxed text-zinc-300">{d.summary}</p>
-      )}
+    <div className="space-y-5">
 
-      {/* Stats Bar */}
+      {/* â”€â”€ Hero Stats â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€ */}
       {stats && (
-        <div className="flex flex-wrap gap-4 rounded border border-zinc-800 bg-zinc-900/30 px-4 py-2.5">
-          <Stat label="Pillars" value={stats.totalPillars} />
-          <Stat label="Clusters" value={stats.totalClusters} />
-          <Stat label="Pages" value={stats.totalPages} />
-          {stats.totalEstimatedWords !== undefined && (
-            <Stat label="Est. Words" value={stats.totalEstimatedWords} format />
-          )}
-          {stats.byPriority && (
-            <>
-              <span className="text-zinc-700">|</span>
-              <Stat label="High" value={stats.byPriority.high} color="text-red-400" />
-              <Stat label="Medium" value={stats.byPriority.medium} color="text-amber-400" />
-              <Stat label="Low" value={stats.byPriority.low} color="text-zinc-400" />
-            </>
+        <div className="grid grid-cols-3 gap-3">
+          <StatCard label="Pillars" value={stats.totalPillars} accent="text-violet-400" iconPath="M12 2l3.09 6.26L22 9.27l-5 4.87 1.18 6.88L12 17.77l-6.18 3.25L7 14.14 2 9.27l6.91-1.01L12 2z" />
+          <StatCard label="Clusters" value={stats.totalClusters} accent="text-blue-400" iconPath="M3.75 6A2.25 2.25 0 0 1 6 3.75h2.25A2.25 2.25 0 0 1 10.5 6v2.25a2.25 2.25 0 0 1-2.25 2.25H6a2.25 2.25 0 0 1-2.25-2.25V6ZM13.5 6a2.25 2.25 0 0 1 2.25-2.25H18A2.25 2.25 0 0 1 20.25 6v2.25A2.25 2.25 0 0 1 18 10.5h-2.25a2.25 2.25 0 0 1-2.25-2.25V6ZM3.75 15.75A2.25 2.25 0 0 1 6 13.5h2.25a2.25 2.25 0 0 1 2.25 2.25V18a2.25 2.25 0 0 1-2.25 2.25H6A2.25 2.25 0 0 1 3.75 18v-2.25ZM13.5 15.75a2.25 2.25 0 0 1 2.25-2.25H18a2.25 2.25 0 0 1 2.25 2.25V18A2.25 2.25 0 0 1 18 20.25h-2.25A2.25 2.25 0 0 1 13.5 18v-2.25Z" />
+          <StatCard label="Pages" value={stats.totalPages} accent="text-emerald-400" iconPath="M19.5 14.25v-2.625a3.375 3.375 0 0 0-3.375-3.375h-1.5A1.125 1.125 0 0 1 13.5 7.125v-1.5a3.375 3.375 0 0 0-3.375-3.375H8.25m0 12.75h7.5m-7.5 3H12M10.5 2.25H5.625c-.621 0-1.125.504-1.125 1.125v17.25c0 .621.504 1.125 1.125 1.125h12.75c.621 0 1.125-.504 1.125-1.125V11.25a9 9 0 0 0-9-9Z" />
+        </div>
+      )}
+
+      {/* â”€â”€ Summary (collapsible) â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€ */}
+      {d.summary && (
+        <div className="rounded-lg border border-zinc-800 bg-zinc-900/40">
+          <button
+            className="flex w-full items-center justify-between px-4 py-3 text-left"
+            onClick={() => setSummaryExpanded(!summaryExpanded)}
+          >
+            <span className="text-xs font-semibold uppercase tracking-wider text-zinc-400">Strategic Overview</span>
+            <svg
+              className={`h-3.5 w-3.5 text-zinc-500 transition-transform ${summaryExpanded ? 'rotate-180' : ''}`}
+              fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}
+            >
+              <path strokeLinecap="round" strokeLinejoin="round" d="m19 9-7 7-7-7" />
+            </svg>
+          </button>
+          {summaryExpanded && (
+            <div className="border-t border-zinc-800 px-4 pb-4 pt-3">
+              <p className="whitespace-pre-line text-[12px] leading-relaxed text-zinc-400">{d.summary}</p>
+            </div>
           )}
         </div>
       )}
 
-      {/* View Toggle */}
+      {/* â”€â”€ View Tabs â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€ */}
       {(pillars.length > 0 || calendar.length > 0) && (
-        <div className="flex gap-1">
-          <TabButton active={view === 'map'} onClick={() => setView('map')}>Topical Map</TabButton>
+        <div className="flex gap-1 border-b border-zinc-800 pb-0">
+          <TabButton active={view === 'map'} onClick={() => setView('map')}>
+            <svg className="mr-1.5 inline h-3 w-3" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+              <path strokeLinecap="round" strokeLinejoin="round" d="M3.75 6A2.25 2.25 0 0 1 6 3.75h2.25A2.25 2.25 0 0 1 10.5 6v2.25a2.25 2.25 0 0 1-2.25 2.25H6a2.25 2.25 0 0 1-2.25-2.25V6ZM3.75 15.75A2.25 2.25 0 0 1 6 13.5h2.25a2.25 2.25 0 0 1 2.25 2.25V18a2.25 2.25 0 0 1-2.25 2.25H6A2.25 2.25 0 0 1 3.75 18v-2.25ZM13.5 6a2.25 2.25 0 0 1 2.25-2.25H18A2.25 2.25 0 0 1 20.25 6v2.25A2.25 2.25 0 0 1 18 10.5h-2.25a2.25 2.25 0 0 1-2.25-2.25V6ZM13.5 15.75a2.25 2.25 0 0 1 2.25-2.25H18a2.25 2.25 0 0 1 2.25 2.25V18A2.25 2.25 0 0 1 18 20.25h-2.25A2.25 2.25 0 0 1 13.5 18v-2.25Z" />
+            </svg>
+            Topical Map
+          </TabButton>
           {calendar.length > 0 && (
-            <TabButton active={view === 'calendar'} onClick={() => setView('calendar')}>Calendar</TabButton>
+            <TabButton active={view === 'calendar'} onClick={() => setView('calendar')}>
+              <svg className="mr-1.5 inline h-3 w-3" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+                <path strokeLinecap="round" strokeLinejoin="round" d="M6.75 3v2.25M17.25 3v2.25M3 18.75V7.5a2.25 2.25 0 0 1 2.25-2.25h13.5A2.25 2.25 0 0 1 21 7.5v11.25m-18 0A2.25 2.25 0 0 0 5.25 21h13.5A2.25 2.25 0 0 0 21 18.75m-18 0v-7.5A2.25 2.25 0 0 1 5.25 9h13.5A2.25 2.25 0 0 1 21 11.25v7.5" />
+              </svg>
+              Content Calendar
+            </TabButton>
           )}
         </div>
       )}
 
-      {/* Topical Map View */}
+      {/* â”€â”€ Topical Map View â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€ */}
       {view === 'map' && pillars.length > 0 && (
         <div className="space-y-2">
-          {pillars.map((pillar) => (
-            <div key={pillar.id} className="rounded border border-zinc-800 bg-zinc-900/30">
-              {/* Pillar Header */}
-              <button
-                className="flex w-full items-center justify-between px-4 py-3 text-left hover:bg-zinc-800/30"
-                onClick={() => setExpandedPillar(expandedPillar === pillar.id ? null : pillar.id)}
+          {pillars.map((pillar, pi) => {
+            const color = PILLAR_COLORS[pi % PILLAR_COLORS.length];
+            const isOpen = expandedPillar === pillar.id;
+            const volPct = maxVol > 0 && pillar.estimatedTotalVolume
+              ? Math.round((pillar.estimatedTotalVolume / maxVol) * 100)
+              : 0;
+            const clusterCount = pillar.clusters?.length ?? 0;
+            const pageCount = (pillar.clusters ?? []).reduce((s, c) => s + (c.pages?.length ?? 0), 0);
+
+            return (
+              <div
+                key={pillar.id}
+                className={`rounded-lg border bg-zinc-900/40 transition-colors ${isOpen ? color.ring : 'border-zinc-800'}`}
               >
-                <div className="flex items-center gap-3">
-                  <span className="text-lg">{expandedPillar === pillar.id ? '▾' : '▸'}</span>
-                  <div>
-                    <p className="text-sm font-medium text-zinc-100">{pillar.name}</p>
-                    {pillar.description && (
-                      <p className="text-[11px] text-zinc-500">{pillar.description}</p>
+                {/* Pillar Header */}
+                <button
+                  className="flex w-full items-start gap-3 px-4 py-3.5 text-left hover:bg-zinc-800/20"
+                  onClick={() => setExpandedPillar(isOpen ? null : pillar.id)}
+                >
+                  {/* Color accent bar */}
+                  <div className={`mt-1 h-4 w-1 shrink-0 rounded-full ${color.bar}`} />
+
+                  <div className="min-w-0 flex-1">
+                    <div className="flex items-start justify-between gap-4">
+                      <div className="min-w-0 flex-1">
+                        <p className="text-sm font-semibold text-zinc-100">{pillar.name}</p>
+                        {pillar.description && (
+                          <p className="mt-0.5 line-clamp-2 text-[11px] leading-relaxed text-zinc-500">
+                            {pillar.description}
+                          </p>
+                        )}
+                      </div>
+                      {/* Right meta */}
+                      <div className="flex shrink-0 flex-col items-end gap-1.5">
+                        <div className="flex items-center gap-2">
+                          {pillar.estimatedTotalVolume !== undefined && (
+                            <span className={`rounded border px-1.5 py-0.5 text-[10px] font-medium ${color.badge}`}>
+                              {formatNumber(pillar.estimatedTotalVolume)} vol
+                            </span>
+                          )}
+                          <svg
+                            className={`h-3.5 w-3.5 text-zinc-600 transition-transform ${isOpen ? 'rotate-180' : ''}`}
+                            fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}
+                          >
+                            <path strokeLinecap="round" strokeLinejoin="round" d="m19 9-7 7-7-7" />
+                          </svg>
+                        </div>
+                        <div className="flex items-center gap-2 text-[10px] text-zinc-600">
+                          <span>{clusterCount} clusters</span>
+                          {pageCount > 0 && <><span>Â·</span><span>{pageCount} pages</span></>}
+                        </div>
+                      </div>
+                    </div>
+
+                    {/* Volume bar */}
+                    {volPct > 0 && (
+                      <div className="mt-2 h-1 w-full rounded-full bg-zinc-800">
+                        <div
+                          className={`h-1 rounded-full ${color.bar} opacity-60`}
+                          style={{ width: `${volPct}%` }}
+                        />
+                      </div>
                     )}
                   </div>
-                </div>
-                <div className="flex items-center gap-3 text-[11px] text-zinc-500">
-                  {pillar.clusters && <span>{pillar.clusters.length} clusters</span>}
-                  {pillar.estimatedTotalVolume !== undefined && (
-                    <span>{formatNumber(pillar.estimatedTotalVolume)} vol</span>
-                  )}
-                </div>
-              </button>
+                </button>
 
-              {/* Clusters */}
-              {expandedPillar === pillar.id && pillar.clusters && (
-                <div className="border-t border-zinc-800 px-4 py-2">
-                  {pillar.clusters.map((cluster) => (
-                    <div key={cluster.id} className="border-b border-zinc-800/50 last:border-0">
-                      {/* Cluster Header */}
-                      <button
-                        className="flex w-full items-center justify-between py-2 text-left hover:bg-zinc-800/20"
-                        onClick={() =>
-                          setExpandedCluster(expandedCluster === cluster.id ? null : cluster.id)
-                        }
-                      >
-                        <div className="flex items-center gap-2">
-                          <span className="text-xs text-zinc-600">
-                            {expandedCluster === cluster.id ? '▾' : '▸'}
-                          </span>
-                          <span className="text-xs text-zinc-300">{cluster.name}</span>
-                          {cluster.priority && <PriorityBadge priority={cluster.priority} />}
-                        </div>
-                        <span className="text-[10px] text-zinc-600">
-                          {cluster.pages?.length ?? 0} pages
-                        </span>
-                      </button>
-
-                      {/* Pages */}
-                      {expandedCluster === cluster.id && cluster.pages && (
-                        <div className="ml-5 space-y-1 pb-2">
-                          {cluster.pages.map((page, i) => (
-                            <div
-                              key={i}
-                              className="flex items-center justify-between rounded bg-zinc-900/50 px-3 py-1.5"
+                {/* Clusters */}
+                {isOpen && pillar.clusters && (
+                  <div className="border-t border-zinc-800/60 px-4 py-3">
+                    <div className="space-y-1.5">
+                      {pillar.clusters.map((cluster) => {
+                        const clusterOpen = expandedCluster === cluster.id;
+                        return (
+                          <div key={cluster.id}>
+                            <button
+                              className={`flex w-full items-center justify-between rounded-md px-3 py-2 text-left transition-colors ${clusterOpen ? 'bg-zinc-800/60' : 'bg-zinc-900/60 hover:bg-zinc-800/40'}`}
+                              onClick={() => setExpandedCluster(clusterOpen ? null : cluster.id)}
                             >
-                              <div className="min-w-0 flex-1">
-                                <div className="flex items-center gap-2">
-                                  <p className="truncate text-[11px] text-zinc-300">{page.title}</p>
-                                  {page.contentType && <ContentTypeBadge type={page.contentType} />}
+                              <div className="flex min-w-0 items-center gap-2">
+                                <svg
+                                  className={`h-3 w-3 shrink-0 text-zinc-600 transition-transform ${clusterOpen ? 'rotate-90' : ''}`}
+                                  fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}
+                                >
+                                  <path strokeLinecap="round" strokeLinejoin="round" d="m9 18 6-6-6-6" />
+                                </svg>
+                                <span className="truncate text-[12px] font-medium text-zinc-300">{cluster.name}</span>
+                                {cluster.intent && <IntentBadge intent={cluster.intent} />}
+                                {cluster.priority && <PriorityBadge priority={cluster.priority} />}
+                              </div>
+                              <span className="ml-3 shrink-0 text-[10px] text-zinc-600">
+                                {cluster.pages?.length ?? 0} pages
+                              </span>
+                            </button>
+
+                            {/* Pages table */}
+                            {clusterOpen && cluster.pages && cluster.pages.length > 0 && (
+                              <div className="ml-5 mt-1 overflow-hidden rounded-md border border-zinc-800/60">
+                                {/* Table header */}
+                                <div className="grid grid-cols-[1fr_auto_auto_auto_auto] gap-x-3 border-b border-zinc-800/60 bg-zinc-900/80 px-3 py-1.5">
+                                  <span className="text-[10px] font-semibold uppercase tracking-wider text-zinc-600">Page Title</span>
+                                  <span className="text-[10px] font-semibold uppercase tracking-wider text-zinc-600">Type</span>
+                                  <span className="text-[10px] font-semibold uppercase tracking-wider text-zinc-600">Funnel</span>
+                                  <span className="text-[10px] font-semibold uppercase tracking-wider text-zinc-600">Vol</span>
+                                  <span className="text-[10px] font-semibold uppercase tracking-wider text-zinc-600">KD</span>
                                 </div>
-                                {page.keyword && page.keyword.toLowerCase() !== page.title?.toLowerCase() && (
-                                  <p className="text-[10px] text-zinc-600">{page.keyword}</p>
-                                )}
+                                {cluster.pages.map((page, i) => (
+                                  <div
+                                    key={i}
+                                    className={`grid grid-cols-[1fr_auto_auto_auto_auto] items-center gap-x-3 px-3 py-2 ${i % 2 === 0 ? 'bg-zinc-900/40' : 'bg-zinc-900/20'}`}
+                                  >
+                                    <div className="min-w-0">
+                                      <p className="truncate text-[11px] text-zinc-300">{page.title}</p>
+                                      {page.suggestedUrl && (
+                                        <p className="truncate text-[10px] text-zinc-600">{page.suggestedUrl}</p>
+                                      )}
+                                    </div>
+                                    <div>{page.contentType ? <ContentTypeBadge type={page.contentType} /> : <span className="text-[10px] text-zinc-700">â€”</span>}</div>
+                                    <div>
+                                      {page.funnelStage
+                                        ? <FunnelBadge stage={page.funnelStage} />
+                                        : <span className="text-[10px] text-zinc-700">â€”</span>}
+                                    </div>
+                                    <span className="text-right text-[10px] text-zinc-500">
+                                      {page.volume !== undefined ? formatNumber(page.volume) : 'â€”'}
+                                    </span>
+                                    <span className={`text-right text-[10px] font-medium ${page.difficulty !== undefined ? difficultyColor(page.difficulty) : 'text-zinc-700'}`}>
+                                      {page.difficulty !== undefined ? page.difficulty : 'â€”'}
+                                    </span>
+                                  </div>
+                                ))}
                               </div>
-                              <div className="flex items-center gap-3 text-[10px] text-zinc-500">
-                                {page.volume !== undefined && <span>{formatNumber(page.volume)} vol</span>}
-                                {page.difficulty !== undefined && (
-                                  <span className={difficultyColor(page.difficulty)}>KD {page.difficulty}</span>
-                                )}
-                                {page.estimatedWordCount !== undefined && (
-                                  <span>{formatNumber(page.estimatedWordCount)} words</span>
-                                )}
-                              </div>
-                            </div>
-                          ))}
-                        </div>
-                      )}
+                            )}
+                          </div>
+                        );
+                      })}
                     </div>
-                  ))}
-                </div>
-              )}
-            </div>
-          ))}
+                  </div>
+                )}
+              </div>
+            );
+          })}
         </div>
       )}
 
-      {/* Calendar View */}
+      {/* â”€â”€ Calendar View â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€ */}
       {view === 'calendar' && calendar.length > 0 && (
-        <div className="space-y-3">
+        <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-3">
           {calendar.map((month, mi) => (
-            <div key={mi} className="rounded border border-zinc-800 bg-zinc-900/30 p-3">
-              <p className="text-xs font-medium text-zinc-300">
-                {month.month}
-              </p>
+            <div key={mi} className="rounded-lg border border-zinc-800 bg-zinc-900/40 p-3">
+              <div className="mb-2.5 flex items-center justify-between">
+                <p className="text-[11px] font-semibold uppercase tracking-wider text-zinc-400">{month.month}</p>
+                {month.pieces && (
+                  <span className="rounded bg-zinc-800 px-1.5 py-0.5 text-[10px] text-zinc-500">
+                    {month.pieces.length} pieces
+                  </span>
+                )}
+              </div>
               {month.pieces && month.pieces.length > 0 && (
-                <div className="mt-2 space-y-1">
+                <div className="space-y-1">
                   {month.pieces.map((piece, i) => (
-                    <div
-                      key={i}
-                      className="flex items-center justify-between rounded bg-zinc-900/50 px-3 py-1.5"
-                    >
-                      <div className="flex items-center gap-2">
-                        {piece.priority && <PriorityDot priority={piece.priority} />}
-                        <span className="text-[11px] text-zinc-300">{piece.title}</span>
-                        {piece.contentType && <ContentTypeBadge type={piece.contentType} />}
-                      </div>
-                      <div className="flex items-center gap-3 text-[10px] text-zinc-500">
-                        {piece.keyword && <span>{piece.keyword}</span>}
-                        {piece.week && <span>W{piece.week}</span>}
+                    <div key={i} className="flex items-start gap-2 rounded bg-zinc-800/30 px-2.5 py-1.5">
+                      <PriorityDot priority={piece.priority ?? 'medium'} />
+                      <div className="min-w-0 flex-1">
+                        <p className="text-[11px] leading-snug text-zinc-300">{piece.title}</p>
+                        <div className="mt-0.5 flex items-center gap-2">
+                          {piece.contentType && <ContentTypeBadge type={piece.contentType} />}
+                          {piece.week && <span className="text-[10px] text-zinc-600">Wk {piece.week}</span>}
+                          {piece.pillar && <span className="truncate text-[10px] text-zinc-600">{piece.pillar}</span>}
+                        </div>
                       </div>
                     </div>
                   ))}
@@ -305,39 +390,63 @@ export function TopicalMapRenderer({ data }: { data: unknown }) {
         </div>
       )}
 
-      {/* Linking Architecture */}
+      {/* â”€â”€ Linking Architecture â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€ */}
       {linking && (
-        <div>
-          <SectionLabel>Internal Linking Strategy</SectionLabel>
-          {linking.strategy && (
-            <p className="mt-1 text-[11px] text-zinc-400">{linking.strategy}</p>
-          )}
-          {linking.rules && linking.rules.length > 0 && (
-            <ul className="mt-1.5 space-y-0.5">
-              {linking.rules.map((rule, i) => (
-                <li key={i} className="text-[11px] text-zinc-500">• {rule}</li>
-              ))}
-            </ul>
-          )}
+        <div className="rounded-lg border border-zinc-800 bg-zinc-900/40">
+          <div className="flex items-center gap-2 border-b border-zinc-800 px-4 py-3">
+            <svg className="h-3.5 w-3.5 text-zinc-500" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.5}>
+              <path strokeLinecap="round" strokeLinejoin="round" d="M13.19 8.688a4.5 4.5 0 0 1 1.242 7.244l-4.5 4.5a4.5 4.5 0 0 1-6.364-6.364l1.757-1.757m13.35-.622 1.757-1.757a4.5 4.5 0 0 0-6.364-6.364l-4.5 4.5a4.5 4.5 0 0 0 1.242 7.244" />
+            </svg>
+            <span className="text-xs font-semibold uppercase tracking-wider text-zinc-400">Internal Linking Rules</span>
+          </div>
+          <div className="p-4">
+            {linking.strategy && (
+              <p className="mb-3 text-[12px] leading-relaxed text-zinc-400">{linking.strategy}</p>
+            )}
+            {linking.rules && linking.rules.length > 0 && (
+              <div className="space-y-2">
+                {linking.rules.map((rule, i) => {
+                  // Try to split off a "RULE N â€” Title:" prefix for better display
+                  const ruleMatch = rule.match(/^(RULE\s+\d+\s*[â€”â€“-]\s*[^:]+):\s*(.+)$/is);
+                  return (
+                    <div key={i} className="flex gap-3 rounded-md bg-zinc-900/60 px-3 py-2.5">
+                      <span className="mt-px shrink-0 text-[10px] font-bold tabular-nums text-zinc-600">
+                        {String(i + 1).padStart(2, '0')}
+                      </span>
+                      <div className="min-w-0">
+                        {ruleMatch ? (
+                          <>
+                            <p className="text-[11px] font-semibold text-zinc-300">{ruleMatch[1].replace(/^RULE\s+\d+\s*[â€”â€“-]\s*/i, '')}</p>
+                            <p className="mt-0.5 text-[11px] leading-relaxed text-zinc-500">{ruleMatch[2]}</p>
+                          </>
+                        ) : (
+                          <p className="text-[11px] leading-relaxed text-zinc-400">{rule.replace(/^â€¢\s*/, '')}</p>
+                        )}
+                      </div>
+                    </div>
+                  );
+                })}
+              </div>
+            )}
+          </div>
         </div>
       )}
     </div>
   );
 }
 
-/* ── Helper Components ─────────────────────── */
+/* â”€â”€ Helper Components â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€ */
 
-function SectionLabel({ children }: { children: React.ReactNode }) {
-  return <p className="text-[11px] font-semibold uppercase tracking-wider text-zinc-500">{children}</p>;
-}
-
-function Stat({ label, value, format, color }: { label: string; value?: number; format?: boolean; color?: string }) {
+function StatCard({ label, value, accent, iconPath }: { label: string; value?: number; accent: string; iconPath: string }) {
   return (
-    <div className="text-[11px]">
-      <span className="text-zinc-500">{label}: </span>
-      <span className={color ?? 'text-zinc-300'}>
-        {value !== undefined ? (format ? formatNumber(value) : value) : '—'}
-      </span>
+    <div className="flex items-center gap-3 rounded-lg border border-zinc-800 bg-zinc-900/40 px-4 py-3">
+      <svg className={`h-5 w-5 shrink-0 ${accent}`} fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.5}>
+        <path strokeLinecap="round" strokeLinejoin="round" d={iconPath} />
+      </svg>
+      <div>
+        <p className="text-lg font-bold tabular-nums text-zinc-100">{value ?? '—'}</p>
+        <p className="text-[11px] text-zinc-500">{label}</p>
+      </div>
     </div>
   );
 }
@@ -346,14 +455,43 @@ function TabButton({ active, onClick, children }: { active: boolean; onClick: ()
   return (
     <button
       onClick={onClick}
-      className={`rounded px-3 py-1 text-xs font-medium transition-colors ${
+      className={`relative rounded-t px-4 py-2 text-xs font-medium transition-colors ${
         active
-          ? 'bg-zinc-800 text-zinc-200'
-          : 'text-zinc-500 hover:bg-zinc-800/50 hover:text-zinc-300'
+          ? 'text-zinc-100 after:absolute after:bottom-0 after:left-0 after:right-0 after:h-0.5 after:rounded-full after:bg-violet-500'
+          : 'text-zinc-500 hover:text-zinc-300'
       }`}
     >
       {children}
     </button>
+  );
+}
+
+function IntentBadge({ intent }: { intent: string }) {
+  const map: Record<string, string> = {
+    commercial: 'bg-blue-500/10 text-blue-400',
+    informational: 'bg-zinc-500/10 text-zinc-400',
+    transactional: 'bg-emerald-500/10 text-emerald-400',
+    navigational: 'bg-amber-500/10 text-amber-400',
+  };
+  const key = intent.toLowerCase();
+  return (
+    <span className={`rounded px-1.5 py-0.5 text-[9px] font-medium capitalize ${map[key] ?? 'bg-zinc-500/10 text-zinc-400'}`}>
+      {intent}
+    </span>
+  );
+}
+
+function FunnelBadge({ stage }: { stage: string }) {
+  const map: Record<string, string> = {
+    TOFU: 'bg-sky-500/10 text-sky-400',
+    MOFU: 'bg-violet-500/10 text-violet-400',
+    BOFU: 'bg-emerald-500/10 text-emerald-400',
+  };
+  const key = stage.toUpperCase();
+  return (
+    <span className={`rounded px-1.5 py-0.5 text-[9px] font-medium ${map[key] ?? 'bg-zinc-500/10 text-zinc-400'}`}>
+      {key}
+    </span>
   );
 }
 
@@ -364,15 +502,15 @@ function PriorityBadge({ priority }: { priority: string }) {
     low: 'bg-zinc-500/10 text-zinc-400',
   };
   return (
-    <span className={`rounded px-1.5 py-0.5 text-[9px] font-medium ${styles[priority] ?? styles.low}`}>
+    <span className={`rounded px-1.5 py-0.5 text-[9px] font-medium capitalize ${styles[priority.toLowerCase()] ?? styles.low}`}>
       {priority}
     </span>
   );
 }
 
 function PriorityDot({ priority }: { priority: string }) {
-  const colors: Record<string, string> = { high: 'bg-red-400', medium: 'bg-amber-400', low: 'bg-zinc-500' };
-  return <span className={`inline-block h-1.5 w-1.5 shrink-0 rounded-full ${colors[priority] ?? colors.low}`} />;
+  const colors: Record<string, string> = { high: 'bg-red-400', medium: 'bg-amber-400', low: 'bg-zinc-600' };
+  return <span className={`mt-1.5 inline-block h-1.5 w-1.5 shrink-0 rounded-full ${colors[priority.toLowerCase()] ?? colors.low}`} />;
 }
 
 function ContentTypeBadge({ type }: { type: string }) {
@@ -380,13 +518,17 @@ function ContentTypeBadge({ type }: { type: string }) {
     pillar: 'Pillar',
     'pillar page': 'Pillar',
     'cluster-hub': 'Hub',
+    'cluster hub': 'Hub',
     'cluster page': 'Cluster',
     supporting: 'Support',
     'supporting article': 'Support',
     resource: 'Resource',
+    blog: 'Blog',
+    faq: 'FAQ',
+    landing: 'Landing',
   };
   return (
-    <span className="rounded bg-zinc-800 px-1.5 py-0.5 text-[9px] text-zinc-400">
+    <span className="rounded bg-zinc-800 px-1.5 py-0.5 text-[9px] font-medium text-zinc-500">
       {labels[type.toLowerCase()] ?? type}
     </span>
   );
@@ -399,8 +541,49 @@ function difficultyColor(d: number): string {
 }
 
 function formatNumber(n?: number): string {
-  if (n === undefined || n === null) return '—';
+  if (n === undefined || n === null) return 'â€”';
   if (n >= 1_000_000) return `${(n / 1_000_000).toFixed(1)}M`;
   if (n >= 1_000) return `${(n / 1_000).toFixed(1)}K`;
   return n.toLocaleString();
+}
+
+
+interface PageItem {
+  title: string;
+  keyword: string;
+  volume?: number;
+  difficulty?: number;
+  intent?: string;
+  funnelStage?: string;
+  contentType?: string;
+  estimatedWordCount?: number;
+  effort?: string;
+  suggestedUrl?: string;
+  linksTo?: string[];
+  linksFrom?: string[];
+}
+
+interface Cluster {
+  id: string;
+  name: string;
+  hubKeyword?: string;
+  hubUrl?: string;
+  intent?: string;
+  priority?: string;
+  pages?: PageItem[];
+}
+
+interface Pillar {
+  id: string;
+  name: string;
+  description?: string;
+  pillarPageKeyword?: string;
+  pillarPageUrl?: string;
+  estimatedTotalVolume?: number;
+  clusters?: Cluster[];
+}
+
+interface CalendarMonth {
+  month: string;
+  pieces?: Array<{ title: string; keyword?: string; pillar?: string; cluster?: string; contentType?: string; priority?: string; week?: number }>;
 }

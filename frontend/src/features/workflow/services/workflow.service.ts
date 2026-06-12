@@ -10,10 +10,11 @@ const BASE = '/workflows';
 export async function createRun(
   projectId: string,
   organizationId: string,
+  targetKey?: string,
 ): Promise<WorkflowRun> {
   return apiFetch<WorkflowRun>(BASE, {
     method: 'POST',
-    body: JSON.stringify({ projectId, organizationId }),
+    body: JSON.stringify({ projectId, organizationId, ...(targetKey ? { targetKey } : {}) }),
   });
 }
 

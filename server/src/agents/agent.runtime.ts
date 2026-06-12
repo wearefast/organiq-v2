@@ -100,6 +100,18 @@ const FLAG_STALE_DATA_TOOL: AnthropicToolDef = {
 export class AgentRuntime {
   private readonly logger = new Logger(AgentRuntime.name);
 
+  // Steps that generate large outputs get a higher output token budget so
+  // they can write planning prose before the return_output tool call without
+  // exhausting the standard 16 384-token limit.
+  private static readonly STEP_MAX_OUTPUT_TOKENS: Record<string, number> = {
+    'method01-competitor-pages': 32000,
+    'method02-seed-expansion': 32000,
+    'method03-content-gap-import': 32000,
+    'consolidated-keywords': 32000,
+    'topical-map': 64000,
+    'verdict-strategy': 32000,
+  };
+
   constructor(
     private readonly anthropic: AnthropicService,
     private readonly toolSandbox: ToolSandbox,
@@ -145,7 +157,9 @@ export class AgentRuntime {
           system,
           messages,
           tools,
-          maxTokens: 16384,
+          maxTokens: config.thinkingBudget
+            ? config.thinkingBudget + 16384
+            : (AgentRuntime.STEP_MAX_OUTPUT_TOKENS[config.stepKey] ?? 16384),
           thinkingBudget: config.thinkingBudget,
           signal: config.signal,
         });
@@ -210,10 +224,28 @@ export class AgentRuntime {
             success: toolResult.success,
           });
 
+          // Strip large binary payloads from the conversation history.
+          // generate_image returns a 1–2 MB base64 string per image; if left in the
+          // messages array it accumulates across iterations and sends 3M+ tokens to
+          // the API by the time the 5th image is generated.  The full result is already
+          // captured in toolCalls above for artifact storage — only the conversation
+          // history copy needs to be lightweight.
+          let historyContent: unknown;
+          if (toolUse.name === 'generate_image' && toolResult.success && toolResult.result) {
+            const r = toolResult.result as Record<string, unknown>;
+            historyContent = {
+              success: true,
+              revisedPrompt: r.revisedPrompt ?? '',
+              note: 'Image generated successfully (base64 omitted from conversation history)',
+            };
+          } else {
+            historyContent = toolResult.success ? toolResult.result : { error: toolResult.error };
+          }
+
           toolResults.push({
             type: 'tool_result',
             tool_use_id: toolUse.id,
-            content: JSON.stringify(toolResult.success ? toolResult.result : { error: toolResult.error }),
+            content: JSON.stringify(historyContent),
             is_error: !toolResult.success,
           });
         }
@@ -277,6 +309,10 @@ export class AgentRuntime {
       parts.push(config.intelligenceContext);
     }
 
+    // All steps must call return_output with their structured result.
+    // Steps that generate large outputs (e.g. method02 with 200 keywords) are given
+    // a higher output token budget via STEP_MAX_OUTPUT_TOKENS so they can write
+    // planning prose before the tool call without exhausting the budget.
     parts.push(
       '\n\nIMPORTANT: When you have completed your analysis, you MUST call the `return_output` tool with your structured JSON result. Do not output raw JSON text — use the tool.',
     );
@@ -310,7 +346,7 @@ export class AgentRuntime {
 
     if (config.workflowContext && Object.keys(config.workflowContext).length > 0) {
       const ctx =
-        config.contextKeys && config.contextKeys.length > 0
+        config.contextKeys !== undefined
           ? Object.fromEntries(
               config.contextKeys
                 .filter((k) => k in config.workflowContext!)
@@ -417,6 +453,8 @@ export class AgentRuntime {
         }
       }
     }
-    return text;
+    // No valid JSON found — return null so the caller knows extraction failed.
+    // Previously returned raw text which corrupted downstream workflow context.
+    return null;
   }
 }

@@ -132,7 +132,7 @@ export default function ProjectsPage() {
       setLanguage('en');
       setIndustry('');
       setShowForm(false);
-      router.push(`/workspaces/${workspace.id}/projects/${created.id}/workflows`);
+      router.push(`/workspaces/${workspace.id}/projects/${created.id}/overview`);
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Failed to create project');
     } finally {
@@ -180,7 +180,7 @@ export default function ProjectsPage() {
           </div>
 
           <div className="flex items-center justify-between gap-3">
-            <p className="text-xs text-zinc-500">New projects open in the workflow runs view after creation.</p>
+            <p className="text-xs text-zinc-500">New projects open on the overview page after creation.</p>
             <button type="submit" className="btn-primary disabled:cursor-not-allowed disabled:opacity-50" disabled={submitting}>
               {submitting ? 'Creating...' : 'Create Project'}
             </button>

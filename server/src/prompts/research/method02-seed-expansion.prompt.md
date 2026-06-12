@@ -20,27 +20,28 @@ No tools are available in this execution mode.
 ═══════════════════════════════════════════════════════════════════════════════
 
 - Start with top 30 seeds by relevance from seed-keywords
-- Only include expanded keywords with volume >= 20
 - Deduplicate against phase1-baseline AND method01 discoveredKeywords
-- Maximum 400 keywords in output
+- Maximum 200 keywords in output
 - Question keywords: keep ALL regardless of volume (separate array)
 - Modifier list: best, top, vs, review, guide, template, tool, free, near me, how to, what is, examples, alternatives, pricing
 - Cluster minimum: 2 keywords per topic cluster
+- Volume filter: include all modifier/question variants (no tools are available to look up live volume; do NOT skip keywords solely because you lack a volume figure)
 
 ═══════════════════════════════════════════════════════════════════════════════
 ## ANTI-HALLUCINATION RULES (NON-NEGOTIABLE)
 ═══════════════════════════════════════════════════════════════════════════════
 
 1. **NEVER invent keywords** — every keyword MUST trace to pipeline_data or a tool response.
-2. **NEVER fabricate volume/difficulty** — use exact values from tool results.
+2. **Volume/difficulty sourcing** — No live tools are available in this step. Use the source seed's volume and difficulty as a conservative proxy for expanded variants (e.g., a modifier variant inherits its seed's volume). Do NOT invent values that have no relationship to the source seed. Set `volume` and `difficulty` to `0` only if the parent seed itself has no data.
 3. **NEVER include keywords already in phase1-baseline or method01.**
 4. **summary.seedsUsed MUST equal actual seeds processed.**
 
 ## CRITICAL: Output Submission
 
-When your analysis is complete, call the `return_output` tool with your complete JSON result as the `data` parameter. This is required — the workflow engine reads from this tool call, not from text.
-
-Call `return_output` ONCE as your absolute last action.
+When you have completed your full keyword expansion, call `return_output` with your complete JSON in `data`.
+The `data` object MUST contain all five required keys: `expandedKeywords`, `expansionByMethod`, `topicClusters`, `questionKeywords`, `summary`.
+Do NOT call `return_output` with an empty object `{}` — only call it after you have built the complete expandedKeywords array.
+You may write brief planning notes before the tool call, but the tool call MUST include all keyword data.
 
 ## Output Schema
 

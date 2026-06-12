@@ -42,23 +42,59 @@ export class WebCrawlerService {
     ca: ['ca', 'canada'],
     de: ['de', 'germany'],
     fr: ['fr', 'france'],
+    qa: ['qa', 'qatar'],
+    kw: ['kw', 'kuwait'],
+    bh: ['bh', 'bahrain'],
+    om: ['om', 'oman'],
+    jo: ['jo', 'jordan'],
+    lb: ['lb', 'lebanon'],
+    sg: ['sg', 'singapore'],
+    nz: ['nz', 'newzealand'],
+    za: ['za', 'southafrica'],
+    ng: ['ng', 'nigeria'],
+    ke: ['ke', 'kenya'],
+    mx: ['mx', 'mexico'],
+    br: ['br', 'brazil'],
+    ar: ['ar', 'argentina'],
+    jp: ['jp', 'japan'],
+    cn: ['cn', 'china'],
+    kr: ['kr', 'korea'],
+    my: ['my', 'malaysia'],
+    id: ['id', 'indonesia'],
+    th: ['th', 'thailand'],
+    vn: ['vn', 'vietnam'],
+    pk: ['pk', 'pakistan'],
+    bd: ['bd', 'bangladesh'],
+    lk: ['lk', 'srilanka'],
+    gh: ['gh', 'ghana'],
+    tz: ['tz', 'tanzania'],
+    ug: ['ug', 'uganda'],
+    et: ['et', 'ethiopia'],
+    ma: ['ma', 'morocco'],
+    dz: ['dz', 'algeria'],
+    tn: ['tn', 'tunisia'],
+    hk: ['hk', 'hongkong'],
   };
 
   // ─── High-level discovery ────────────────────────────────────
 
   /**
-   * Full site discovery flow.
+   * Full site discovery flow — locale-aware, probe-first strategy.
    *
+   * Strategy (in priority order):
    * 1. Validates `siteUrl` for SSRF safety.
-   * 2. Fetches /robots.txt and /sitemap.xml in parallel.
-   * 3. Reads robots.txt for a Sitemap: directive — uses that URL if /sitemap.xml is empty.
-   * 4. Detects sitemap index files (<sitemapindex>) and resolves them to actual page URLs:
-   *    - Scores child sitemaps against optional country/language hints (e.g. uae/en).
-   *    - Fetches the best-scoring child sitemap, or merges all if no locale match.
+   * 2. Fetches robots.txt to extract Sitemap: directives.
+   * 3. Builds an ordered probe list:
+   *    - Locale-specific paths first (e.g. /en-ae/sitemap.xml, /uae/sitemap.xml)
+   *    - Then robots.txt declared sitemaps
+   *    - Then standard locations (/sitemap.xml, /sitemap_index.xml, …)
+   * 4. Iterates probe list: first probe that yields page URLs wins.
+   *    - Sitemap index files are resolved via locale-scored child selection.
    * 5. Falls back to [siteUrl] if no usable sitemap is found at all.
    *
    * @param hints  Optional project locale — ISO 3166-1 alpha-2 country (e.g. "AE") and
-   *               BCP 47 base language tag (e.g. "en") used to score sitemap index entries.
+   *               BCP 47 base language tag (e.g. "en") used for locale-specific probing
+   *               and scoring sitemap index entries.
    */
   async discoverSitePages(
     siteUrl: string,
@@ -69,76 +105,185 @@ export class WebCrawlerService {
 
     const origin = new URL(siteUrl).origin;
 
-    // Fetch robots.txt + standard /sitemap.xml in parallel
-    const [robotsTxt, rootSitemapXml] = await Promise.all([
-      this.fetchText(`${origin}/robots.txt`),
-      this.fetchText(`${origin}/sitemap.xml`),
-    ]);
+    // Fetch robots.txt — we need this before building the probe list
+    const robotsTxt = await this.fetchText(`${origin}/robots.txt`);
+    const robotsSitemapUrls = this.extractRobotsSitemapUrls(robotsTxt, origin);
 
-    // ── Step 1: resolve canonical sitemap URL ─────────────────────────────
-    // If /sitemap.xml returned nothing, check robots.txt Sitemap: directive for
-    // a non-standard sitemap path (e.g. /sitemap_index.xml, /en/sitemap.xml).
-    let sitemapXml = rootSitemapXml;
-    if (!sitemapXml) {
-      const robotsUrls = this.extractRobotsSitemapUrls(robotsTxt, origin);
-      const alternate = robotsUrls.find((u) => u !== `${origin}/sitemap.xml`);
-      if (alternate) {
-        this.logger.debug(`robots.txt sitemap directive points to ${alternate}`);
-        sitemapXml = await this.fetchText(alternate);
+    // Build ordered probe list: locale-specific paths first → robots.txt → standard
+    const probeList = this.buildSitemapProbeList(origin, robotsSitemapUrls, hints);
+
+    let lastXml = '';
+
+    for (const probeUrl of probeList) {
+      const xml = await this.fetchText(probeUrl);
+      if (!xml) continue;
+      lastXml = xml;
+
+      // Case A: sitemap index — resolve to actual page URLs via locale scoring
+      if (this.isSitemapIndex(xml)) {
+        const pageUrls = await this.resolveFromSitemapIndex(xml, origin, hints, limit);
+        if (pageUrls.length > 0) {
+          this.logger.log(
+            `discoverSitePages: ${pageUrls.length} pages via sitemap index at ${probeUrl}`,
+          );
+          return { origin, robotsTxt, sitemapXml: xml, pageUrls, hadSitemap: true };
+        }
+        // Index had entries but resolved to 0 usable pages — try next probe
+        continue;
       }
-    }
 
-    // ── Step 2: handle sitemap index ─────────────────────────────────────
-    // A sitemap index contains <sitemapindex><sitemap><loc>…</loc></sitemap>
-    // entries pointing to child sitemaps — NOT page URLs. We must resolve those.
-    if (sitemapXml && this.isSitemapIndex(sitemapXml)) {
-      const childUrls = this.parseSitemapIndexLocations(sitemapXml, origin);
-      this.logger.debug(`Sitemap index: ${childUrls.length} child sitemaps on ${origin}`);
-
-      if (childUrls.length > 0) {
-        if (hints?.country || hints?.language) {
-          const scored = childUrls
-            .map((url) => ({ url, score: this.scoreSitemapForHints(url, hints) }))
-            .sort((a, b) => b.score - a.score);
-
-          if (scored[0].score > 0) {
-            // Clear locale match — fetch just that child sitemap
-            this.logger.debug(
-              `Best child sitemap: ${scored[0].url} (score ${scored[0].score})`,
-            );
-            sitemapXml = await this.fetchText(scored[0].url);
-          } else {
-            // No locale match — merge page URLs from all child sitemaps (cap at 5 fetches)
-            const xmls = await Promise.all(childUrls.slice(0, 5).map((u) => this.fetchText(u)));
-            const merged: string[] = [];
-            for (const xml of xmls) {
-              merged.push(...this.parseSitemapUrls(xml, origin, limit));
-              if (merged.length >= limit) break;
-            }
-            const pageUrls = merged.slice(0, limit);
-            this.logger.debug(
-              `discoverSitePages: ${pageUrls.length} pages merged from index on ${origin}`,
-            );
-            return { origin, robotsTxt, sitemapXml, pageUrls, hadSitemap: true };
-          }
-        } else {
-          // No hints — use first child sitemap
-          sitemapXml = await this.fetchText(childUrls[0]);
+      // Case B: direct page sitemap
+      if (xml.includes('<loc>')) {
+        let pageUrls = this.parseSitemapUrls(xml, origin, limit * 4); // over-fetch to allow filtering
+        // Post-filter by locale when hints are provided
+        pageUrls = this.filterUrlsByLocale(pageUrls, hints, limit);
+        if (pageUrls.length > 0) {
+          this.logger.log(`discoverSitePages: ${pageUrls.length} pages from ${probeUrl}`);
+          return { origin, robotsTxt, sitemapXml: xml, pageUrls, hadSitemap: true };
         }
       }
     }
 
-    // ── Step 3: extract page URLs from the resolved sitemap ───────────────
-    const hadSitemap = !!sitemapXml && sitemapXml.includes('<loc>');
-    const pageUrls = hadSitemap
-      ? this.parseSitemapUrls(sitemapXml, origin, limit)
-      : [siteUrl];
+    // Fallback: no usable sitemap found
+    this.logger.warn(
+      `discoverSitePages: no usable sitemap found for ${origin} — falling back to root URL`,
+    );
+    return { origin, robotsTxt, sitemapXml: lastXml, pageUrls: [siteUrl], hadSitemap: false };
+  }
 
-    this.logger.debug(
-      `discoverSitePages: ${pageUrls.length} page(s) on ${origin} (hadSitemap: ${hadSitemap})`,
+  /**
+   * Build an ordered list of sitemap URLs to probe for the given origin and hints.
+   *
+   * Order (highest priority first):
+   *   1. Enterprise sub-directory patterns — e.g. /sitemaps/{country}/{lang}/sitemap.xml
+   *      This handles sites like Mashreq whose sitemap index uses /sitemaps/uae/en/.
+   *   2. Flat locale paths — e.g. /en-ae/sitemap.xml, /{country}/{lang}/sitemap.xml
+   *   3. robots.txt declared sitemaps
+   *   4. Standard well-known locations (/sitemap.xml, /sitemap_index.xml, …)
+   */
+  private buildSitemapProbeList(
+    origin: string,
+    robotsSitemapUrls: string[],
+    hints?: { country?: string; language?: string },
+  ): string[] {
+    const probes: string[] = [];
+
+    if (hints?.country && hints?.language) {
+      const country = hints.country.toLowerCase();
+      const lang = hints.language.toLowerCase().split('-')[0]; // 'en-AE' → 'en'
+      const aliases = WebCrawlerService.COUNTRY_ALIASES[country] ?? [country];
+
+      for (const alias of aliases) {
+        // ── Tier 1: enterprise sub-directory convention (e.g. Mashreq: /sitemaps/uae/en/) ─
+        probes.push(
+          `${origin}/sitemaps/${alias}/${lang}/sitemap.xml`,
+          `${origin}/sitemap/${alias}/${lang}/sitemap.xml`,
+          `${origin}/sitemaps/${lang}/${alias}/sitemap.xml`,
+          `${origin}/sitemap/${lang}/${alias}/sitemap.xml`,
+        );
+
+        // ── Tier 2: flat locale paths ──────────────────────────────────────────────────
+        probes.push(
+          // BCP 47 combined locale: /en-ae/sitemap.xml
+          `${origin}/${lang}-${alias}/sitemap.xml`,
+          `${origin}/${lang}_${alias}/sitemap.xml`,
+          // country/lang segments: /ae/en/sitemap.xml
+          `${origin}/${alias}/${lang}/sitemap.xml`,
+          // named files: /sitemap-en-ae.xml
+          `${origin}/sitemap-${lang}-${alias}.xml`,
+          `${origin}/sitemap_${lang}_${alias}.xml`,
+        );
+      }
+      // Language-only path (e.g. /en/sitemap.xml)
+      probes.push(`${origin}/${lang}/sitemap.xml`);
+    } else if (hints?.country) {
+      const country = hints.country.toLowerCase();
+      const aliases = WebCrawlerService.COUNTRY_ALIASES[country] ?? [country];
+      for (const alias of aliases) {
+        probes.push(
+          `${origin}/sitemaps/${alias}/sitemap.xml`,
+          `${origin}/sitemap/${alias}/sitemap.xml`,
+          `${origin}/${alias}/sitemap.xml`,
+          `${origin}/sitemap-${alias}.xml`,
+        );
+      }
+    }
+
+    // Robots.txt declared sitemaps (already same-effective-domain filtered)
+    probes.push(...robotsSitemapUrls);
+
+    // Standard well-known locations (tried after locale-specific probes)
+    probes.push(
+      `${origin}/sitemap.xml`,
+      `${origin}/sitemap_index.xml`,
+      `${origin}/sitemap-index.xml`,
+      `${origin}/sitemaps/sitemap.xml`,
     );
 
-    return { origin, robotsTxt, sitemapXml: sitemapXml ?? '', pageUrls, hadSitemap };
+    // Deduplicate while preserving order
+    return [...new Set(probes)];
+  }
+
+  /**
+   * Given a sitemap index XML, select the best child sitemaps based on locale hints
+   * and return merged page URLs.
+   *
+   * Key behaviour:
+   * - With hints: finds the top score, then fetches ALL children at that same score
+   *   in parallel. This handles sites like Mashreq where uae/en + uae/ar both score
+   *   equally for country=AE — both are merged for full market page coverage.
+   * - Score 0 across all: merges the first 5 children (no locale signal available).
+   * - Without hints: uses the first child sitemap (legacy behaviour).
+   */
+  private async resolveFromSitemapIndex(
+    indexXml: string,
+    origin: string,
+    hints: { country?: string; language?: string } | undefined,
+    limit: number,
+  ): Promise<string[]> {
+    const childUrls = this.parseSitemapIndexLocations(indexXml, origin);
+    if (childUrls.length === 0) return [];
+
+    this.logger.debug(`Sitemap index: ${childUrls.length} child sitemaps on ${origin}`);
+
+    if (hints?.country || hints?.language) {
+      const scored = childUrls
+        .map((url) => ({ url, score: this.scoreSitemapForHints(url, hints) }))
+        .sort((a, b) => b.score - a.score);
+
+      const topScore = scored[0].score;
+
+      if (topScore > 0) {
+        // Fetch ALL children tied at the top score — e.g. uae/en + uae/ar for country=AE
+        const topMatches = scored.filter((s) => s.score === topScore).map((s) => s.url);
+        this.logger.debug(
+          `Best child sitemaps (score ${topScore}): ${topMatches.join(', ')}`,
+        );
+        const xmls = await Promise.all(topMatches.map((u) => this.fetchText(u)));
+        const merged: string[] = [];
+        for (const xml of xmls) {
+          merged.push(...this.parseSitemapUrls(xml, origin, limit));
+          if (merged.length >= limit) break;
+        }
+        return merged.slice(0, limit);
+      }
+
+      // No locale match in index — merge pages from first N child sitemaps
+      this.logger.debug(
+        `No locale match in sitemap index for ${origin} — merging child sitemaps`,
+      );
+      const xmls = await Promise.all(childUrls.slice(0, 5).map((u) => this.fetchText(u)));
+      const merged: string[] = [];
+      for (const xml of xmls) {
+        merged.push(...this.parseSitemapUrls(xml, origin, limit));
+        if (merged.length >= limit) break;
+      }
+      return merged.slice(0, limit);
+    }
+
+    // No hints — use first child sitemap
+    const xml = await this.fetchText(childUrls[0]);
+    return this.parseSitemapUrls(xml, origin, limit);
   }
 
   // ─── Sitemap parsing ─────────────────────────────────────────
@@ -164,13 +309,17 @@ export class WebCrawlerService {
     return urls.slice(0, limit);
   }
 
-  /** Extract Sitemap: directive URLs from robots.txt, filtered to same-origin only. */
+  /**
+   * Extract Sitemap: directive URLs from robots.txt.
+   * Filters to same-effective-domain only (www.example.com treated as example.com)
+   * for SSRF safety while handling www-prefixed sitemap declarations.
+   */
   private extractRobotsSitemapUrls(robotsTxt: string, origin: string): string[] {
     return robotsTxt
       .split('\n')
       .filter((line) => line.trim().toLowerCase().startsWith('sitemap:'))
       .map((line) => line.slice(line.indexOf(':') + 1).trim())
-      .filter((url) => url.startsWith('http') && url.startsWith(origin));
+      .filter((url) => url.startsWith('http') && this.isSameEffectiveDomain(url, origin));
   }
 
   /** True when the XML is a sitemap index (list of sub-sitemaps) not a page <urlset>. */
@@ -198,18 +347,26 @@ export class WebCrawlerService {
    * country (ISO 3166-1 alpha-2) and language (BCP 47 base tag).
    * Higher is better; 0 means no match.
    *
+   * Matching rules:
+   * - Segment must be bounded by path delimiters (/, -, _, .) on the left AND
+   *   either a delimiter or end-of-string on the right.
+   * - Combined BCP-47 locale tags (e.g. 'en-ae') score both country (3) + language (2) = 5.
+   *
    * Examples for country=AE, language=en:
-   *   sitemaps/uae/en/sitemap.xml → 5 (uae=3, en=2)
-   *   sitemaps/uae/ar/sitemap.xml → 3 (uae=3)
-   *   sitemaps/uk/en/sitemap.xml  → 2 (en=2)
+   *   /en-ae/sitemap.xml    → 5 (ae=3, en=2)
+   *   /uae/en/sitemap.xml   → 5 (uae=3, en=2)
+   *   /ar-ae/sitemap.xml    → 3 (ae=3)
+   *   /en-gb/sitemap.xml    → 2 (en=2)
+   *   /sitemap-us.xml       → 0
    */
   private scoreSitemapForHints(
     url: string,
     hints: { country?: string; language?: string },
   ): number {
     const lower = url.toLowerCase();
-    // Match on path segment boundaries: /uae/, -uae/, _uae., etc.
-    const seg = (s: string) => new RegExp(`[/\\-_.]${s}[/\\-_.]`).test(lower);
+    // Segment boundary: delimiter on left, delimiter OR end-of-string on right
+    const seg = (s: string) =>
+      new RegExp(`[/\\-_.]${s}([/\\-_.]|$)`).test(lower);
     let score = 0;
     if (hints.country) {
       const aliases =
@@ -238,6 +395,86 @@ export class WebCrawlerService {
     }
   }
 
+  /**
+   * Filter page URLs by locale hints (country + language).
+   *
+   * When a sitemap has URLs for multiple locales (e.g. /ae, /ae-ar, /sa-en, /eg),
+   * this method scores each URL and returns only those matching the project locale.
+   * If no locale-matched URLs exist (non-localized site), returns the first `limit`.
+   *
+   * Scoring: uses the same segment matching as scoreSitemapForHints but on page URLs.
+   * For country=AE + language=en, /ae matches (country), /ae-ar doesn't (has Arabic
+   * segment but no English), /ae/coupons matches.
+   *
+   * Special rule for combined locale segments: if a URL contains a combined segment
+   * like /ae-ar or /sa-en, both parts contribute. A URL with /ae-ar scores 3 (country)
+   * but NOT language. A URL with /ae alone (no conflicting language marker) is treated
+   * as matching both country + the default language.
+   */
+  private filterUrlsByLocale(
+    urls: string[],
+    hints: { country?: string; language?: string } | undefined,
+    limit: number,
+  ): string[] {
+    if (!hints?.country && !hints?.language) return urls.slice(0, limit);
+    if (urls.length === 0) return [];
+
+    const country = hints.country?.toLowerCase();
+    const lang = hints.language?.toLowerCase().split('-')[0]; // 'en-AE' → 'en'
+    const countryAliases = country
+      ? WebCrawlerService.COUNTRY_ALIASES[country] ?? [country]
+      : [];
+
+    // All known language codes that appear in locale path segments
+    const otherLangs = ['ar', 'fr', 'de', 'es', 'it', 'pt', 'nl', 'ru', 'ja', 'ko', 'zh', 'hi', 'ur', 'tr'];
+    const otherCountryAliases: string[] = [];
+    for (const [code, aliases] of Object.entries(WebCrawlerService.COUNTRY_ALIASES)) {
+      if (code !== country) otherCountryAliases.push(...aliases);
+    }
+
+    const scored = urls.map((url) => {
+      const path = new URL(url).pathname.toLowerCase();
+      let score = 0;
+
+      // Check if URL path has a locale segment
+      const hasCountry = countryAliases.some((a) =>
+        new RegExp(`/${a}(/|$|-[a-z])`).test(path),
+      );
+      if (hasCountry) score += 3;
+
+      // Check if URL has a conflicting language (e.g. -ar in /ae-ar when lang=en)
+      if (lang) {
+        const hasTargetLang = new RegExp(`[-/]${lang}(/|$)`).test(path) ||
+          // Combined locale like /ae (without any language suffix) → treat as default locale
+          (hasCountry && !otherLangs.some((ol) => ol !== lang && new RegExp(`[-/]${ol}(/|$)`).test(path)));
+        if (hasTargetLang) score += 2;
+      }
+
+      // Penalize if another country is present
+      const hasOtherCountry = otherCountryAliases.some((a) =>
+        new RegExp(`/${a}(/|$|-[a-z])`).test(path),
+      );
+      if (hasOtherCountry && !hasCountry) score -= 5;
+
+      return { url, score };
+    });
+
+    // If the site uses locale paths, filter to matching locale only
+    const maxScore = Math.max(...scored.map((s) => s.score));
+    if (maxScore > 0) {
+      // Keep only URLs that have at least a country match (score >= 3) or match both (5)
+      const threshold = Math.max(3, maxScore - 2);
+      const filtered = scored
+        .filter((s) => s.score >= threshold)
+        .sort((a, b) => b.score - a.score)
+        .map((s) => s.url);
+      return filtered.slice(0, limit);
+    }
+
+    // No locale-aware URLs detected — return all (non-localized site)
+    return urls.slice(0, limit);
+  }
+
   // ─── HTTP fetch ──────────────────────────────────────────────
 
   /**
@@ -261,6 +498,33 @@ export class WebCrawlerService {
     } catch {
       this.logger.warn(`fetchText failed for ${url}`);
       return '';
+    }
+  }
+
+  /**
+   * Fetch a URL and return both the response body and lower-cased response headers.
+   * Used when callers need to inspect HTTP response headers (e.g. X-Robots-Tag).
+   * Returns { body: '', headers: {} } on any failure.
+   */
+  async fetchWithHeaders(
+    url: string,
+    timeoutMs = 10_000,
+  ): Promise<{ body: string; headers: Record<string, string> }> {
+    try {
+      const controller = new AbortController();
+      const timer = setTimeout(() => controller.abort(), timeoutMs);
+      const response = await fetch(url, {
+        signal: controller.signal,
+        headers: { 'User-Agent': 'PulseBot/1.0 (+https://getpulse.ai/bot)' },
+      });
+      clearTimeout(timer);
+      if (!response.ok) return { body: '', headers: {} };
+      const headers: Record<string, string> = {};
+      response.headers.forEach((value, key) => { headers[key.toLowerCase()] = value; });
+      return { body: await response.text(), headers };
+    } catch {
+      this.logger.warn(`fetchWithHeaders failed for ${url}`);
+      return { body: '', headers: {} };
     }
   }
 

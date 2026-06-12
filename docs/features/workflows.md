@@ -69,12 +69,12 @@ The run detail page exposes three distinct execution surfaces for each completed
 | Panel | Source | Behavior |
 |-------|--------|----------|
 | Artifact renderer | `frontend/src/features/workflow/renderers/` | Step-specific visualization of the structured JSON artifact |
-| Agent Reasoning | `step_artifacts.reasoning` | Shows the exact execution package sent to the managed agent plus any rationale fields the model returned explicitly in structured output |
+| Agent Reasoning | `step_artifacts.reasoning` | Shows the execution context sent to the agent runtime plus any rationale fields the model returned in structured output |
 | Tool Calls | `step_tool_calls` | Shows recorded tool usage in execution order; `pipeline-then-agent` steps also record a synthetic `pipeline.<stepKey>` trace so upstream fetch/extract work is visible in the UI |
 
 Notes:
-- Anthropic Managed Agents Sessions do not expose private chain-of-thought text.
-- For managed-agent steps, the reasoning panel is therefore an execution trace, not hidden internal reasoning.
+- The local AgentRuntime uses Claude Messages API with extended thinking. Thinking traces are stored in `step_artifacts.metadata`.
+- For agent steps, the reasoning panel shows execution context and model rationale, not hidden internal reasoning.
 - For `business-profile`, the artifact renderer uses a structured business-analysis layout instead of the generic fallback field dump.
 - For `serp-niche-map`, the renderer shows three summary metrics in a row and places the text-heavy `Top Opportunity` field in a full-width callout below them for readability.
 
@@ -119,8 +119,6 @@ Each agent is defined as a `.agent.md` file in `server/src/agents/definitions/`:
 name: Seed Keywords Generator
 step_key: seed-keywords
 execution_type: pipeline-then-agent
-managed_agent_id: agent_016cC7oU7XoFSs13kqYAwHSN
-skill: seed-keyword-discovery
 depends_on:
   - business-profile
 credit_cost: 40
@@ -135,14 +133,14 @@ You are an SEO keyword research specialist...
 
 ## Execution Types
 
-The workflow runtime routes managed-agent steps by `execution_type`.
+The workflow runtime routes agent steps by `execution_type` (resolved from `.agent.md` frontmatter).
 
 | execution_type | Behavior |
 |----------------|----------|
-| `pipeline-only` | Deterministic code path only; no managed agent |
-| `pipeline-then-agent` | Pipeline gathers evidence first, then the managed agent reasons over the provided `pipeline_data` with no tools |
-| `agent-only` | Managed agent reasons over prior workflow context only, with no tools |
-| `agent-with-tools` | Managed agent receives the configured tools and can call them during execution |
+| `pipeline-only` | Deterministic code path only; no LLM agent |
+| `pipeline-then-agent` | Pipeline gathers evidence first, then the local AgentRuntime reasons over the provided `pipeline_data` with no tools |
+| `agent-only` | Agent reasons over prior workflow context only, with no tools |
+| `agent-with-tools` | Agent receives the configured tools and can call them during execution |
 
 For `seed-keywords`, the current contract is `pipeline-then-agent`: the pipeline gathers organic keywords, extracted seed terms, related terms, and suggestions, and the agent returns the final `seedKeywords` artifact from that provided evidence.
 
@@ -153,18 +151,16 @@ Steps are classified into 3 execution tiers:
 | Tier | Provider | Description | Examples |
 |------|----------|-------------|----------|
 | Tier 1 | Pipeline (code) | No LLM — direct API calls + data transform | competitor-metrics, search-demand, method01-03 |
-| Tier 2 | Anthropic (thinking) | Single-shot with extended thinking, no tools | consolidated-keywords, verdict-strategy, topical-map |
-| Tier 3 | Anthropic managed agents | Managed-agent execution; the actual tool behavior is determined by `execution_type` | phase1-baseline, seed-keywords, content-brief, content-article, site-audit |
+| Tier 2 | Local AgentRuntime (thinking) | Single-shot with extended thinking, no tools | consolidated-keywords, verdict-strategy, topical-map |
+| Tier 3 | Local AgentRuntime (tools) | Agent execution with tool-calling capabilities | phase1-baseline, seed-keywords, content-brief, content-article, site-audit |
 
 Routing logic in `WorkflowProcessor`:
-1. `tier: tier1` → `PipelineService.execute()` (no LLM, deterministic)
-2. `tier: tier2` → `AgentRuntime.executeTier2()` → `provider.completeTier2()`
-3. `tier: tier3` (or default) → managed-agent execution path, then:
-  - `pipeline-then-agent` → run pipeline, pass `pipeline_data`, set `allowedTools: []`
-  - `agent-only` → no pipeline, set `allowedTools: []`
-  - `agent-with-tools` → no pipeline, pass configured tools
+1. `executionType: pipeline-only` → `PipelineService.execute()` (no LLM, deterministic)
+2. `executionType: agent-only` → `AgentRuntime.execute()` with `allowedTools: []`
+3. `executionType: pipeline-then-agent` → run pipeline, pass `pipeline_data` to `AgentRuntime.execute()` with `allowedTools: []`
+4. `executionType: agent-with-tools` → `AgentRuntime.execute()` with configured tools
 
-`seed-keywords` uses `pipeline-then-agent`, so the Tool Calls panel should show the synthetic `pipeline.seed-keywords` trace for the upstream fetch work rather than live Ahrefs, DataForSEO, or Serper tool calls from the managed agent.
+`seed-keywords` uses `pipeline-then-agent`, so the Tool Calls panel shows the synthetic `pipeline.seed-keywords` trace for the upstream fetch work rather than live tool calls from the agent.
 
 ## Verification Service
 
@@ -260,26 +256,61 @@ Set `PROMPT_SOURCE=local` to immediately bypass Console and use on-disk prompts.
 
 Located in `server/src/features/workflows/pipelines/`:
 
-| Pipeline | Step Key | Description |
-|----------|----------|-------------|
-| CompetitorMetricsPipeline | competitor-metrics | Batch Ahrefs domain rating, backlinks, keywords |
-| SearchDemandPipeline | search-demand | Batch volume + difficulty from DataForSEO/Ahrefs |
-| Method01CompetitorPagesPipeline | method01-competitor-pages | Top organic pages per competitor |
-| Method02SeedExpansionPipeline | method02-seed-expansion | Related keywords + suggestions expansion |
-| Method03ContentGapPipeline | method03-content-gap-import | Set-difference gap analysis |
+| Pipeline | Step Key | API Calls | Description |
+|----------|----------|-----------|-------------|
+| CompetitorMetricsPipeline | competitor-metrics | Ahrefs: DR + backlinks + top-keywords × N competitors | Batch competitor metrics. Reads target DR from `context['business-profile']` (no duplicate call). Exposes `keywords[]` per competitor for downstream use. |
+| SearchDemandPipeline | search-demand | DataForSEO/Ahrefs volume per keyword | Volume + difficulty batch enrichment |
+| Phase1BaselinePipeline | phase1-baseline | 0–1 Ahrefs calls | Reads organic keywords from `context['seed-keywords']` if available (0 Ahrefs calls). Falls back to `getOrganicKeywords` only if context is empty. Always calls `getOrganicPages` (1 call). |
+| SerpNicheMapPipeline | serp-niche-map | Ahrefs SERP × ≤20 seeds | Capped at 20 seeds. Reads from `context['seed-keywords'].seedKeywords[]`. |
+| Method01CompetitorPagesPipeline | method01-competitor-pages | Ahrefs `getOrganicPages` × N competitors | Top organic pages per competitor. Reads `keywords[]` from `context['competitor-metrics']` — no extra keyword API calls. |
+| Method02SeedExpansionPipeline | method02-seed-expansion | **0 API calls** | Passes `seedKeywords[]` from `context['seed-keywords']` directly to the agent. No Ahrefs or DataForSEO calls. |
+| Method03ContentGapPipeline | method03-content-gap-import | **0 API calls** (if no imports) | Early gate: if `context['imported-keywords']` is absent or empty, returns empty result schema immediately. API calls only fire when external keyword data has been imported. |
 
-## Analysis Utilities
+## R12 Cost Optimisations (June 2026)
 
-Ported from Python sidecar to `server/src/shared/analysis/`:
+Release 12 implemented 8 targeted optimisations. All changes are backward-compatible.
 
-| Utility | Description |
-|---------|-------------|
-| `citability.util.ts` | HTML citability scoring (schema, FAQ, tables, etc.) |
-| `pagespeed-parser.util.ts` | Lighthouse JSON → normalized metrics |
-| `keyword-scoring.util.ts` | Opportunity score formula |
-| `opportunity-filter.util.ts` | Threshold-based keyword filtering |
-| `competitor-gaps.util.ts` | Set difference for content gaps |
-| `brand-mentions.util.ts` | Regex-based brand mention detection |
+### API Deduplication
+
+| Step | Before | After | Saving |
+|------|--------|-------|--------|
+| method02-seed-expansion | 40+ API calls (Ahrefs + DataForSEO) | **0 calls** — reads from `seed-keywords` context | ~40 credits/run |
+| phase1-baseline | 2 API calls (Ahrefs organic keywords + pages) | **1 call** (pages only) — keywords from `seed-keywords` context | ~1 Ahrefs unit/run |
+| serp-niche-map | Up to 50 SERP calls | **≤20 calls** — capped at 20 seeds | ~30 SERP credits/run |
+| method03-content-gap-import | ~9 API calls | **0 calls** (when no imports) — early gate | ~9 credits when skipped |
+| method01-competitor-pages | `getOrganicKeywords` per competitor | **0 keyword calls** — reads from `competitor-metrics` context | ~N credits/run |
+
+### Bug Fixes
+
+| Step | Bug | Fix |
+|------|-----|-----|
+| competitor-metrics | Target DR read from `.rawData.domainAuthority.domain_rating` (non-existent path) | Fixed to `.domain_authority.domain_rating` (Claude agent output schema) |
+
+### Context Slicing
+
+For three late-stage steps that previously received the full `workflowContext` (all prior step outputs), `workflow.processor.ts` now passes only the declared dependency keys:
+
+| Step | Context Keys Passed |
+|------|--------------------|
+| consolidated-keywords | `seed-keywords`, `method01-competitor-pages`, `method02-seed-expansion`, `method03-content-gap-import`, `phase1-baseline` |
+| verdict-strategy | `business-profile`, `site-audit`, `ai-intelligence`, `competitor-buckets`, `competitor-metrics`, `consolidated-keywords` |
+| topical-map | `consolidated-keywords`, `verdict-strategy`, `business-profile` |
+
+Slicing implemented in `AgentRuntimeConfig.contextKeys` → `buildUserMessage()` filter in `agent.runtime.ts`.
+
+### Prompt Corrections
+
+Five prompt files were corrected to match actual runtime execution model (`allowedTools: []` for all `pipeline-then-agent` steps):
+
+| File | Problem | Fix |
+|------|---------|-----|
+| `research/phase1-baseline.prompt.md` | Listed blocked tool names in execution model | Replaced with pipeline data note |
+| `research/method01-competitor-pages.prompt.md` | Rule 1 required keywords from tool responses (tools blocked); step-by-step instructed tool calls; note said keyword data unavailable | All three corrected to reflect actual pipeline data shape including `keywords[]` |
+| `research/method02-seed-expansion.prompt.md` | Listed blocked tool names | Updated to reflect `rawData.seedKeywords` pipeline shape |
+| `content/content-brief.prompt.md` | Instructions 1–2 called `serper_search`/`firecrawl_scrape`; Task section said "using the available tools" | Redirected to `serpResults`/`scrapedPages` in `<pipeline_data>` |
+| `competitors/competitor-metrics.prompt.md` | Labelled as "Agent-with-tools" (it's pipeline-only, prompt never loaded) | Labelled as "Pipeline-only (no LLM) — documentation only" |
+
+---
 
 ## Data Model
 

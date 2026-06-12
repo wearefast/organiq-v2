@@ -11,6 +11,7 @@ import {
 } from '@nestjs/common';
 import { ApiTags, ApiBearerAuth } from '@nestjs/swagger';
 import { ContentService } from './content.service';
+import { ForumIntelligenceService } from './forum-intelligence.service';
 import { ClerkGuard } from '../auth/clerk.guard';
 import { OrgMembershipGuard } from '../auth/org-membership.guard';
 
@@ -19,7 +20,10 @@ import { OrgMembershipGuard } from '../auth/org-membership.guard';
 @UseGuards(ClerkGuard, OrgMembershipGuard)
 @Controller('projects/:projectId/content')
 export class ContentController {
-  constructor(private readonly contentService: ContentService) {}
+  constructor(
+    private readonly contentService: ContentService,
+    private readonly forumIntelligence: ForumIntelligenceService,
+  ) {}
 
   @Get()
   async findAll(@Param('projectId') projectId: string) {
@@ -36,6 +40,35 @@ export class ContentController {
     return this.contentService.findAllImagesByProject(projectId);
   }
 
+  // ─── Project Assets ───────────────────────────────────────────
+
+  @Get('project-assets')
+  async listProjectAssets(@Param('projectId') projectId: string) {
+    return this.contentService.findProjectAssets(projectId);
+  }
+
+  @Post('project-assets')
+  async uploadProjectAsset(
+    @Param('projectId') projectId: string,
+    @Body() body: { name: string; mimeType: string; size: number; base64: string },
+  ) {
+    return this.contentService.createProjectAsset(
+      projectId,
+      body.name,
+      body.mimeType,
+      body.size,
+      body.base64,
+    );
+  }
+
+  @Delete('project-assets/:assetId')
+  async deleteProjectAsset(
+    @Param('projectId') projectId: string,
+    @Param('assetId') assetId: string,
+  ) {
+    return this.contentService.deleteProjectAsset(assetId, projectId);
+  }
+
   @Get('forums')
   async searchForums(
     @Param('projectId') projectId: string,
@@ -43,6 +76,57 @@ export class ContentController {
     @Query('country') country?: string,
   ) {
     return this.contentService.searchForumThreads(projectId, q ?? '', country);
+  }
+
+  @Get('forums/opportunities')
+  async getForumOpportunities(
+    @Param('projectId') projectId: string,
+    @Query('status') status?: string,
+  ) {
+    return this.forumIntelligence.getOpportunities(projectId, status);
+  }
+
+  @Get('forums/topics')
+  async getForumTopics(@Param('projectId') projectId: string) {
+    return this.forumIntelligence.getTopics(projectId);
+  }
+
+  @Get('forums/stats')
+  async getForumStats(@Param('projectId') projectId: string) {
+    return this.forumIntelligence.getStats(projectId);
+  }
+
+  @Post('forums/topics')
+  async addForumTopic(
+    @Param('projectId') projectId: string,
+    @Body() body: { topic: string },
+  ) {
+    return this.forumIntelligence.addTopic(projectId, body.topic);
+  }
+
+  @Delete('forums/topics/:topicId')
+  async removeForumTopic(
+    @Param('projectId') projectId: string,
+    @Param('topicId') topicId: string,
+  ) {
+    await this.forumIntelligence.removeTopic(topicId, projectId);
+    return { success: true };
+  }
+
+  @Patch('forums/opportunities/:oppId/status')
+  async updateOpportunityStatus(
+    @Param('projectId') projectId: string,
+    @Param('oppId') oppId: string,
+    @Body() body: { status: 'seen' | 'replied' | 'dismissed' },
+  ) {
+    await this.forumIntelligence.updateOpportunityStatus(oppId, projectId, body.status);
+    return { success: true };
+  }
+
+  @Post('forums/scan')
+  async triggerForumScan(@Param('projectId') projectId: string) {
+    const count = await this.forumIntelligence.scanProject(projectId);
+    return { newOpportunities: count };
   }
 
   @Get(':id')

@@ -9,7 +9,7 @@
 
 | # | Task | Status | Files |
 |---|------|--------|-------|
-| A1 | New Docker Compose (pulse_v2 db, redis, api, frontend, python-sidecar) | ✅ | `infra/docker-compose.yml` |
+| A1 | New Docker Compose (pulse_v2 db, redis, api, frontend) | ✅ | `infra/docker-compose.yml` |
 | A2 | Update `.env.example` with all new env vars | ✅ | `.env.example` |
 | A3 | Update root `package.json` scripts | ✅ | `package.json` |
 | A4 | NestJS bootstrap — new `app.module.ts` with ConfigModule, DatabaseModule, HealthModule | ✅ | `server/src/app.module.ts`, `server/src/main.ts` |
@@ -40,7 +40,7 @@
 | B6 | Integration service — OpenAI (function calling) | ✅ | `server/src/features/integrations/openai/` |
 | B7 | Integration service — PageSpeed / CrUX | ✅ | `server/src/features/integrations/pagespeed/` |
 | B8 | Integration service — Serper.dev | ✅ | `server/src/features/integrations/serper/` |
-| B9 | Integration service — Google Search Console (via python sidecar) | ✅ | `server/src/features/integrations/gsc/` |
+| B9 | Integration service — Google Search Console (NestJS native) | ✅ | `server/src/features/integrations/gsc/` |
 | B10 | Tool Registry + Tool Sandbox | ✅ | `server/src/agents/tool.registry.ts`, `server/src/agents/tool.sandbox.ts` |
 | B11 | Agent Runtime — execution loop (OpenAI function calling, max iterations, credit metering) | ✅ | `server/src/agents/agent.runtime.ts` |
 | B12 | Agent Registry — load .agent.md definitions | ✅ | `server/src/agents/agent.registry.ts` |
@@ -84,7 +84,7 @@
 | D7 | Agent definition — `competitor-metrics.agent.md` + prompt files | ✅ | `server/src/agents/definitions/`, `server/src/prompts/competitors/` |
 | D8 | Agent definition — `search-demand.agent.md` + prompt files | ✅ | `server/src/agents/definitions/`, `server/src/prompts/intelligence/` |
 | D9 | Artifact renderers — Site Audit, AI Intelligence, Search Demand | ✅ | `frontend/src/features/workflow/renderers/` |
-| D10 | Python sidecar — `/analyze/citability`, `/analyze/pagespeed`, `/analyze/gsc-performance`, `/analyze/brand-mentions` | ✅ | `python-sidecar/` |
+| D10 | Analysis utilities — citability, pagespeed parsing, brand mentions (ported to NestJS) | ✅ | `server/src/features/integrations/` |
 | D11 | End-to-end test — run Steps 1-8 for a test domain | ✅ | code trace verified |
 
 ---
@@ -99,7 +99,7 @@
 | E4 | Agent definition — `method03-content-gap-import.agent.md` (manual import UI) | ✅ | `server/src/agents/definitions/` |
 | E5 | Agent definition — `consolidated-keywords.agent.md` | ✅ | `server/src/agents/definitions/` |
 | E6 | Artifact renderers — Phase 1 Baseline, Methods 01-03, Consolidation | ✅ | `frontend/src/features/workflow/renderers/` |
-| E7 | Python sidecar — `/analyze/keywords`, `/analyze/opportunity`, `/analyze/competitor-gaps` | ✅ | `python-sidecar/` |
+| E7 | Keyword analysis — scoring, opportunity filter, competitor gaps (ported to NestJS) | ✅ | `server/src/features/keywords/` |
 | E8 | Keywords module (backend — ledger, bulk import, status updates) | ✅ | `server/src/features/keywords/` |
 | E9 | Keyword Ledger page (frontend) | ✅ | `frontend/src/app/(dashboard)/.../keywords/` |
 
@@ -128,7 +128,7 @@
 | G3 | Scoring rubrics — readability, SEO quality, AI citability, opportunity, content length | ✅ | `server/src/prompts/scoring/` |
 | G4 | Agent definition — `content-brief.agent.md` | ✅ | `server/src/agents/definitions/` |
 | G5 | Agent definition — `content-article.agent.md` | ✅ | `server/src/agents/definitions/` |
-| G6 | Python sidecar — `/analyze/readability`, `/analyze/content-score` | ✅ | `python-sidecar/` |
+| G6 | Content scoring — readability, SEO quality (integrated in NestJS agent runtime) | ✅ | `server/src/prompts/scoring/` |
 | G7 | Artifact renderers — Content Brief, Content Article + Score Dashboard | ✅ | `frontend/src/features/workflow/renderers/` |
 | G8 | Content module (backend — CRUD, status, batch ops) | ✅ | `server/src/features/content/` |
 | G9 | Content pages (frontend — list, editor, score dashboard) | ✅ | `frontend/src/app/(dashboard)/.../content/` |
@@ -141,12 +141,12 @@
 | # | Task | Status | Files |
 |---|------|--------|-------|
 | H1 | Report templates (4: Full Strategy, AI Visibility, Keyword Research, Content Plan) | ✅ | `server/src/prompts/reports/` |
-| H2 | Python sidecar — `/reports/pdf` (ReportLab generation) | ✅ | `python-sidecar/routers/reports.py`, `python-sidecar/requirements.txt` |
+| H2 | PDF generation — local PdfGeneratorService (pdfmake) | ✅ | `server/src/features/reports/pdf-generator.service.ts` |
 | H3 | Reports module (backend — generate, list, download) | ✅ | `server/src/features/reports/` |
 | H4 | Reports page (frontend — generate, list, download) | ✅ | `frontend/src/app/(dashboard)/workspaces/[wId]/projects/[pId]/reports/page.tsx` |
 | H5 | Settings page (org, workspace, API keys, credits) | ✅ | `frontend/src/app/(dashboard)/settings/page.tsx` |
 | H6 | Command Palette (⌘K) | ✅ | `frontend/src/shared/components/command-palette.tsx` |
-| H7 | Keyboard shortcuts (J/K navigation, A/R/E approval) | ✅ | `frontend/src/shared/hooks/use-keyboard-shortcuts.ts` |
+| H7 | Keyboard shortcuts (J/K navigation, A/R/E approval) | ✅ | _(removed — unused)_ |
 | H8 | Dark/Light mode toggle | ✅ | `frontend/src/shared/hooks/use-theme.tsx`, `frontend/src/app/globals.css` |
 
 ---

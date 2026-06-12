@@ -1,5 +1,7 @@
 'use client';
 
+import { RichText } from '@/shared/components/rich-text';
+
 interface Competitor {
   domain?: string;
   name?: string;
@@ -70,7 +72,7 @@ export function CompetitorBucketsRenderer({ data }: { data: unknown }) {
       {/* Summary text */}
       {summaryStr && (
         <div className="rounded border border-zinc-800 bg-zinc-900/30 px-3 py-2">
-          <p className="text-[11px] text-zinc-400">{summaryStr}</p>
+          <RichText size="sm" textClass="text-zinc-300">{summaryStr}</RichText>
         </div>
       )}
 
@@ -112,7 +114,7 @@ export function CompetitorBucketsRenderer({ data }: { data: unknown }) {
                         </div>
                       </div>
                       {(comp.positioning || comp.evidence) && (
-                        <p className="mt-1.5 text-[10px] leading-relaxed text-zinc-400">{comp.positioning ?? comp.evidence}</p>
+                        <RichText textClass="text-zinc-400">{comp.positioning ?? comp.evidence ?? ''}</RichText>
                       )}
                       {((comp.strengths && comp.strengths.length > 0) || (comp.weaknesses && comp.weaknesses.length > 0)) && (
                         <div className="mt-2 flex gap-4">
@@ -176,7 +178,7 @@ export function CompetitorBucketsRenderer({ data }: { data: unknown }) {
       {/* Recommendation (if summary is structured) */}
       {summaryObj?.recommendation && (
         <div className="rounded border border-zinc-800 bg-zinc-900/30 px-3 py-2">
-          <p className="text-[11px] text-zinc-400">{summaryObj.recommendation}</p>
+          <RichText size="sm" textClass="text-zinc-300">{summaryObj.recommendation}</RichText>
         </div>
       )}
     </div>

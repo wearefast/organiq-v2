@@ -60,8 +60,8 @@ export class SerperService {
 
         if (!response.ok) {
           const text = await response.text();
-          this.logger.error(`Serper API error: ${response.status}`);
-          throw new Error(`Serper API error: ${response.status}`);
+          this.logger.error(`Serper API error: ${response.status} - ${text}`);
+          throw new Error(`Serper API error: ${response.status} - ${text}`);
         }
 
         return response.json();

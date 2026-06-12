@@ -89,7 +89,7 @@ export class SearchDemandPipeline implements Pipeline {
     }));
 
     const highOpportunity = enrichedKeywords
-      .filter((k) => k.opportunityScore > 0.6)
+      .filter((k) => k.metrics.searchVolume > 0)
       .sort((a, b) => b.opportunityScore - a.opportunityScore)
       .slice(0, 20)
       .map((k) => ({
@@ -97,7 +97,7 @@ export class SearchDemandPipeline implements Pipeline {
         volume: k.metrics.searchVolume,
         difficulty: k.metrics.keywordDifficulty,
         opportunityScore: k.opportunityScore,
-        rationale: `Volume: ${k.metrics.searchVolume}, KD: ${k.metrics.keywordDifficulty}`,
+        rationale: `Volume: ${k.metrics.searchVolume.toLocaleString()}, KD: ${k.metrics.keywordDifficulty}`,
       }));
 
     return {
@@ -131,10 +131,19 @@ export class SearchDemandPipeline implements Pipeline {
     const map = new Map<string, number>();
     if (!response || typeof response !== 'object') return map;
     const data = response as Record<string, unknown>;
-    if (Array.isArray(data.results)) {
-      for (const item of data.results as Array<Record<string, unknown>>) {
-        if (item.keyword && typeof item.search_volume === 'number') {
-          map.set(String(item.keyword).toLowerCase(), item.search_volume);
+    // DataForSEO returns { tasks: [...] }
+    if (Array.isArray(data.tasks)) {
+      const tasks = data.tasks as Array<Record<string, unknown>>;
+      for (const task of tasks) {
+        const results = task.result as Array<Record<string, unknown>>;
+        if (Array.isArray(results)) {
+          for (const item of results) {
+            const keyword = item.keyword as string;
+            const volume = item.search_volume as number;
+            if (keyword && typeof volume === 'number') {
+              map.set(keyword.toLowerCase(), volume);
+            }
+          }
         }
       }
     }
@@ -145,10 +154,13 @@ export class SearchDemandPipeline implements Pipeline {
     const map = new Map<string, number>();
     if (!response || typeof response !== 'object') return map;
     const data = response as Record<string, unknown>;
+    // Ahrefs returns { keywords: [...] }
     if (Array.isArray(data.keywords)) {
       for (const item of data.keywords as Array<Record<string, unknown>>) {
-        if (item.keyword && typeof item.difficulty === 'number') {
-          map.set(String(item.keyword).toLowerCase(), item.difficulty);
+        const keyword = item.keyword as string;
+        const difficulty = item.difficulty as number;
+        if (keyword && typeof difficulty === 'number') {
+          map.set(keyword.toLowerCase(), difficulty);
         }
       }
     }

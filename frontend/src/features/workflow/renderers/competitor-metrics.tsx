@@ -37,9 +37,20 @@ interface CompetitorMetricsData {
 
 /* ── Helpers ── */
 
+/** Safely extract a numeric DR — handles number, or the accidental object shape { domain_rating, ahrefs_rank } stored by an earlier buggy pipeline run */
+function resolveDR(dr?: number | { domain_rating?: number } | null): number {
+  if (dr == null) return 0;
+  if (typeof dr === 'number') return dr;
+  return dr.domain_rating ?? 0;
+}
+
 function resolveBacklinks(bl?: BacklinkMetrics | number | null): { live: number; refDomains: number } {
   if (bl == null) return { live: 0, refDomains: 0 };
   if (typeof bl === 'number') return { live: bl, refDomains: 0 };
+  // Handle Ahrefs v3 raw format stored before pipeline normalization: { metrics: { live, live_refdomains } }
+  const nested = (bl as { metrics?: { live?: number; live_refdomains?: number } }).metrics;
+  if (nested) return { live: nested.live ?? 0, refDomains: nested.live_refdomains ?? 0 };
+  // Normalized format (post pipeline fix): { live, liveRefDomains }
   return { live: bl.live ?? 0, refDomains: bl.liveRefDomains ?? 0 };
 }
 
@@ -101,7 +112,7 @@ export function CompetitorMetricsRenderer({ data }: { data: unknown }) {
   const allRows = [
     ...(target ? [{ ...target, _isTarget: true }] : []),
     ...(raw.competitorMetrics ?? raw.competitors ?? []).map((c) => ({ ...c, _isTarget: false })),
-  ].sort((a, b) => (b.domainRating ?? 0) - (a.domainRating ?? 0)) as Array<CompetitorEntry & { _isTarget: boolean }>;
+  ].sort((a, b) => resolveDR(b.domainRating as number) - resolveDR(a.domainRating as number)) as Array<CompetitorEntry & { _isTarget: boolean }>;
   const gapRows = flattenGaps(raw.gaps, target, raw.benchmarks);
   const summary = typeof raw.summary === 'string' ? raw.summary : raw.summary?.recommendation;
   // Normalize quickWins: agent may return flat array instead of keyed object
@@ -220,7 +231,7 @@ function SortableCompetitorTable({ rows }: { rows: Array<CompetitorEntry & { _is
                 return (
                   <tr key={i} className="border-b border-zinc-800/50 bg-emerald-500/5">
                     <td className="px-3 py-2 font-medium text-emerald-400">{row.domain} (you)</td>
-                    <td className="px-3 py-2 text-right text-zinc-300">{row.domainRating ?? '—'}</td>
+                    <td className="px-3 py-2 text-right text-zinc-300">{resolveDR(row.domainRating as number) || '—'}</td>
                     <td className="px-3 py-2 text-right text-zinc-300">{formatNumber(bl.live)}</td>
                     <td className="px-3 py-2 text-right text-zinc-300">{formatNumber(bl.refDomains)}</td>
                     <td className="px-3 py-2 text-right text-zinc-300">{formatNumber(row.ahrefsRank)}</td>
@@ -230,7 +241,7 @@ function SortableCompetitorTable({ rows }: { rows: Array<CompetitorEntry & { _is
               return (
                 <tr key={i} className="border-b border-zinc-800/50 hover:bg-zinc-800/30">
                   <td className="px-3 py-2 text-zinc-200">{row.domain}</td>
-                  <td className="px-3 py-2 text-right text-zinc-400">{row.domainRating ?? '—'}</td>
+                  <td className="px-3 py-2 text-right text-zinc-400">{resolveDR(row.domainRating as number) || '—'}</td>
                   <td className="px-3 py-2 text-right text-zinc-400">{formatNumber(bl.live)}</td>
                   <td className="px-3 py-2 text-right text-zinc-400">{formatNumber(bl.refDomains)}</td>
                   <td className="px-3 py-2 text-right text-zinc-400">{formatNumber(row.ahrefsRank)}</td>

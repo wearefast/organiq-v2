@@ -14,6 +14,7 @@ import { ContentBriefPipeline } from './content-brief.pipeline';
 import { SiteAuditPipeline } from './site-audit.pipeline';
 import { ContentArticlePipeline } from './content-article.pipeline';
 import { AiIntelligencePipeline } from './ai-intelligence.pipeline';
+import { ConsolidatedKeywordsPipeline } from './consolidated-keywords.pipeline';
 
 @Injectable()
 export class PipelineService {
@@ -35,6 +36,7 @@ export class PipelineService {
     siteAudit: SiteAuditPipeline,
     contentArticle: ContentArticlePipeline,
     aiIntelligence: AiIntelligencePipeline,
+    consolidatedKeywords: ConsolidatedKeywordsPipeline,
   ) {
     const pipelines: Pipeline[] = [
       competitorMetrics,
@@ -51,6 +53,7 @@ export class PipelineService {
       siteAudit,
       contentArticle,
       aiIntelligence,
+      consolidatedKeywords,
     ];
     for (const p of pipelines) {
       this.registry.set(p.stepKey, p);

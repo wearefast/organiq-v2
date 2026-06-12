@@ -4,6 +4,54 @@ All notable changes to the Pulse OS codebase, organized by audit and implementat
 
 ---
 
+## [Documentation & Code Cleanup] — May 30, 2026
+
+**CPTO documentation audit: deleted stale docs, resolved circular deps, removed dead code.**
+
+### Docs: Deleted 5 irrelevant/stale files
+
+| Deleted File | Reason |
+|---|---|
+| `claude-console-agent-system-prompts.md` | Referenced retired Anthropic managed agents deployment model |
+| `architecture/messages-api-architecture.md` | Pre-implementation design doc — migration already complete |
+| `workflow-pipeline-visual.html` | Orphaned HTML visualization, not linked from any doc |
+| `debugging/phase-ab-audit.md` | Session snapshot (May 11) — all issues resolved |
+| `debugging/phase-abc-audit.md` | Session snapshot (May 11) — all showstoppers fixed |
+
+### Docs: Updated 5 files for accuracy
+
+- `implementation-plan.md` — Replaced 6 Python sidecar references with actual NestJS implementations
+- `dependencies.md` — Fixed LLM provider: Anthropic Claude is primary (not OpenAI GPT-4o)
+- `technical-debt.md` — Marked 4 items resolved (#3, #4, #5, #12); added #16 (deprecated tier fields)
+- `roadmap.md` — Fixed product name (Pulse OS, not OrganiQ); removed "managed agent" reference
+- `README.md` — Removed deleted doc links; added Architecture Decisions v3 and Roadmap entries
+
+### Code: Fixed 7 circular dependencies
+
+Extracted `ContextBuilder` + `ContextBuilderResult` interfaces to `context-builder.types.ts`. All 7 builders now import from types file instead of registry.
+
+### Code: Deleted 12 dead files
+
+- `server/src/shared/analysis/` (6 utils + index + spec) — ported from Python sidecar but never consumed
+- `server/src/shared/utils/prompt-loader.ts` — superseded by PromptService
+- `script1.js`, `script2.js` — one-off migration scripts
+- `server/scripts/add-return-output.ts`, `server/scripts/export-tool-schemas.ts` — stale managed-agent deployment artifacts
+- `frontend/src/shared/hooks/use-keyboard-shortcuts.ts` — unused
+
+### Code: Fixed type gap
+
+Added `scheduledPublishAt?: string` to frontend `ContentPiece` interface, removed 2 `as any` casts in calendar page.
+
+### Code: Fixed stale comment
+
+`reports.service.ts` — changed "Sending to Python sidecar" to "Generating PDF locally via PdfGeneratorService".
+
+### Dev: Watch mode enabled
+
+`.vscode/tasks.json` — Backend task now uses `nest start --watch` for auto-rebuild on file save.
+
+---
+
 ## [Full-Project CTO Audit — Cleanup & Hardening] — May 19, 2026
 
 **Comprehensive project-wide audit: 8 issues identified and fixed.**

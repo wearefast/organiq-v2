@@ -163,10 +163,8 @@ export function SerpNicheMapRenderer({ data }: { data: unknown }) {
               const type = typeof opp === 'object' ? opp.type : undefined;
               return (
                 <div key={i} className="rounded border border-zinc-800 bg-zinc-900/50 px-3 py-2">
-                  <div className="flex items-center gap-2">
-                    {type && <span className="rounded bg-violet-500/10 px-1.5 py-0.5 text-[9px] uppercase text-violet-400">{type.replace(/_/g, ' ')}</span>}
-                    <p className="text-sm text-zinc-300">{text}</p>
-                  </div>
+                  {type && <span className="mb-1.5 inline-block rounded bg-violet-500/10 px-1.5 py-0.5 text-[9px] uppercase text-violet-400">{type.replace(/_/g, ' ')}</span>}
+                  <p className="text-sm text-zinc-300">{text}</p>
                   {typeof opp === 'object' && opp.rationale && (
                     <p className="mt-1 text-[11px] text-zinc-500">{opp.rationale}</p>
                   )}
@@ -177,33 +175,21 @@ export function SerpNicheMapRenderer({ data }: { data: unknown }) {
         </div>
       )}
 
-      {/* Content Type Distribution */}
-      {niche.contentTypeDistribution && Object.keys(niche.contentTypeDistribution).length > 0 && (
-        <div>
-          <SectionLabel>Content Type Distribution</SectionLabel>
-          <div className="mt-2 flex flex-wrap gap-2">
-            {Object.entries(niche.contentTypeDistribution).map(([type, level]) => (
-              <div key={type} className="rounded border border-zinc-800 bg-zinc-900/50 px-3 py-2 text-center">
-                <p className="text-xs text-zinc-400">{type}</p>
-                <p className="mt-0.5 text-sm font-medium text-zinc-200">{formatDistribution(level)}</p>
-              </div>
-            ))}
-          </div>
-        </div>
-      )}
-
-      {/* SERP Feature Distribution */}
-      {niche.serpFeatureDistribution && Object.keys(niche.serpFeatureDistribution).length > 0 && (
-        <div>
-          <SectionLabel>SERP Feature Distribution</SectionLabel>
-          <div className="mt-2 flex flex-wrap gap-2">
-            {Object.entries(niche.serpFeatureDistribution).map(([feature, level]) => (
-              <div key={feature} className="rounded border border-zinc-800 bg-zinc-900/50 px-3 py-2 text-center">
-                <p className="text-xs text-zinc-400">{feature.replace(/_/g, ' ')}</p>
-                <p className="mt-0.5 text-sm font-medium text-zinc-200">{formatDistribution(level)}</p>
-              </div>
-            ))}
-          </div>
+      {/* Distribution Charts — side by side */}
+      {(niche.contentTypeDistribution || niche.serpFeatureDistribution) && (
+        <div className="grid grid-cols-2 gap-6">
+          {niche.contentTypeDistribution && Object.keys(niche.contentTypeDistribution).length > 0 && (
+            <div>
+              <SectionLabel>Content Type Distribution</SectionLabel>
+              <DistributionBarChart entries={Object.entries(niche.contentTypeDistribution)} />
+            </div>
+          )}
+          {niche.serpFeatureDistribution && Object.keys(niche.serpFeatureDistribution).length > 0 && (
+            <div>
+              <SectionLabel>SERP Feature Distribution</SectionLabel>
+              <DistributionBarChart entries={Object.entries(niche.serpFeatureDistribution)} />
+            </div>
+          )}
         </div>
       )}
     </div>
@@ -298,6 +284,40 @@ function SectionLabel({ children }: { children: React.ReactNode }) {
 function formatDistribution(val: string | number): string {
   if (typeof val === 'number') return `${(val * 100).toFixed(0)}%`;
   return val;
+}
+
+/** Parse a distribution value to a 0–100 number for bar scaling */
+function parseDistributionNum(val: string | number): number {
+  if (typeof val === 'number') return val <= 1 ? val * 100 : val;
+  const n = parseFloat(val);
+  return isNaN(n) ? 0 : n;
+}
+
+function DistributionBarChart({ entries }: { entries: Array<[string, string | number]> }) {
+  const parsed = entries.map(([label, val]) => ({
+    label: label.replace(/_/g, ' '),
+    display: formatDistribution(val),
+    num: parseDistributionNum(val),
+  }));
+  const sorted = [...parsed].sort((a, b) => b.num - a.num);
+  const max = Math.max(...sorted.map(e => e.num), 1);
+
+  return (
+    <div className="mt-2 space-y-2">
+      {sorted.map(entry => (
+        <div key={entry.label} className="flex items-center gap-3">
+          <span className="w-28 shrink-0 truncate text-right text-[11px] capitalize text-zinc-400">{entry.label}</span>
+          <div className="relative flex-1 overflow-hidden rounded bg-zinc-800" style={{ height: '8px' }}>
+            <div
+              className="absolute inset-y-0 left-0 rounded bg-violet-500"
+              style={{ width: `${(entry.num / max) * 100}%`, minWidth: entry.num > 0 ? '2px' : '0' }}
+            />
+          </div>
+          <span className="w-9 shrink-0 text-right text-xs font-medium text-zinc-200">{entry.display}</span>
+        </div>
+      ))}
+    </div>
+  );
 }
 
 function formatNumber(n?: number): string {

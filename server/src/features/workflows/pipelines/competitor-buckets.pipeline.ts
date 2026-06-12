@@ -27,11 +27,11 @@ export class CompetitorBucketsPipeline implements Pipeline {
 
     // Extract service keywords from business profile for Serper searches
     const businessCtx = context['business-profile'] as {
-      services?: string[];
+      primary_services?: string[];
       industry?: string;
       rawData?: { organicKeywords?: unknown };
     } | undefined;
-    const services = businessCtx?.services ?? [];
+    const services = businessCtx?.primary_services ?? [];
     const industry = businessCtx?.industry ?? '';
 
     let apiCallCount = 0;

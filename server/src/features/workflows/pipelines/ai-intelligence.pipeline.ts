@@ -71,16 +71,33 @@ export class AiIntelligencePipeline implements Pipeline {
 
     this.logger.log(`ai-intelligence pipeline: analysing ${domain} (brand="${brand}", market="${market}")`);
 
-    // Build the 5 OpenAI AI-visibility query templates
-    const aiQueries: Array<{ query: string; brand: string }> = [
-      { query: `best ${category} in ${market}`, brand },
-      firstCompetitor
-        ? { query: `${brand} vs ${firstCompetitor} which is better`, brand }
-        : { query: `top ${category} providers ${currentYear}`, brand },
-      { query: `top ${category} for ${bp.icp?.industries?.[0] ?? 'businesses'} ${currentYear}`, brand },
-      { query: `${brand} review ${currentYear}`, brand },
-      { query: `recommended ${category} in ${market}`, brand },
-    ];
+    // Generate natural, human-like queries using LLM instead of rigid templates
+    let naturalQueries: string[];
+    try {
+      naturalQueries = await this.openai.generateNaturalBrandQueries({
+        brand,
+        category,
+        market,
+        competitor: firstCompetitor || undefined,
+        icpIndustry: bp.icp?.industries?.[0],
+      });
+    } catch (err) {
+      this.logger.warn(`Failed to generate natural queries, using simplified fallback: ${(err as Error).message}`);
+      const simpleCategory = category.split('/')[0].trim().toLowerCase();
+      const simpleMarket = market.split('/')[0].trim();
+      naturalQueries = [
+        `best ${simpleCategory} in ${simpleMarket}`,
+        `${brand} review ${currentYear}`,
+        firstCompetitor ? `${brand} vs ${firstCompetitor}` : `top ${simpleCategory} ${currentYear}`,
+        `is ${brand} good`,
+        `recommend ${simpleCategory} for ${bp.icp?.industries?.[0] ?? 'my business'}`,
+      ];
+    }
+
+    const aiQueries: Array<{ query: string; brand: string }> = naturalQueries.map((q) => ({
+      query: q,
+      brand,
+    }));
 
     // business-profile pipeline already scraped homepage + /about + /services + /about-us.
     // Reuse those pages instead of re-scraping — they are exactly the high-value pages

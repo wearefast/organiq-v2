@@ -107,9 +107,9 @@ Step 13 → Step 14 → Step 15 → Step 16 → Step 17 → Step 18
 ### Agent-Led Design
 
 - **Orchestrator** = deterministic code (BullMQ + NestJS): step sequencing, dependency gates, credit metering, data persistence
-- **Executors** = Anthropic Managed Agents (one per step): interpret data, classify, synthesize, score, generate
+- **Executors** = Local AgentRuntime (Anthropic Claude Messages API with tool use): interpret data, classify, synthesize, score, generate
 - **Execution types**: `pipeline-only`, `pipeline-then-agent`, `agent-with-tools`, `agent-only`
-- Each agent has: managed agent ID, execution type, skill mapping, tool permissions, output schema, credit cost
+- Each agent has: execution type, tool permissions, output schema, credit cost
 
 ### Runtime Topology
 
@@ -127,7 +127,7 @@ Step 13 → Step 14 → Step 15 → Step 16 → Step 17 → Step 18
 | Frontend | Next.js 15, React 19, Tailwind CSS, Zustand |
 | Auth | Clerk |
 | Backend | NestJS 10, Drizzle ORM, BullMQ |
-| AI | OpenAI (GPT-4o, function calling), Anthropic (Claude, extended thinking) |
+| AI | Anthropic (Claude — Messages API, tool use, extended thinking), OpenAI (gpt-image-2 for images) |
 | SEO Data | Ahrefs v3 (Site Explorer + Keywords Explorer + Brand Radar) |
 | SERP Data | DataForSEO (9 modules), Serper.dev |
 | Scraping | Firecrawl |
@@ -158,9 +158,8 @@ Pulse/
 │   └── src/
 │       ├── agents/            Agent runtime engine
 │       │   ├── definitions/   18 .agent.md files
-│       │   ├── managed-agent.runtime.ts
+│       │   ├── agent.runtime.ts
 │       │   ├── agent.registry.ts
-│       │   ├── skill.service.ts
 │       │   ├── tool.registry.ts
 │       │   ├── tool.bootstrap.ts
 │       │   ├── tool.sandbox.ts
@@ -221,8 +220,6 @@ Pulse/
 name: Business Profile Analyst
 step_key: business-profile
 execution_type: pipeline-then-agent
-managed_agent_id: agent_01CNd6MVXJvzcXMbgRdpfZuC
-skill: business-profile-analysis
 credit_cost: 30
 depends_on: []
 requires_approval: true
@@ -232,7 +229,7 @@ tools: []
 
 **Execution types**:
 - `pipeline-only` — Data pipeline only (no LLM agent), e.g., competitor-metrics, search-demand
-- `pipeline-then-agent` — Run data pipeline, pass context to Anthropic managed agent
+- `pipeline-then-agent` — Run data pipeline, pass context to local AgentRuntime (Claude Messages API)
 - `agent-with-tools` — Agent has tool-calling capabilities (site-audit, ai-intelligence, content-article)
 - `agent-only` — Just agent execution with minimal pipeline (consolidated-keywords, verdict-strategy, topical-map)
 

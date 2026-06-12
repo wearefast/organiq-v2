@@ -1,13 +1,9 @@
 import { apiFetch } from '@/shared/utils/api';
 
-export interface BotPermissions {
-  GPTBot: 'allowed' | 'blocked' | 'not_specified';
-  ClaudeBot: 'allowed' | 'blocked' | 'not_specified';
-  PerplexityBot: 'allowed' | 'blocked' | 'not_specified';
-  'Google-Extended': 'allowed' | 'blocked' | 'not_specified';
-  Applebot: 'allowed' | 'blocked' | 'not_specified';
-  'cohere-ai': 'allowed' | 'blocked' | 'not_specified';
-}
+export type BotStatus = 'allowed' | 'blocked' | 'not_specified';
+
+/** Keyed by bot user-agent string. New bots added server-side are automatically included. */
+export type BotPermissions = Record<string, BotStatus>;
 
 export interface ContentChecks {
   h1Present: boolean;
@@ -17,6 +13,15 @@ export interface ContentChecks {
   imagesWithAlt: number;
   imagesTotal: number;
   jsRenderedOnly: boolean;
+  // LLM discovery signals (optional — old stored rows pre-date this check)
+  llmsTxtPresent?: boolean;
+  llmsTxtValid?: boolean;
+  pageInLlmsTxt?: boolean;
+  llmsFullTxtPresent?: boolean; // /llms-full.txt full-content variant (used by Perplexity & Claude)
+  // Content freshness signals (optional — old stored rows pre-date this check)
+  dateModifiedPresent?: boolean;
+  dateModifiedRecent?: boolean;
+  sitemapHasLastmod?: boolean;
 }
 
 export interface TrustSignals {
@@ -26,12 +31,27 @@ export interface TrustSignals {
   schemaTypes: string[];
   ogTags: boolean;
   twitterTags: boolean;
+  // E-E-A-T depth signals (optional — old stored rows pre-date this check)
+  hasPersonSchema?: boolean;
+  hasOrganizationSchema?: boolean;
+  authorHasCredentials?: boolean;
+  // Page-level robots directives (optional — old stored rows pre-date this check)
+  metaRobotsNoindex?: boolean;
+  metaRobotsNoai?: boolean;
+  xRobotsNoindex?: boolean;
+  xRobotsNoai?: boolean;
 }
 
 export interface ContentChunking {
   avgParagraphLength: number;
   hasLists: boolean;
   internalLinkCount: number;
+  // Citation-readiness signals (optional — old stored rows pre-date this check)
+  hasFaq?: boolean;
+  hasComparisonTable?: boolean;
+  hasStepList?: boolean;
+  answerFirst?: boolean;
+  hasOutboundLinks?: boolean;
 }
 
 export interface AuditIssue {

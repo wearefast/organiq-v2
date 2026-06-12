@@ -10,11 +10,14 @@ import {
   fetchVisibilityOverview,
   fetchPromptHistory,
   fetchPromptSuggestions,
+  runPromptCheck,
   PromptWithStats,
+  EngineStats,
   VisibilityOverview,
   PromptHistoryEntry,
   PromptSuggestion,
 } from '@/features/analytics/services/prompt-visibility.service';
+import { apiFetch } from '@/shared/utils/api';
 
 // ─── Constants ───────────────────────────────────────────────
 
@@ -100,15 +103,24 @@ export default function VisibilityPage() {
   const [suggestions, setSuggestions] = useState<PromptSuggestion[]>([]);
   const [suggestionsLoading, setSuggestionsLoading] = useState(false);
   const [suggestionsFailed, setSuggestionsFailed] = useState(false);
+  const [runningChecks, setRunningChecks] = useState<Set<string>>(new Set());
+  const [pendingResultIds, setPendingResultIds] = useState<Set<string>>(new Set());
+  const [scheduleHour, setScheduleHour] = useState(4);
+  const [scheduleDraft, setScheduleDraft] = useState(4);
+  const [scheduleEditing, setScheduleEditing] = useState(false);
+  const [scheduleSaving, setScheduleSaving] = useState(false);
 
   const load = useCallback(async () => {
     try {
-      const [p, o] = await Promise.all([
+      const [p, o, sch] = await Promise.all([
         fetchPrompts(projectId),
         fetchVisibilityOverview(projectId),
+        apiFetch<{ hour: number; nextRun: string | null }>(`/projects/${projectId}/prompts/schedule`).catch(() => ({ hour: 4, nextRun: null })),
       ]);
       setPrompts(p);
       setOverview(o);
+      setScheduleHour(sch.hour);
+      setScheduleDraft(sch.hour);
     } catch {
       // ignore
     } finally {
@@ -155,6 +167,44 @@ export default function VisibilityPage() {
     setHistory(h);
   };
 
+  const handleScheduleSave = async () => {
+    setScheduleSaving(true);
+    try {
+      const res = await apiFetch<{ hour: number }>(`/projects/${projectId}/prompts/schedule`, {
+        method: 'PATCH',
+        body: JSON.stringify({ hour: scheduleDraft }),
+      });
+      setScheduleHour(res.hour);
+      setScheduleEditing(false);
+    } finally {
+      setScheduleSaving(false);
+    }
+  };
+
+  const handleRunCheck = async (promptId: string) => {
+    setRunningChecks((prev) => new Set(prev).add(promptId));
+    setPendingResultIds((prev) => new Set(prev).add(promptId));
+    try {
+      await runPromptCheck(projectId, promptId);
+    } catch {
+      // job not queued — clear pending state
+      setPendingResultIds((prev) => { const next = new Set(prev); next.delete(promptId); return next; });
+    } finally {
+      setRunningChecks((prev) => { const next = new Set(prev); next.delete(promptId); return next; });
+      // Jobs take up to 60s (3 majority-vote calls × 2 working engines)
+      // Poll every 15s, give up after 90s
+      let elapsed = 0;
+      const interval = setInterval(async () => {
+        elapsed += 15;
+        await load();
+        if (elapsed >= 90) {
+          clearInterval(interval);
+          setPendingResultIds((prev) => { const next = new Set(prev); next.delete(promptId); return next; });
+        }
+      }, 15_000);
+    }
+  };
+
   if (loading) {
     return (
       <div className="p-6">
@@ -189,7 +239,7 @@ export default function VisibilityPage() {
         <AddPromptForm
           projectId={projectId}
           initialText={prefillText}
-          onCreated={(p) => { setPrompts((prev) => [p, ...prev]); setShowAdd(false); }}
+          onCreated={async () => { setShowAdd(false); await load(); }}
         />
       )}
 
@@ -197,6 +247,65 @@ export default function VisibilityPage() {
       {overview && overview.totalPrompts > 0 && (
         <OverviewCard overview={overview} />
       )}
+
+      {/* Scheduler */}
+      <div className="flex items-center gap-3 rounded-lg border border-zinc-800 bg-zinc-900/40 px-4 py-2.5">
+        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="shrink-0 text-zinc-500">
+          <circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/>
+        </svg>
+        <span className="text-xs text-zinc-400 font-medium shrink-0">Daily schedule</span>
+        {scheduleEditing ? (
+          <div className="flex items-center gap-2">
+            <select
+              value={scheduleDraft}
+              onChange={(e) => setScheduleDraft(Number(e.target.value))}
+              className="rounded border border-zinc-700 bg-zinc-800 text-zinc-100 text-xs px-2 py-1 outline-none focus:ring-1 focus:ring-indigo-500"
+            >
+              {Array.from({ length: 24 }, (_, h) => (
+                <option key={h} value={h}>{String(h).padStart(2, '0')}:00 UTC</option>
+              ))}
+            </select>
+            <button
+              onClick={handleScheduleSave}
+              disabled={scheduleSaving}
+              className="px-2.5 py-1 text-xs bg-indigo-600 text-white rounded hover:bg-indigo-700 disabled:opacity-50"
+            >
+              {scheduleSaving ? 'Saving…' : 'Save'}
+            </button>
+            <button
+              onClick={() => { setScheduleEditing(false); setScheduleDraft(scheduleHour); }}
+              className="px-2.5 py-1 text-xs text-zinc-400 hover:text-zinc-200 rounded hover:bg-zinc-800"
+            >
+              Cancel
+            </button>
+          </div>
+        ) : (
+          <>
+            <span className="text-xs text-zinc-300 tabular-nums">{String(scheduleHour).padStart(2, '0')}:00 UTC</span>
+            <span className="text-zinc-700">·</span>
+            <span className="text-xs text-zinc-500">
+              Next run: {(() => {
+                const now = new Date();
+                const next = new Date();
+                next.setUTCHours(scheduleHour, 0, 0, 0);
+                if (next <= now) next.setUTCDate(next.getUTCDate() + 1);
+                const isToday = next.toDateString() === now.toDateString();
+                return `${isToday ? 'today' : 'tomorrow'} ${next.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}`;
+              })()}
+            </span>
+            <button
+              onClick={() => setScheduleEditing(true)}
+              className="ml-auto text-xs text-zinc-500 hover:text-zinc-300 flex items-center gap-1"
+            >
+              <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                <path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"/>
+                <path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"/>
+              </svg>
+              Edit
+            </button>
+          </>
+        )}
+      </div>
 
       {/* Prompts table */}
       {prompts.length === 0 ? (
@@ -261,74 +370,20 @@ export default function VisibilityPage() {
           </div>
         </div>
       ) : (
-        <div className="rounded-lg border border-zinc-800 overflow-hidden">
-          <table className="w-full text-sm">
-            <thead className="bg-zinc-900/80 border-b border-zinc-800">
-              <tr>
-                <th className="px-4 py-3 text-left text-[10px] uppercase text-zinc-500">Prompt</th>
-                <th className="px-4 py-3 text-left text-[10px] uppercase text-zinc-500">Visibility %</th>
-                <th className="px-4 py-3 text-left text-[10px] uppercase text-zinc-500">Position</th>
-                <th className="px-4 py-3 text-left text-[10px] uppercase text-zinc-500">Engines</th>
-                <th className="px-4 py-3 text-left text-[10px] uppercase text-zinc-500">Last Checked</th>
-                <th className="px-4 py-3 text-right text-[10px] uppercase text-zinc-500">Actions</th>
-              </tr>
-            </thead>
-            <tbody className="divide-y divide-zinc-800/50">
-              {prompts.map((p) => (
-                <tr key={p.id} className={`hover:bg-zinc-800/30 ${!p.isActive ? 'opacity-50' : ''}`}>
-                  <td className="px-4 py-3">
-                    <button
-                      onClick={() => handleViewHistory(p.id)}
-                      className="text-left text-violet-400 hover:underline font-medium"
-                    >
-                      {p.promptText.length > 60 ? p.promptText.slice(0, 60) + '...' : p.promptText}
-                    </button>
-                  </td>
-                  <td className="px-4 py-3 font-semibold text-zinc-100">
-                    {p.latestVisibilityPct != null ? `${p.latestVisibilityPct}%` : '-'}
-                  </td>
-                  <td className="px-4 py-3">
-                    {p.latestMentionPosition != null ? `#${p.latestMentionPosition}` : '-'}
-                  </td>
-                  <td className="px-4 py-3">
-                    <div className="flex gap-1 flex-wrap">
-                      {p.engines.map((e) => <EngineBadge key={e} engine={e} />)}
-                    </div>
-                  </td>
-                  <td className="px-4 py-3 text-zinc-500 text-xs">
-                    {p.lastCheckedAt ? new Date(p.lastCheckedAt).toLocaleDateString() : 'Never'}
-                  </td>
-                  <td className="px-4 py-3 text-right space-x-1">
-                    <button
-                      onClick={() => handleToggle(p.id, p.isActive)}
-                      title={p.isActive ? 'Pause' : 'Resume'}
-                      className="inline-flex items-center justify-center w-7 h-7 rounded text-zinc-500 hover:text-zinc-200 hover:bg-zinc-700/60 transition-colors"
-                    >
-                      {p.isActive ? (
-                        <svg width="14" height="14" viewBox="0 0 24 24" fill="currentColor">
-                          <rect x="6" y="5" width="4" height="14" rx="1"/>
-                          <rect x="14" y="5" width="4" height="14" rx="1"/>
-                        </svg>
-                      ) : (
-                        <svg width="14" height="14" viewBox="0 0 24 24" fill="currentColor">
-                          <path d="M8 5v14l11-7z"/>
-                        </svg>
-                      )}
-                    </button>
-                    <button
-                      onClick={() => handleDelete(p.id)}
-                      title="Delete"
-                      className="inline-flex items-center justify-center w-7 h-7 rounded text-zinc-500 hover:text-red-400 hover:bg-red-500/10 transition-colors"
-                    >
-                      <svg width="14" height="14" viewBox="0 0 24 24" fill="currentColor">
-                        <path d="M9 3h6l1 1h4v2H4V4h4L9 3zm-4 5h14l-1 13H6L5 8zm5 2v9h1v-9H10zm3 0v9h1v-9h-1z"/>
-                      </svg>
-                    </button>
-                  </td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
+        <div className="space-y-3">
+          {prompts.map((p) => (
+            <PromptCard
+              key={p.id}
+              prompt={p}
+              running={runningChecks.has(p.id)}
+              pendingResults={pendingResultIds.has(p.id)}
+              scheduleHour={scheduleHour}
+              onToggle={() => handleToggle(p.id, p.isActive)}
+              onDelete={() => handleDelete(p.id)}
+              onViewHistory={() => handleViewHistory(p.id)}
+              onRunCheck={() => handleRunCheck(p.id)}
+            />
+          ))}
         </div>
       )}
 
@@ -341,6 +396,312 @@ export default function VisibilityPage() {
         />
       )}
     </div>
+  );
+}
+
+// ─── Info Tooltip ────────────────────────────────────────────
+
+function InfoTooltip({ text }: { text: string }) {
+  return (
+    <span className="group relative inline-flex items-center ml-1 cursor-help align-middle">
+      <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" className="text-zinc-600 group-hover:text-zinc-400 transition-colors">
+        <circle cx="12" cy="12" r="10"/><path d="M12 16v-4M12 8h.01"/>
+      </svg>
+      <span className="pointer-events-none absolute bottom-full left-0 mb-1.5 w-64 rounded-lg bg-zinc-800 border border-zinc-700 px-3 py-2 text-xs text-zinc-300 opacity-0 group-hover:opacity-100 transition-opacity z-50 normal-case font-normal leading-relaxed whitespace-normal shadow-xl">
+        {text}
+      </span>
+    </span>
+  );
+}
+
+// ─── Sentiment Badge ─────────────────────────────────────────
+
+function SentimentBadge({ sentiment }: { sentiment: 'positive' | 'neutral' | 'negative' | null }) {
+  if (!sentiment) return <span className="text-zinc-600 text-xs">—</span>;
+  const styles = {
+    positive: 'text-green-400 bg-green-500/10 border-green-500/20',
+    neutral: 'text-zinc-400 bg-zinc-700/40 border-zinc-600/30',
+    negative: 'text-red-400 bg-red-500/10 border-red-500/20',
+  };
+  const icons = { positive: '↑', neutral: '→', negative: '↓' };
+  const titles = {
+    positive: 'Positive — the AI mentions your brand with favorable language (e.g. best, top, leading, recommended, trusted)',
+    neutral: 'Neutral — the AI mentions your brand without strong positive or negative framing',
+    negative: 'Negative — the AI mentions your brand with unfavorable language (e.g. avoid, poor, limited, problematic)',
+  };
+  return (
+    <span
+      className={`inline-flex items-center gap-1 px-1.5 py-0.5 rounded border text-xs capitalize ${styles[sentiment]}`}
+      title={titles[sentiment]}
+    >
+      <span className="text-[10px]">{icons[sentiment]}</span>
+      {sentiment}
+    </span>
+  );
+}
+
+// ─── Prompt Card ─────────────────────────────────────────────
+
+function PromptCard({
+  prompt,
+  running,
+  pendingResults,
+  scheduleHour,
+  onToggle,
+  onDelete,
+  onViewHistory,
+  onRunCheck,
+}: {
+  prompt: PromptWithStats;
+  running: boolean;
+  pendingResults: boolean;
+  scheduleHour: number;
+  onToggle: () => void;
+  onDelete: () => void;
+  onViewHistory: () => void;
+  onRunCheck: () => void;
+}) {
+  const intentColors: Record<string, string> = {
+    awareness: 'bg-blue-500/10 text-blue-300 border-blue-500/20',
+    consideration: 'bg-violet-500/10 text-violet-300 border-violet-500/20',
+    decision: 'bg-orange-500/10 text-orange-300 border-orange-500/20',
+  };
+
+  const [activeResponse, setActiveResponse] = useState<{ engine: string; text: string } | null>(null);
+
+  return (
+    <div className={`rounded-lg border border-zinc-800 bg-zinc-900/60 overflow-hidden ${!prompt.isActive ? 'opacity-60' : ''}`}>
+      {/* Card header */}
+      <div className="px-4 py-3 flex items-start justify-between gap-4">
+        <div className="flex-1 min-w-0">
+          <div className="flex items-center gap-2 flex-wrap">
+            {prompt.intentStage && (
+              <span className={`inline-flex items-center px-1.5 py-0.5 rounded border text-[10px] uppercase font-medium ${intentColors[prompt.intentStage] ?? 'bg-zinc-700/40 text-zinc-400 border-zinc-600'}`}>
+                {prompt.intentStage}
+              </span>
+            )}
+            <button
+              onClick={onViewHistory}
+              className="text-sm font-medium text-zinc-100 hover:text-violet-400 transition-colors text-left"
+            >
+              {prompt.promptText}
+            </button>
+          </div>
+          <p className="text-xs text-zinc-600 mt-0.5">
+            {prompt.lastCheckedAt
+              ? `Last checked ${new Date(prompt.lastCheckedAt).toLocaleString()}`
+              : running ? 'Check queued…' : 'Never checked'}
+          </p>
+        </div>
+
+        {/* Actions */}
+        <div className="flex flex-col items-end gap-1 shrink-0">
+          <div className="flex items-center gap-1">
+          <button
+            onClick={onRunCheck}
+            disabled={running || pendingResults}
+            title={running || pendingResults ? 'Check in progress…' : 'Run check now'}
+            className="inline-flex items-center justify-center w-7 h-7 rounded text-zinc-500 hover:text-indigo-400 hover:bg-indigo-500/10 disabled:opacity-40 transition-colors"
+          >
+            {(running || pendingResults) ? (
+              <svg className="animate-spin" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                <path d="M12 2v4M12 18v4M4.93 4.93l2.83 2.83M16.24 16.24l2.83 2.83M2 12h4M18 12h4M4.93 19.07l2.83-2.83M16.24 7.76l2.83-2.83"/>
+              </svg>
+            ) : (
+              /* Refresh/re-run icon — distinct from the Resume ▶ button */
+              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                <polyline points="23 4 23 10 17 10"/><path d="M20.49 15a9 9 0 1 1-2.12-9.36L23 10"/>
+              </svg>
+            )}
+          </button>
+          <button
+            onClick={onToggle}
+            title={prompt.isActive ? 'Pause' : 'Resume'}
+            className="inline-flex items-center justify-center w-7 h-7 rounded text-zinc-500 hover:text-zinc-200 hover:bg-zinc-700/60 transition-colors"
+          >
+            {prompt.isActive ? (
+              <svg width="14" height="14" viewBox="0 0 24 24" fill="currentColor">
+                <rect x="6" y="5" width="4" height="14" rx="1"/>
+                <rect x="14" y="5" width="4" height="14" rx="1"/>
+              </svg>
+            ) : (
+              <svg width="14" height="14" viewBox="0 0 24 24" fill="currentColor">
+                <path d="M8 5v14l11-7z"/>
+              </svg>
+            )}
+          </button>
+          <button
+            onClick={onDelete}
+            title="Delete"
+            className="inline-flex items-center justify-center w-7 h-7 rounded text-zinc-500 hover:text-red-400 hover:bg-red-500/10 transition-colors"
+          >
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="currentColor">
+              <path d="M9 3h6l1 1h4v2H4V4h4L9 3zm-4 5h14l-1 13H6L5 8zm5 2v9h1v-9H10zm3 0v9h1v-9h-1z"/>
+            </svg>
+          </button>
+          </div>
+          <p className="text-[10px] text-zinc-600">
+            Next run: {(() => {
+              const now = new Date();
+              const next = new Date();
+              next.setUTCHours(scheduleHour, 0, 0, 0);
+              if (next <= now) next.setUTCDate(next.getUTCDate() + 1);
+              const isToday = next.toDateString() === now.toDateString();
+              return `${isToday ? 'today' : 'tomorrow'} ${next.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}`;
+            })()}
+          </p>
+        </div>
+      </div>
+
+      {/* Visibility Score — primary metric for the prompt */}
+      <div className="border-t border-zinc-800 px-4 py-3 flex items-center gap-4">
+        <div className="shrink-0">
+          <div className="text-[10px] uppercase tracking-wide text-zinc-500 font-medium mb-0.5">Visibility Score</div>
+          <div className="flex items-baseline gap-2">
+            <span className={`text-2xl font-bold tabular-nums ${
+              prompt.latestVisibilityPct == null ? 'text-zinc-600'
+              : prompt.latestVisibilityPct >= 60 ? 'text-green-400'
+              : prompt.latestVisibilityPct >= 30 ? 'text-yellow-400'
+              : 'text-red-400'
+            }`}>
+              {prompt.latestVisibilityPct != null ? `${prompt.latestVisibilityPct}%` : '—'}
+            </span>
+            {(() => {
+              const total = (prompt.engineStats ?? []).reduce((s, e) => s + e.checks, 0);
+              const mentioned = total > 0 && prompt.latestVisibilityPct != null
+                ? Math.round(prompt.latestVisibilityPct / 100 * total)
+                : null;
+              return total > 0 ? (
+                <span className="text-xs text-zinc-500">{mentioned} of {total} AI responses</span>
+              ) : (
+                <span className="text-xs text-zinc-600">No checks yet</span>
+              );
+            })()}
+          </div>
+        </div>
+        <div className="flex-1 h-2 bg-zinc-800 rounded-full overflow-hidden">
+          <div
+            className={`h-full rounded-full transition-all ${
+              !prompt.latestVisibilityPct ? 'bg-zinc-700'
+              : prompt.latestVisibilityPct >= 60 ? 'bg-green-500'
+              : prompt.latestVisibilityPct >= 30 ? 'bg-yellow-500'
+              : 'bg-red-500'
+            }`}
+            style={{ width: `${prompt.latestVisibilityPct ?? 0}%` }}
+          />
+        </div>
+      </div>
+
+      {/* Per-engine breakdown: Position + Sentiment only */}
+      <div className="border-t border-zinc-800">
+        {/* Pending results banner */}
+        {pendingResults && (
+          <div className="mx-4 mt-2 flex items-center gap-2 rounded bg-indigo-500/10 border border-indigo-500/20 px-3 py-2 text-xs text-indigo-300">
+            <svg className="animate-spin shrink-0" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+              <path d="M12 2v4M12 18v4M4.93 4.93l2.83 2.83M16.24 16.24l2.83 2.83M2 12h4M18 12h4M4.93 19.07l2.83-2.83M16.24 7.76l2.83-2.83"/>
+            </svg>
+            Check running — results appear automatically in ~1 minute
+          </div>
+        )}
+        <table className="w-full text-xs">
+          <thead className="bg-zinc-900/80">
+            <tr>
+              <th className="px-4 py-2 text-left text-[10px] uppercase text-zinc-600 font-medium">Engine</th>
+              <th className="px-4 py-2 text-left text-[10px] uppercase text-zinc-600 font-medium">
+                Position
+                <InfoTooltip text="Where your brand appears in the AI’s answer. Position 1 = first recommendation (best). Detected from numbered lists (1. Bank A  2. Mashreq  3. ...). Lower is better." />
+              </th>
+              <th className="px-4 py-2 text-left text-[10px] uppercase text-zinc-600 font-medium">
+                Sentiment
+                <InfoTooltip text="Tone of the AI’s response when your brand is mentioned. ↑ Positive — favorable language (best, top, leading, recommended) → Neutral — no strong positive or negative framing ↓ Negative — unfavorable language (avoid, poor, limited). Hover over any badge for details." />
+              </th>
+              <th className="px-4 py-2 text-left text-[10px] uppercase text-zinc-600 font-medium">Last Checked</th>
+            </tr>
+          </thead>
+          <tbody className="divide-y divide-zinc-800/60">
+            {(prompt.engineStats ?? []).map((es) => (
+              <EngineStatsRow
+                key={es.engine}
+                stats={es}
+                onViewResponse={
+                  es.latestResponseText
+                    ? () => setActiveResponse({ engine: es.engine, text: es.latestResponseText! })
+                    : undefined
+                }
+              />
+            ))}
+          </tbody>
+        </table>
+      </div>
+
+      {/* AI Response Modal */}
+      {activeResponse && (
+        <div className="fixed inset-0 z-50 flex items-end sm:items-center justify-center p-4 bg-black/60 backdrop-blur-sm" onClick={() => setActiveResponse(null)}>
+          <div
+            className="w-full max-w-2xl max-h-[80vh] bg-zinc-900 border border-zinc-700 rounded-xl shadow-2xl flex flex-col"
+            onClick={(e) => e.stopPropagation()}
+          >
+            <div className="flex items-center justify-between px-5 py-3 border-b border-zinc-800 shrink-0">
+              <div className="flex items-center gap-2">
+                <EngineBadge engine={activeResponse.engine} />
+                <span className="text-sm text-zinc-400">Latest response</span>
+              </div>
+              <button
+                onClick={() => setActiveResponse(null)}
+                className="text-zinc-500 hover:text-zinc-200 transition-colors"
+              >
+                <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round">
+                  <line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/>
+                </svg>
+              </button>
+            </div>
+            <div className="overflow-y-auto px-5 py-4 text-sm text-zinc-300 leading-relaxed whitespace-pre-wrap">
+              {activeResponse.text}
+            </div>
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}
+
+// ─── Engine Stats Row ─────────────────────────────────────────
+
+function EngineStatsRow({ stats, onViewResponse }: { stats: EngineStats; onViewResponse?: () => void }) {
+  const hasData = stats.checks > 0;
+  const pos = hasData && stats.avgPosition != null ? stats.avgPosition : null;
+  const posColor = pos == null ? '' : pos <= 3 ? 'text-green-400' : pos <= 6 ? 'text-yellow-400' : 'text-red-400';
+
+  return (
+    <tr
+      className={`hover:bg-zinc-800/20 ${onViewResponse ? 'cursor-pointer' : ''}`}
+      onClick={onViewResponse}
+      title={onViewResponse ? 'Click to view AI response' : undefined}
+    >
+      <td className="px-4 py-2.5">
+        <EngineBadge engine={stats.engine} />
+      </td>
+      <td className="px-4 py-2.5">
+        {pos != null ? (
+          <span className={`font-semibold tabular-nums ${posColor}`}>#{pos}</span>
+        ) : (
+          <span className="text-zinc-600">{hasData ? 'Not in list' : '—'}</span>
+        )}
+      </td>
+      <td className="px-4 py-2.5">
+        {hasData ? <SentimentBadge sentiment={stats.latestSentiment} /> : <span className="text-zinc-600">—</span>}
+      </td>
+      <td className="px-4 py-2.5 text-zinc-600">
+        <div className="flex items-center gap-2">
+          {stats.lastCheckedAt ? new Date(stats.lastCheckedAt).toLocaleDateString() : '—'}
+          {onViewResponse && (
+            <svg className="shrink-0 text-zinc-500 hover:text-indigo-400" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+              <path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"/><circle cx="12" cy="12" r="3"/>
+            </svg>
+          )}
+        </div>
+      </td>
+    </tr>
   );
 }
 
@@ -407,6 +768,17 @@ function AddPromptForm({
 
 // ─── Overview Card ───────────────────────────────────────────
 
+function InfoIcon({ tip }: { tip: string }) {
+  return (
+    <span
+      title={tip}
+      className="inline-flex items-center justify-center w-3.5 h-3.5 rounded-full border border-zinc-600 text-zinc-600 hover:border-zinc-400 hover:text-zinc-400 cursor-default text-[9px] font-bold leading-none select-none shrink-0"
+    >
+      ?
+    </span>
+  );
+}
+
 function OverviewCard({ overview }: { overview: VisibilityOverview }) {
   const scoreColor = overview.overallScore >= 60 ? 'text-green-400' : overview.overallScore >= 30 ? 'text-yellow-400' : 'text-red-400';
 
@@ -415,23 +787,35 @@ function OverviewCard({ overview }: { overview: VisibilityOverview }) {
       <div className="flex items-center gap-8">
         <div className="text-center">
           <div className={`text-4xl font-bold ${scoreColor}`}>{overview.overallScore}</div>
-          <div className="text-xs text-zinc-500 mt-1">Visibility Score</div>
+          <div className="flex items-center justify-center gap-1 mt-1">
+            <div className="text-xs text-zinc-500">Visibility Score</div>
+            <InfoIcon tip="Weighted composite out of 100. 60% weight on mention rate + 40% weight on position score (position 1 = 100, 2 = 80 … 6+ = 0). Based on the last 30 days across all prompts." />
+          </div>
         </div>
 
         <div className="flex-1 grid grid-cols-3 gap-4">
           <div>
             <div className="text-lg font-semibold text-zinc-100">{overview.avgVisibilityPct}%</div>
-            <div className="text-xs text-zinc-500">Mention Rate</div>
+            <div className="flex items-center gap-1 mt-0.5">
+              <div className="text-xs text-zinc-500">Mention Rate</div>
+              <InfoIcon tip="% of AI checks (across all prompts &amp; engines) where your brand was detected in the response. Last 30 days." />
+            </div>
           </div>
           <div>
             <div className="text-lg font-semibold text-zinc-100">
               {overview.avgPosition ? `#${overview.avgPosition}` : '-'}
             </div>
-            <div className="text-xs text-zinc-500">Avg Position</div>
+            <div className="flex items-center gap-1 mt-0.5">
+              <div className="text-xs text-zinc-500">Avg Position</div>
+              <InfoIcon tip="Average rank of your brand in AI responses where it was mentioned. #1 means listed first. Lower is better. Last 30 days." />
+            </div>
           </div>
           <div>
             <div className="text-lg font-semibold text-zinc-100">{overview.activePrompts}</div>
-            <div className="text-xs text-zinc-500">Active Prompts</div>
+            <div className="flex items-center gap-1 mt-0.5">
+              <div className="text-xs text-zinc-500">Active Prompts</div>
+              <InfoIcon tip="Number of prompts currently enabled for scheduled checks. Paused prompts are excluded from all metrics." />
+            </div>
           </div>
         </div>
       </div>
@@ -439,7 +823,10 @@ function OverviewCard({ overview }: { overview: VisibilityOverview }) {
       {/* Engine breakdown */}
       {overview.byEngine.length > 0 && (
         <div className="mt-4 pt-4 border-t border-zinc-800">
-          <div className="text-xs font-medium text-zinc-500 mb-2">Visibility by Engine</div>
+          <div className="flex items-center gap-1 mb-2">
+            <div className="text-xs font-medium text-zinc-500">Visibility by Engine</div>
+            <InfoIcon tip="Per-engine mention rate: how often your brand appeared in that engine's responses over the last 30 days." />
+          </div>
           <div className="flex gap-4">
             {overview.byEngine.map((e) => (
               <div key={e.engine} className="flex items-center gap-2">
