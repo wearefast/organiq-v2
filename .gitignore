@@ -10,6 +10,8 @@ out/
 .env
 .env.local
 .env.*.local
+server/.env
+
 
 # IDE
 .vscode/settings.json
