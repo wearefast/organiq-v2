@@ -5,18 +5,20 @@
 The audit module has two distinct aspects:
 
 1. **Workflow Step 3 (`site-audit`)** — A GEO+SEO technical audit run as part of the 18-step workflow pipeline
-2. **LLM Audit (`llm-audit`)** — A standalone feature that audits pages for AI bot indexability, content checks, and trust signals
+2. **LLM Audit (`llm-audit`)** — A standalone feature that audits pages for AI bot indexability, content checks, and trust signals → see [LLM Crawlability Audit](./llm-crawlability-audit.md) for full detail
 
 ## Workflow Step: Site Audit (Step 3)
 
 Site-audit capabilities run as **Step 3** of the workflow pipeline via the `site-audit` agent.
 
 | Aspect | Details |
-|--------|---------|
+|--------|-------------------------------|
 | Agent file | `server/src/agents/definitions/site-audit.agent.md` |
-| Execution type | `agent-with-tools` |
-| Managed agent ID | `agent_01FFVEzvSFoTPhF1BXFC2Ye8` |
-| Tools | firecrawl_crawl, firecrawl_map_site, pagespeed_analyze, pagespeed_crux, dataforseo_onpage_task, dataforseo_onpage_summary, return_output |
+| Pipeline file | `server/src/features/workflows/pipelines/site-audit.pipeline.ts` |
+| Execution type | `pipeline-then-agent` |
+| Pipeline fetches | firecrawl map + crawl (20 pages), PageSpeed mobile + desktop, CrUX, DataForSEO on-page (all in parallel via `Promise.allSettled`) |
+| Shaped output | Pages trimmed to 3 000-char markdown; PageSpeed top-5 opportunities only; on-page pages array removed |
+| LLM receives | `<pipeline_data>` XML block injected into user message — one single reasoning call, no tool loop |
 | Depends on | `business-profile` (Step 1) |
 | Credit cost | 60 |
 | Requires approval | Yes |

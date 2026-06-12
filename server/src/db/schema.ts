@@ -483,6 +483,24 @@ export const contentImages = pgTable(
   }),
 );
 
+// ─── Project Assets (user-uploaded) ──────────────────────────
+
+export const projectAssets = pgTable(
+  'project_assets',
+  {
+    id: uuid('id').primaryKey().defaultRandom(),
+    projectId: uuid('project_id').notNull().references(() => projects.id, { onDelete: 'cascade' }),
+    name: text('name').notNull(),
+    mimeType: text('mime_type').notNull(),
+    size: integer('size').notNull(),
+    base64: text('base64').notNull(),
+    createdAt: timestamp('created_at').defaultNow().notNull(),
+  },
+  (table) => ({
+    projectIdx: index('project_assets_project_idx').on(table.projectId),
+  }),
+);
+
 // ─── Reports ─────────────────────────────────────────────────
 
 export const reports = pgTable(
@@ -593,6 +611,11 @@ export const projectsRelations = relations(projects, ({ one, many }) => ({
   reports: many(reports),
   intelligence: many(projectIntelligence),
   refreshSuggestions: many(refreshSuggestions),
+  assets: many(projectAssets),
+}));
+
+export const projectAssetsRelations = relations(projectAssets, ({ one }) => ({
+  project: one(projects, { fields: [projectAssets.projectId], references: [projects.id] }),
 }));
 
 export const workflowRunsRelations = relations(workflowRuns, ({ one, many }) => ({
@@ -1024,4 +1047,65 @@ export const refreshSuggestions = pgTable(
 export const refreshSuggestionsRelations = relations(refreshSuggestions, ({ one }) => ({
   project: one(projects, { fields: [refreshSuggestions.projectId], references: [projects.id] }),
   organization: one(organizations, { fields: [refreshSuggestions.organizationId], references: [organizations.id] }),
+}));
+
+// ─── Forum Intelligence ──────────────────────────────────────
+
+export const forumTopicStatusEnum = pgEnum('forum_topic_status', ['active', 'paused']);
+
+export const forumOpportunityStatusEnum = pgEnum('forum_opportunity_status', [
+  'new',
+  'seen',
+  'replied',
+  'dismissed',
+]);
+
+export const forumTopics = pgTable(
+  'forum_topics',
+  {
+    id: uuid('id').primaryKey().defaultRandom(),
+    projectId: uuid('project_id').notNull().references(() => projects.id, { onDelete: 'cascade' }),
+    topic: text('topic').notNull(),
+    source: text('source').notNull().default('auto'),
+    status: forumTopicStatusEnum('status').notNull().default('active'),
+    lastScannedAt: timestamp('last_scanned_at'),
+    createdAt: timestamp('created_at').defaultNow().notNull(),
+  },
+  (table) => ({
+    projectStatusIdx: index('forum_topics_project_status_idx').on(table.projectId, table.status),
+    projectTopicIdx: uniqueIndex('forum_topics_project_topic_idx').on(table.projectId, table.topic),
+  }),
+);
+
+export const forumOpportunities = pgTable(
+  'forum_opportunities',
+  {
+    id: uuid('id').primaryKey().defaultRandom(),
+    projectId: uuid('project_id').notNull().references(() => projects.id, { onDelete: 'cascade' }),
+    topicId: uuid('topic_id').notNull().references(() => forumTopics.id, { onDelete: 'cascade' }),
+    url: text('url').notNull(),
+    title: text('title').notNull(),
+    snippet: text('snippet'),
+    subreddit: text('subreddit'),
+    publishedDate: text('published_date'),
+    isQuestion: boolean('is_question').notNull().default(false),
+    score: integer('score').notNull().default(0),
+    status: forumOpportunityStatusEnum('status').notNull().default('new'),
+    discoveredAt: timestamp('discovered_at').defaultNow().notNull(),
+  },
+  (table) => ({
+    projectStatusIdx: index('forum_opps_project_status_idx').on(table.projectId, table.status),
+    topicIdx: index('forum_opps_topic_idx').on(table.topicId),
+    urlUniqueIdx: uniqueIndex('forum_opps_project_url_idx').on(table.projectId, table.url),
+  }),
+);
+
+export const forumTopicsRelations = relations(forumTopics, ({ one, many }) => ({
+  project: one(projects, { fields: [forumTopics.projectId], references: [projects.id] }),
+  opportunities: many(forumOpportunities),
+}));
+
+export const forumOpportunitiesRelations = relations(forumOpportunities, ({ one }) => ({
+  project: one(projects, { fields: [forumOpportunities.projectId], references: [projects.id] }),
+  topic: one(forumTopics, { fields: [forumOpportunities.topicId], references: [forumTopics.id] }),
 }));

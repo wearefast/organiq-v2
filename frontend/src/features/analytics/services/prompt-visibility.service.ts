@@ -1,5 +1,16 @@
 import { apiFetch } from '@/shared/utils/api';
 
+export interface EngineStats {
+  engine: string;
+  visibilityPct: number;
+  avgPosition: number | null;
+  latestSentiment: 'positive' | 'neutral' | 'negative' | null;
+  shareOfVoice: number;
+  lastCheckedAt: string | null;
+  checks: number;
+  latestResponseText: string | null;
+}
+
 export interface PromptWithStats {
   id: string;
   promptText: string;
@@ -10,6 +21,7 @@ export interface PromptWithStats {
   latestVisibilityPct: number | null;
   latestMentionPosition: number | null;
   lastCheckedAt: string | null;
+  engineStats: EngineStats[];
 }
 
 export interface VisibilityOverview {
@@ -77,4 +89,10 @@ export interface PromptSuggestion {
 
 export async function fetchPromptSuggestions(projectId: string): Promise<PromptSuggestion[]> {
   return apiFetch<PromptSuggestion[]>(`/projects/${projectId}/prompts/suggestions`);
+}
+
+export async function runPromptCheck(projectId: string, promptId: string): Promise<{ queued: boolean }> {
+  return apiFetch<{ queued: boolean }>(`/projects/${projectId}/prompts/${promptId}/run`, {
+    method: 'POST',
+  });
 }

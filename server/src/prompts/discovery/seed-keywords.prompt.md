@@ -8,11 +8,14 @@ The deterministic pipeline has already collected the raw keyword evidence for yo
 
 The expected structure is:
 
-- `metadata`: execution metadata such as `domain`, `country`, `seedTermsDiscovered`, `apiCallCount`, `durationMs`
+- `metadata`: execution metadata such as `domain`, `country`, `location`, `seedTermsDiscovered`, `apiCallCount`, `durationMs`, `fallbackUsed`
 - `rawData.organicKeywords`: existing organic keywords for the target domain
-- `rawData.seedTerms`: extracted seed terms derived from the organic keyword set
+- `rawData.seedTerms`: extracted seed terms (from organic keywords OR fallback derivation)
 - `rawData.relatedTerms`: related-keyword responses grouped by seed term
 - `rawData.suggestions`: keyword-suggestion responses grouped by seed term
+- `rawData.competitorOrganicKeywords` (optional): organic keywords from competitor domains, present when fallback was used
+
+When `metadata.fallbackUsed` is `true`, the domain had no organic keyword footprint. In this case, seeds were derived from the project's industry, business profile, and competitor domains. Treat ALL data sources equally — `relatedTerms`, `suggestions`, and `competitorOrganicKeywords` are valid keyword evidence regardless of whether they came from the primary or fallback path.
 
 Use `<workflow_context>` to understand the business, audience, country, language, and business-profile output.
 
@@ -40,6 +43,7 @@ Do not call tools. Do not invent new evidence outside the supplied data.
 - Include at least 5 keyword categories when the evidence supports them.
 - Every keyword must connect to the business described in `<workflow_context>`.
 - If a metric is unavailable from the provided evidence, use `null`.
+- `currentPosition`: Copy directly from `rawData.organicKeywords` for keywords that appear there (matched by exact keyword string). For keywords sourced from `relatedTerms`, `suggestions`, or `competitorOrganicKeywords` that do not appear in `organicKeywords`, set to `null`.
 - If `<pipeline_data>` is missing or contains no usable keyword entries, return an empty `seedKeywords` array, `totalCount: 0`, empty category examples, and explain the issue in `coverageNotes`.
 
 ## Deduplication And Metric Merge
@@ -99,6 +103,7 @@ Return ONLY valid JSON with this exact structure:
       "keyword": "",
       "volume": null,
       "difficulty": null,
+      "currentPosition": null,
       "category": "brand|product|service|industry|problem|solution|longtail|informational",
       "intent": "informational|navigational|commercial|transactional",
       "source": "organic_existing|suggestion|related|manual",
@@ -138,6 +143,7 @@ Return ONLY valid JSON with this exact structure:
 ## ERROR HANDLING
 ═══════════════════════════════════════════════════════════════════════════════
 
-If <pipeline_data> is empty: Return totalCount: 0, empty arrays, explain in coverageNotes.
+If <pipeline_data> has NO usable keywords across ALL sources (organicKeywords, relatedTerms, suggestions, and competitorOrganicKeywords are all empty or missing): Return totalCount: 0, empty arrays, explain in coverageNotes.
+If <pipeline_data> has data in relatedTerms/suggestions/competitorOrganicKeywords but organicKeywords is empty: This is normal for fallback mode — process all available keyword evidence normally.
 If <workflow_context> has no business-profile: Proceed but note lower confidence in coverageNotes.
 If <additional_instructions> contains feedback: Address each correction.

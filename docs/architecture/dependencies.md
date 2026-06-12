@@ -18,7 +18,7 @@
 | `drizzle-orm` | ^0.36.0 | Type-safe SQL ORM (PostgreSQL) |
 | `pg` | ^8.12.0 | PostgreSQL client driver |
 | `ioredis` | ^5.4.0 | Redis client for BullMQ |
-| `openai` | ^6.35.0 | OpenAI API client (GPT-4o function calling) |
+| `openai` | ^6.35.0 | OpenAI API client (image generation via gpt-image-2) |
 | `jose` | ^6.2.3 | JWT verification for Clerk tokens |
 | `class-validator` | ^0.14.4 | DTO validation decorators |
 | `class-transformer` | ^0.5.1 | Object transformation for DTOs |
@@ -85,7 +85,8 @@
 
 | Service | Env Variable | Purpose | Auth Method |
 |---------|-------------|---------|-------------|
-| **OpenAI** | `OPENAI_API_KEY` | Agent LLM (GPT-4o function calling) | Bearer token |
+| **Anthropic** | `ANTHROPIC_API_KEY` | Primary agent LLM (Claude — Messages API with tool use) | Bearer token |
+| **OpenAI** | `OPENAI_API_KEY` | Image generation (gpt-image-2) | Bearer token |
 | **Ahrefs v3** | `AHREFS_API_KEY` | Domain rating, organic keywords, backlinks, competing domains | Bearer token |
 | **DataForSEO** | `DATAFORSEO_LOGIN` / `DATAFORSEO_PASSWORD` | SERP results, keyword volume, on-page audit, backlinks | Basic auth |
 | **Serper.dev** | `SERPER_API_KEY` | Google SERP results (search, news, images) | X-API-KEY header |
@@ -115,7 +116,8 @@
 | `REDIS_URL` | Server | Redis connection string |
 | `CLERK_SECRET_KEY` | Server | Clerk backend API key |
 | `CLERK_WEBHOOK_SECRET` | Server | Svix webhook verification secret |
-| `OPENAI_API_KEY` | Server | OpenAI API key for agent runtime |
+| `ANTHROPIC_API_KEY` | Server | Anthropic API key (primary agent runtime) |
+| `OPENAI_API_KEY` | Server | OpenAI API key (image generation) |
 
 ### Optional
 

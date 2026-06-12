@@ -44,7 +44,10 @@ export class ProjectsService {
       .returning();
 
     // Fire-and-forget sitemap discovery — project creation succeeds immediately
-    this.discoverAndStoreSitemap(project.id, project.domain).catch((err) =>
+    this.discoverAndStoreSitemap(project.id, project.domain, {
+      country: project.country ?? undefined,
+      language: project.language ?? undefined,
+    }).catch((err) =>
       this.logger.warn(`Sitemap discovery failed for project ${project.id}: ${err.message}`),
     );
 
@@ -64,9 +67,12 @@ export class ProjectsService {
       .returning();
     if (!updated) throw new NotFoundException('Project not found');
 
-    // Re-discover sitemap when domain changes
-    if (data.domain) {
-      this.discoverAndStoreSitemap(updated.id, updated.domain).catch((err) =>
+    // Re-discover sitemap when domain or locale changes
+    if (data.domain || data.country || data.language) {
+      this.discoverAndStoreSitemap(updated.id, updated.domain, {
+        country: updated.country ?? undefined,
+        language: updated.language ?? undefined,
+      }).catch((err) =>
         this.logger.warn(`Sitemap re-discovery failed for project ${updated.id}: ${err.message}`),
       );
     }
@@ -80,18 +86,27 @@ export class ProjectsService {
    */
   async refreshSitemap(id: string, organizationId: string) {
     const project = await this.findById(id, organizationId);
-    await this.discoverAndStoreSitemap(project.id, project.domain);
+    await this.discoverAndStoreSitemap(project.id, project.domain, {
+      country: project.country ?? undefined,
+      language: project.language ?? undefined,
+    });
     return this.findById(id, organizationId);
   }
 
   /**
    * Crawl the site's sitemap and persist discovered URLs on the project record.
    * Uses WebCrawlerService (global) for SSRF-safe fetching.
+   * Locale hints (country + language) are required for accurate sitemap selection
+   * on multi-locale sites (e.g. en-ae vs en-gb on the same domain).
    */
-  async discoverAndStoreSitemap(projectId: string, domain: string): Promise<void> {
+  async discoverAndStoreSitemap(
+    projectId: string,
+    domain: string,
+    hints?: { country?: string; language?: string },
+  ): Promise<void> {
     const siteUrl = `https://${domain}`;
-    this.logger.log(`Discovering sitemap for ${domain}`);
-    const { pageUrls } = await this.webCrawler.discoverSitePages(siteUrl, 25);
+    this.logger.log(`Discovering sitemap for ${domain} (country=${hints?.country ?? 'none'}, lang=${hints?.language ?? 'none'})`);
+    const { pageUrls } = await this.webCrawler.discoverSitePages(siteUrl, 25, hints);
     await this.db.db
       .update(projects)
       .set({ sitemapUrls: pageUrls, sitemapDiscoveredAt: new Date(), updatedAt: new Date() })

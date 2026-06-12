@@ -1,7 +1,7 @@
 ---
 name: Keyword Consolidation
 step_key: consolidated-keywords
-execution_type: agent-only
+execution_type: pipeline-only
 skill: keyword-consolidation
 tools:
 depends_on:
@@ -9,6 +9,6 @@ depends_on:
   - method01-competitor-pages
   - method02-seed-expansion
   - method03-content-gap-import
-credit_cost: 40
+credit_cost: 0
 requires_approval: true
 ---

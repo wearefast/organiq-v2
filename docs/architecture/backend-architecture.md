@@ -114,12 +114,15 @@ WorkflowProcessor (BullMQ)
    - pipeline-then-agent: Execute pipeline → build context → call Anthropic managed agent
    - agent-with-tools: Call Anthropic managed agent with tool-calling loop
    - agent-only: Call Anthropic managed agent with context only
-7. Validate output against schema
-8. Persist artifact (versioned) + reasoning
-9. Log all tool calls to step_tool_calls
-10. Debit credits (only on verified success)
-11. Emit WebSocket event (step complete / awaiting approval)
-12. On final failure: capture to dlq_failed_steps
+7. Context slicing: for consolidated-keywords, verdict-strategy, and topical-map,
+   pass only declared dependency keys into <workflow_context> (see STEP_CONTEXT_KEYS
+   in workflow.processor.ts) to reduce input token costs without affecting output quality
+8. Validate output against schema
+9. Persist artifact (versioned) + reasoning
+10. Log all tool calls to step_tool_calls
+11. Debit credits (only on verified success)
+12. Emit WebSocket event (step complete / awaiting approval)
+13. On final failure: capture to dlq_failed_steps
 ```
 
 ### Agent Definition Format
@@ -129,17 +132,8 @@ YAML frontmatter in `.agent.md`:
 ---
 name: Technical SEO Auditor
 step_key: site-audit
-execution_type: agent-with-tools
-managed_agent_id: agent_01FFVEzvSFoTPhF1BXFC2Ye8
+execution_type: pipeline-then-agent
 skill: technical-seo-auditing
-tools:
-  - firecrawl_crawl
-  - firecrawl_map_site
-  - pagespeed_analyze
-  - pagespeed_crux
-  - dataforseo_onpage_task
-  - dataforseo_onpage_summary
-  - return_output
 depends_on:
   - business-profile
 credit_cost: 60

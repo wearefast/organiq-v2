@@ -16,6 +16,7 @@ import {
   type LucideIcon,
 } from 'lucide-react';
 import { cn } from '@/shared/utils/cn';
+import { useBusinessProfileReady } from '@/features/projects/hooks/use-business-profile-ready';
 
 // ─── Types ────────────────────────────────────────────────────
 
@@ -131,11 +132,27 @@ function isAnyActive(hrefs: string[], pathname: string): boolean {
 
 // ─── NavLink component ────────────────────────────────────────
 
-function NavLink({ item, pathname }: { item: NavItem; pathname: string }) {
+function NavLink({ item, pathname, disabled }: { item: NavItem; pathname: string; disabled?: boolean }) {
   const childHrefs = item.children?.map((c) => c.href) ?? [];
   // Parent is active when on its own path OR any child's path
   const isActive =
     isAnyActive(childHrefs, pathname) || pathname.startsWith(item.href);
+
+  if (disabled) {
+    return (
+      <div>
+        <span
+          className="flex h-10 cursor-not-allowed items-center gap-3 rounded-md px-2 text-sm font-medium text-zinc-700"
+          title="Complete the business profile analysis first"
+        >
+          <item.icon className="h-5 w-5 shrink-0" />
+          <span className="truncate opacity-0 transition-opacity duration-200 group-hover:opacity-100">
+            {item.label}
+          </span>
+        </span>
+      </div>
+    );
+  }
 
   return (
     <div>
@@ -186,6 +203,7 @@ export function SideNav() {
   const pathname = usePathname();
   const projectMatch = pathname.match(/\/workspaces\/([^/]+)\/projects\/([^/]+)/);
   const projectItems = projectMatch ? getProjectItems(projectMatch[1], projectMatch[2]) : [];
+  const profileReady = useBusinessProfileReady(projectMatch?.[2]);
 
   return (
     <aside className="group fixed left-0 top-topbar z-40 flex h-[calc(100vh-48px)] w-sidenav flex-col border-r border-zinc-800 bg-sidebar transition-[width] duration-200 hover:w-sidenav-expanded">
@@ -207,7 +225,12 @@ export function SideNav() {
             </Link>
             <div className="my-1 border-t border-zinc-800/60" />
             {projectItems.map((item) => (
-              <NavLink key={item.href} item={item} pathname={pathname} />
+              <NavLink
+                key={item.href}
+                item={item}
+                pathname={pathname}
+                disabled={!profileReady && !item.href.endsWith('/overview')}
+              />
             ))}
           </>
         )}

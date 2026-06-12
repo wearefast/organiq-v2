@@ -66,10 +66,9 @@ Cluster Effort/Impact Scores (priority matrix):
 ---
 
 Keyword Clusters — EVERY cluster listed here MUST be assigned to a content pillar. Count them now and hold that number:
-{{consolidated-keywords.clusters}}
+{{consolidated-keywords.topicClusters}}
 
-Quick Win Keywords (prioritise these as first content pieces):
-{{consolidated-keywords.quickWins}}
+Quick Win Keywords — prioritise keywords with opportunityScore >= 0.8 as first content pieces.
 
 Full Keyword Ledger (assign every keyword to a specific content piece):
 {{consolidated-keywords.keywords}}

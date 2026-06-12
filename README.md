@@ -25,19 +25,28 @@ Agent-led SEO/GEO/AEO strategy consultant operating system for agencies.
 | **Features** | [Auth & Orgs](docs/features/auth.md) | Clerk SSO, webhooks, idempotency |
 | **Features** | [Credits](docs/features/credits.md) | Credit system, ledger, debit flow |
 | **Features** | [Billing](docs/features/billing.md) | Stripe subscriptions, credit packs, customer portal |
-| **Features** | [Audit](docs/features/audit.md) | Site audit (workflow step) + LLM audit |
+| **Features** | [Audit](docs/features/audit.md) | Site audit (workflow step) + LLM audit overview |
+| **Features** | [LLM Crawlability Audit](docs/features/llm-crawlability-audit.md) | Standalone AI bot indexability audit — scoring, checks, API, UI |
 | **Features** | [LLM Traffic](docs/features/llm-traffic.md) | AI engine traffic tracking and analytics |
 | **Features** | [Notifications](docs/features/notifications.md) | Decay alerts, workflow events, in-app notifications |
 | **Features** | [On-Demand Agents](docs/features/on-demand-agents.md) | Ad-hoc agent execution outside workflow |
 | **Features** | [Leads](docs/features/leads.md) | Lead generation from audit reports |
 | **Changelog** | [Changelog](docs/changelog.md) | All fixes and updates with details |
 | **Planning** | [Implementation Plan](docs/implementation-plan.md) | Master task checklist (90 tasks, all complete) |
-| **Planning** | [Technical Debt](docs/technical-debt.md) | Deferred work tracker |
+| **Planning** | [Roadmap](docs/roadmap.md) | Product backlog and pending features |
+| **Planning** | [Technical Debt](docs/technical-debt.md) | Deferred work tracker (16 items, 4 resolved) |
 | **Debugging** | [Known Issues](docs/debugging/known-issues.md) | Tracked issues and resolutions |
 | **Debugging** | [Debugging Patterns](docs/debugging/patterns.md) | Debugging strategies and lessons learned |
-| **Debugging** | [Phase A-C Audit](docs/debugging/phase-abc-audit.md) | Comprehensive codebase audit findings |
+| **Decisions** | [Architecture Decisions v3](docs/decisions/architecture-decisions-v3.md) | 13 locked decisions (AD-1 through AD-13) |
 | **Decisions** | [Tech Decisions](docs/decisions/tech-decisions.md) | Architecture choices and rationale |
 | **Decisions** | [Engineering Process](docs/decisions/engineering-process.md) | 7-step workflow, anti-patterns |
+| **Audit** | [Architecture Snapshot](audit/architecture.md) | System state, topology, versioned tech stack |
+| **Audit** | [Agent Flow](audit/agent-flow.md) | Per-step execution model, context chains, API calls |
+| **Audit** | [Prompt Audit](audit/prompt-audit.md) | All prompts — execution model, tool availability, anti-hallucination status |
+| **Audit** | [Tool Audit](audit/tool-audit.md) | Registered tools, agent access, credit costs |
+| **Audit** | [Frontend Contracts](audit/frontend-contracts.md) | Component → API, WebSocket events, type gaps |
+| **Audit** | [Performance](audit/performance.md) | API call inventory, credit costs per run, bottlenecks |
+| **Audit** | [Final Report](audit/final-report.md) | Audit findings log, decisions, open items |
 
 ## Quick Start
 

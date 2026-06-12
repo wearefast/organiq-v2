@@ -203,6 +203,100 @@ export class OpenAiService {
     return { query, mentioned, position, mentionContext, aiResponse };
   }
 
+  // ─── Natural Query Generation ──────────────────────────────────────────────
+
+  /**
+   * Generates 5 natural, human-like search queries that a real person would
+   * type into an AI assistant when looking for a business like this one.
+   * Used to test AI brand visibility with realistic prompts.
+   */
+  async generateNaturalBrandQueries(context: {
+    brand: string;
+    category: string;
+    market: string;
+    competitor?: string;
+    icpIndustry?: string;
+  }): Promise<string[]> {
+    if (!this.apiKey) throw new Error('OPENAI_API_KEY is not configured');
+
+    const { brand, category, market, competitor, icpIndustry } = context;
+    const currentYear = new Date().getFullYear();
+
+    const prompt = `You are simulating how real humans prompt AI assistants (ChatGPT, Perplexity, Claude) when searching for products or services.
+
+Given this business context:
+- Brand: ${brand}
+- Industry/Category: ${category}
+- Primary Market: ${market}${competitor ? `\n- Key Competitor: ${competitor}` : ''}${icpIndustry ? `\n- Target Customer Industry: ${icpIndustry}` : ''}
+
+Generate exactly 5 natural search queries that a real person would type into an AI chatbot. These should:
+1. Sound like casual human language (short, conversational, sometimes with typos-level informality)
+2. Use common/colloquial terms instead of industry jargon
+3. Reference specific locations naturally (city names, not "region / sub-region")
+4. Include a mix of: discovery queries, comparison queries, review queries, and recommendation queries
+5. NOT use formal industry classification names — simplify them to how a normal person would say it
+
+Examples of BAD queries (too formal):
+- "best Coupon & Deals Aggregation / Affiliate Marketing in UAE / Middle East"
+- "top Digital Marketing Solutions providers 2025"
+
+Examples of GOOD queries (natural):
+- "best coupon apps in Dubai"
+- "where to find online deals in UAE"
+- "is [brand] worth it"
+- "what's better [brand] or [competitor]"
+
+Return ONLY a JSON array of 5 strings. No explanation.`;
+
+    const body = {
+      model: 'gpt-4o-mini',
+      messages: [
+        { role: 'user', content: prompt },
+      ],
+      temperature: 0.7,
+      max_tokens: 300,
+    };
+
+    const response = await fetch(`${this.baseUrl}/chat/completions`, {
+      method: 'POST',
+      headers: {
+        Authorization: `Bearer ${this.apiKey}`,
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify(body),
+      signal: AbortSignal.timeout(20_000),
+    });
+
+    if (!response.ok) {
+      const text = await response.text();
+      throw new Error(`OpenAI query generation error: ${response.status} — ${text}`);
+    }
+
+    const data = (await response.json()) as {
+      choices: Array<{ message: { content: string } }>;
+    };
+
+    const content = data.choices[0]?.message?.content ?? '[]';
+
+    try {
+      const parsed = JSON.parse(content.replace(/```json?\n?|```/g, '').trim());
+      if (Array.isArray(parsed) && parsed.length >= 5) {
+        return parsed.slice(0, 5);
+      }
+    } catch {
+      this.logger.warn('Failed to parse natural brand queries response, using fallback');
+    }
+
+    // Fallback: return simplified templates if LLM generation fails
+    return [
+      `best ${category.split('/')[0].trim().toLowerCase()} in ${market.split('/')[0].trim()}`,
+      `${brand} review ${currentYear}`,
+      competitor ? `${brand} vs ${competitor}` : `top ${category.split('/')[0].trim().toLowerCase()} ${currentYear}`,
+      `is ${brand} good`,
+      `recommend ${category.split('/')[0].trim().toLowerCase()} for ${icpIndustry ?? 'my business'}`,
+    ];
+  }
+
   // ─── Image Generation ─────────────────────────────────────────────────────
 
   async generateImage(

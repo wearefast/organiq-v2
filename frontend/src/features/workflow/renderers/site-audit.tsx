@@ -1,6 +1,7 @@
 'use client';
 
 import { InfoTip } from '@/shared/components';
+import { RichText } from '@/shared/components/rich-text';
 
 interface SiteAuditData {
   overallScore?: number;
@@ -120,13 +121,13 @@ export function SiteAuditRenderer({ data }: { data: unknown }) {
                   <span className="text-sm font-medium text-zinc-200">{issue.title ?? issue.description}</span>
                 </div>
                 {issue.title && issue.description && (
-                  <p className="mt-1 text-xs text-zinc-400">{issue.description}</p>
+                  <RichText textClass="text-zinc-400">{issue.description}</RichText>
                 )}
                 {!issue.title && issue.evidence && (
-                  <p className="mt-1 text-xs text-zinc-400">{issue.evidence}</p>
+                  <RichText textClass="text-zinc-400">{issue.evidence}</RichText>
                 )}
                 {issue.recommendation && (
-                  <p className="mt-1 text-xs text-violet-400">→ {issue.recommendation}</p>
+                  <RichText textClass="text-violet-400" size="xs">{issue.recommendation}</RichText>
                 )}
               </div>
             ))}
@@ -138,7 +139,7 @@ export function SiteAuditRenderer({ data }: { data: unknown }) {
       {audit.summary && (
         <div>
           <SectionLabel>Summary</SectionLabel>
-          <p className="mt-1 text-sm leading-relaxed text-zinc-300">{audit.summary}</p>
+          <RichText textClass="text-zinc-300" size="sm">{audit.summary}</RichText>
         </div>
       )}
     </div>

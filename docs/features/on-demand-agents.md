@@ -49,6 +49,6 @@ Execute AI agents on-the-fly with custom prompts outside of the structured 18-st
 1. User enters a natural language prompt + selects agent type
 2. `AgentRouterService` determines the best agent type and context builder
 3. Context builders assemble relevant project data (keywords, competitors, content, etc.)
-4. Managed agent executes with project context + user prompt
+4. Local AgentRuntime executes with project context + user prompt
 5. Response stored in `agent_runs`; credits debited
 6. Results displayed with structured recommendations + data citations

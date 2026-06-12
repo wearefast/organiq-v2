@@ -8,7 +8,7 @@
 			"args": [
 				"-NoProfile",
 				"-Command",
-				"Set-Location c:\\Code\\Pulse\\server; npx nest build; $env:PORT=3002; node .\\dist\\main.js"
+				"Set-Location c:\\Code\\Pulse\\server; $env:PORT=3002; npx nest start --watch"
 			],
 			"isBackground": true,
 			"group": "build"

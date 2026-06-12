@@ -1,4 +1,4 @@
-# OrganiQ Product Roadmap
+# Pulse OS — Product Roadmap
 
 ## Backlog
 
@@ -15,7 +15,7 @@ The Reject and Revise buttons existed in the workflow approval bar but the notes
 | Step | File | Change |
 |------|------|--------|
 | 1 | `server/src/features/workflows/workflow.service.ts` — `handleApproval` | On `revision_requested` decision, call `setContext(runId, `${stepKey}-revision-notes`, notes)` to persist notes in `workflow_context` |
-| 2 | `server/src/features/workflows/workflow.processor.ts` — after `loadPrompt` | Read `context[`${stepKey}-revision-notes`]`; if present, append a structured revision block to the user prompt before passing to the managed agent |
+| 2 | `server/src/features/workflows/workflow.processor.ts` — after `loadPrompt` | Read `context[`${stepKey}-revision-notes`]`; if present, append a structured revision block to the user prompt before passing to the agent runtime |
 | 3 | `frontend/src/features/workflow/components/artifact-panel.tsx` | Re-add Revise and Reject buttons with notes textarea once the backend feedback loop is verified end-to-end |
 
 **Behaviour when complete:**

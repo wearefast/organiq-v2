@@ -1,9 +1,9 @@
 import { Injectable, Logger, NotFoundException, BadRequestException } from '@nestjs/common';
 import { eq, and, sql, desc, inArray } from 'drizzle-orm';
 import { DatabaseService } from '../../shared/database/database.service';
-import { contentPieces, contentImages } from '../../db/schema';
+import { contentPieces, contentImages, projectAssets } from '../../db/schema';
 import { TopicalMapsService } from '../topical-maps/topical-maps.service';
-import { SerperService } from '../integrations/serper/serper.service';
+import { DataForSeoService } from '../integrations/dataforseo/dataforseo.service';
 
 @Injectable()
 export class ContentService {
@@ -12,7 +12,7 @@ export class ContentService {
   constructor(
     private readonly db: DatabaseService,
     private readonly topicalMapsService: TopicalMapsService,
-    private readonly serper: SerperService,
+    private readonly dataForSeo: DataForSeoService,
   ) {}
 
   async findAllByProject(projectId: string) {
@@ -282,39 +282,84 @@ export class ContentService {
     return updated;
   }
 
+  // ─── Project Assets ────────────────────────────────────────────
+
+  async findProjectAssets(projectId: string) {
+    return this.db.db
+      .select()
+      .from(projectAssets)
+      .where(eq(projectAssets.projectId, projectId))
+      .orderBy(desc(projectAssets.createdAt));
+  }
+
+  async createProjectAsset(
+    projectId: string,
+    name: string,
+    mimeType: string,
+    size: number,
+    base64: string,
+  ) {
+    const [asset] = await this.db.db
+      .insert(projectAssets)
+      .values({ projectId, name, mimeType, size, base64 })
+      .returning();
+    return asset;
+  }
+
+  async deleteProjectAsset(id: string, projectId: string) {
+    const [deleted] = await this.db.db
+      .delete(projectAssets)
+      .where(and(eq(projectAssets.id, id), eq(projectAssets.projectId, projectId)))
+      .returning({ id: projectAssets.id });
+    if (!deleted) throw new NotFoundException('Asset not found');
+    return { deleted: true };
+  }
+
   /**
-   * Search public Reddit threads relevant to the project via Serper.
-   * Returns up to `limit` organic results scoped to reddit.com.
+   * Search public Reddit threads relevant to the project via DataForSEO SERP.
+   * Returns up to 20 organic results scoped to reddit.com.
    */
   async searchForumThreads(projectId: string, query: string, country = 'us') {
     if (!query || query.trim().length === 0) {
       throw new BadRequestException('query is required');
     }
 
-    const q = `site:reddit.com ${query.trim()}`;
-    const raw = (await this.serper.search({ query: q, country, num: 20 })) as {
-      organic?: Array<{
-        title?: string;
-        link?: string;
-        snippet?: string;
-        position?: number;
-      }>;
-    };
+    let items: Array<{ type?: string; title?: string; url?: string; description?: string; rank_absolute?: number; timestamp?: string }>;
+    try {
+      items = await this.dataForSeo.searchRedditThreads(query, country);
+    } catch (error) {
+      this.logger.error(`Forum search failed: ${error instanceof Error ? error.message : error}`);
+      throw new BadRequestException(
+        `Forum search unavailable: ${error instanceof Error ? error.message : 'unknown error'}`,
+      );
+    }
 
-    const organic = raw.organic ?? [];
-    return organic.map((r) => {
-      const subreddit = r.link?.match(/reddit\.com\/r\/([^/]+)/)?.[1] ?? null;
+    const mapped = items.map((r) => {
+      const subreddit = r.url?.match(/reddit\.com\/r\/([^/]+)/)?.[1] ?? null;
       const isQuestion =
         (r.title ?? '').includes('?') ||
         /\b(how|what|why|where|when|can|should|does|is|are|will|help)\b/i.test(r.title ?? '');
+      // timestamp from DataForSEO: "YYYY-MM-DD HH:MM:SS +00:00"
+      const publishedDate = r.timestamp ? r.timestamp.split(' ')[0] : null;
       return {
         title: r.title ?? '',
-        url: r.link ?? '',
-        snippet: r.snippet ?? '',
+        url: r.url ?? '',
+        snippet: r.description ?? '',
         subreddit,
-        position: r.position ?? 0,
+        position: r.rank_absolute ?? 0,
         isQuestion,
+        publishedDate,
       };
     });
+
+    // Sort newest first; items without a date go to the end
+    mapped.sort((a, b) => {
+      if (!a.publishedDate && !b.publishedDate) return 0;
+      if (!a.publishedDate) return 1;
+      if (!b.publishedDate) return -1;
+      return b.publishedDate.localeCompare(a.publishedDate);
+    });
+
+    return mapped;
   }
 }

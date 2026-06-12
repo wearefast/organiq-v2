@@ -62,7 +62,7 @@ export default function CalendarPage() {
   const calendarMap = useMemo(() => {
     const map: Record<number, ContentPiece[]> = {};
     for (const piece of pieces) {
-      const dateStr = (piece as any).scheduledPublishAt ?? piece.updatedAt;
+      const dateStr = piece.scheduledPublishAt ?? piece.updatedAt;
       const d = new Date(dateStr);
       if (d.getFullYear() === year && d.getMonth() === month) {
         const day = d.getDate();
@@ -74,7 +74,7 @@ export default function CalendarPage() {
   }, [pieces, year, month]);
 
   // Unscheduled approved/published pieces
-  const unscheduled = pieces.filter((p) => !(p as any).scheduledPublishAt && (p.status === 'approved' || p.status === 'draft'));
+  const unscheduled = pieces.filter((p) => !p.scheduledPublishAt && (p.status === 'approved' || p.status === 'draft'));
 
   const daysInMonth = new Date(year, month + 1, 0).getDate();
   const firstDayOfWeek = new Date(year, month, 1).getDay(); // 0=Sun

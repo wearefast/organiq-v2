@@ -14,6 +14,7 @@ import { ContentBriefPipeline } from './content-brief.pipeline';
 import { SiteAuditPipeline } from './site-audit.pipeline';
 import { ContentArticlePipeline } from './content-article.pipeline';
 import { AiIntelligencePipeline } from './ai-intelligence.pipeline';
+import { ConsolidatedKeywordsPipeline } from './consolidated-keywords.pipeline';
 
 // Mock dependencies
 const mockAhrefs = {
@@ -52,6 +53,13 @@ const mockSerper = {
 };
 const mockOpenAi = {
   inferAiBrandMention: vi.fn().mockResolvedValue({ mentioned: false, position: 'absent', mentionContext: null, aiResponse: '' }),
+  generateNaturalBrandQueries: vi.fn().mockResolvedValue([
+    'best coupon apps in Dubai',
+    'Luvin Deals review 2026',
+    'Luvin Deals vs competitor',
+    'is Luvin Deals good',
+    'recommend coupon sites for shopping',
+  ]),
   generateImage: vi.fn().mockResolvedValue({ url: 'https://example.com/image.png' }),
 };
 
@@ -76,11 +84,12 @@ describe('PipelineService', () => {
     const siteAudit = new SiteAuditPipeline(mockFirecrawl as any, mockDataforSeoOnPage as any, mockPageSpeed as any);
     const contentArticle = new ContentArticlePipeline(mockSerper as any);
     const aiIntelligence = new AiIntelligencePipeline(mockFirecrawl as any, mockSerper as any, mockOpenAi as any);
+    const consolidatedKeywords = new ConsolidatedKeywordsPipeline();
 
     service = new PipelineService(
       competitorMetrics, searchDemand, method01, method02, method03, businessProfile,
       seedKeywords, serpNicheMap, competitorBuckets, phase1Baseline, contentBrief, siteAudit,
-      contentArticle, aiIntelligence,
+      contentArticle, aiIntelligence, consolidatedKeywords,
     );
   });
 

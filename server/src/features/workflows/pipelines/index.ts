@@ -14,3 +14,4 @@ export { ContentBriefPipeline } from './content-brief.pipeline';
 export { SiteAuditPipeline } from './site-audit.pipeline';
 export { ContentArticlePipeline } from './content-article.pipeline';
 export { AiIntelligencePipeline } from './ai-intelligence.pipeline';
+export { ConsolidatedKeywordsPipeline } from './consolidated-keywords.pipeline';

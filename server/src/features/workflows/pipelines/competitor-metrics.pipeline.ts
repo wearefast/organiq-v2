@@ -69,12 +69,21 @@ export class CompetitorMetricsPipeline implements Pipeline {
     // business-profile pipeline already ran getDomainRating + getBacklinksStats for this domain;
     // read from context instead of making duplicate Ahrefs calls.
     // context['business-profile'] is the Claude agent output whose top-level schema has
-    // `domain_authority: { domain_rating, referring_domains }` — NOT rawData.domainAuthority.
+    // `domain_authority: { domain_rating, ahrefs_rank, referring_domains, backlinks, backlinks_all_time }`.
     const bpCtx = context['business-profile'] as {
-      domain_authority?: { domain_rating?: number | null; referring_domains?: number | null } | null;
+      domain_authority?: {
+        domain_rating?: number | null;
+        ahrefs_rank?: number | null;
+        referring_domains?: number | null;
+        backlinks?: number | null;
+        backlinks_all_time?: number | null;
+      } | null;
     } | undefined;
     const targetDomainRating = bpCtx?.domain_authority?.domain_rating ?? 0;
+    const targetAhrefsRank = bpCtx?.domain_authority?.ahrefs_rank ?? undefined;
     const targetReferringDomains = bpCtx?.domain_authority?.referring_domains ?? 0;
+    const targetBacklinksLive = bpCtx?.domain_authority?.backlinks ?? 0;
+    const targetBacklinksAllTime = bpCtx?.domain_authority?.backlinks_all_time ?? 0;
 
     // Align output with the competitorMetrics agent definition schema
     const competitorMetrics = results.map((r) => {
@@ -136,11 +145,11 @@ export class CompetitorMetricsPipeline implements Pipeline {
       targetMetrics: {
         domain,
         domainRating: targetDomainRating,
+        ahrefsRank: targetAhrefsRank,
         organicKeywords: 0,
         organicTraffic: 0,
-        referringDomains:
-          targetReferringDomains,
-        backlinks: { live: 0, allTime: 0, liveRefDomains: targetReferringDomains, allTimeRefDomains: 0 },
+        referringDomains: targetReferringDomains,
+        backlinks: { live: targetBacklinksLive, allTime: targetBacklinksAllTime, liveRefDomains: targetReferringDomains, allTimeRefDomains: 0 },
         topPages: [],
       },
       competitorMetrics,

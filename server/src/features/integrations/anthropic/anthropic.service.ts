@@ -12,6 +12,7 @@ export interface AnthropicChatOptions {
   temperature?: number;
   maxTokens?: number;
   tools?: AnthropicToolDef[];
+  toolChoice?: { type: 'auto' | 'any' | 'tool'; name?: string };
   thinkingBudget?: number;
   /** AbortSignal to cancel the in-flight SDK call (e.g. on step timeout). */
   signal?: AbortSignal;
@@ -88,6 +89,12 @@ export class AnthropicService {
             description: t.description,
             input_schema: t.input_schema as Anthropic.Tool.InputSchema,
           }));
+
+          if (options.toolChoice) {
+            params.tool_choice = options.toolChoice.type === 'tool'
+              ? { type: 'tool', name: options.toolChoice.name! }
+              : { type: options.toolChoice.type } as Anthropic.ToolChoiceAuto | Anthropic.ToolChoiceAny;
+          }
         }
 
         // Extended thinking support
@@ -100,7 +107,36 @@ export class AnthropicService {
           delete params.temperature;
         }
 
-        const response = await this.client.messages.create(params, { signal: options.signal }) as Anthropic.Message;
+        // Always use streaming to avoid Anthropic SDK timeout errors on large
+        // requests (> 10 min). finalMessage() buffers the full response so the
+        // return type is identical to messages.create().
+        const stream = this.client.messages.stream(
+          params as Anthropic.MessageStreamParams,
+          { signal: options.signal },
+        );
+
+        // Race finalMessage() against the abort signal — the SDK's stream does not
+        // reliably reject finalMessage() when an AbortSignal fires, so we do it manually.
+        const abortRace = options.signal
+          ? new Promise<never>((_, reject) => {
+              if (options.signal!.aborted) {
+                reject(new Error('Anthropic call aborted: signal already fired'));
+                return;
+              }
+              options.signal!.addEventListener(
+                'abort',
+                () => {
+                  stream.abort();
+                  reject(new Error(options.signal!.reason instanceof Error ? options.signal!.reason.message : 'Anthropic call aborted'));
+                },
+                { once: true },
+              );
+            })
+          : null;
+
+        const response = abortRace
+          ? await Promise.race([stream.finalMessage(), abortRace])
+          : await stream.finalMessage();
 
         return this.parseResponse(response);
       } catch (error: unknown) {

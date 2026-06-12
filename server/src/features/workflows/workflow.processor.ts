@@ -29,7 +29,11 @@ interface StepJobData {
   organizationId: string;
 }
 
-@Processor('workflow-steps')
+// maxStalledCount: 0 — disables BullMQ's stalled-job auto-retry. Recovery from server
+// restarts is handled exclusively by WorkflowService.reconcileOrphanedRuns() on boot,
+// which resets orphaned steps to 'pending' and re-enqueues them. Allowing BullMQ to
+// also retry stalled jobs would cause double execution of the same step.
+@Processor('workflow-steps', { maxStalledCount: 0 })
 export class WorkflowProcessor extends WorkerHost {
   private readonly logger = new Logger(WorkflowProcessor.name);
 
@@ -118,19 +122,23 @@ export class WorkflowProcessor extends WorkerHost {
             metadata: { provider: 'pipeline', model: 'none', tokensUsed: { input: 0, output: 0, total: 0 }, iterations: 0 },
           });
 
-          await tx.update(workflowSteps).set({ status: 'completed', completedAt: new Date() }).where(eq(workflowSteps.id, step.id));
+          const finalStatus = agentDef.requiresApproval ? 'awaiting_approval' : 'completed';
+          await tx.update(workflowSteps).set({ status: finalStatus, completedAt: new Date() }).where(eq(workflowSteps.id, step.id));
 
           // Debit credits inside transaction (atomic with artifact persistence)
-          await this.creditsService.debit({
-            organizationId,
-            amount: agentDef.creditCost,
-            description: `Pipeline: ${stepKey}`,
-            workflowRunId,
-            stepKey,
-          }, tx);
+          if (agentDef.creditCost > 0) {
+            await this.creditsService.debit({
+              organizationId,
+              amount: agentDef.creditCost,
+              description: `Pipeline: ${stepKey}`,
+              workflowRunId,
+              stepKey,
+            }, tx);
+          }
         });
 
-        this.workflowGateway.emitStepCompleted(workflowRunId, stepKey, 'completed');
+        const pipelineFinalStatus = agentDef.requiresApproval ? 'awaiting_approval' : 'completed';
+        this.workflowGateway.emitStepCompleted(workflowRunId, stepKey, pipelineFinalStatus);
         await this.materializer.materialize(workflowRunId, stepKey);
 
         // Store pipeline output in workflow context so downstream steps can read it
@@ -138,8 +146,10 @@ export class WorkflowProcessor extends WorkerHost {
           await this.workflowService.setContext(workflowRunId, stepKey, pipelineOutput);
         }
 
-        // Enqueue downstream steps that are now unblocked
-        await this.workflowService.enqueuePendingSteps(workflowRunId);
+        // Enqueue downstream steps that are now unblocked (only if not awaiting approval)
+        if (!agentDef.requiresApproval) {
+          await this.workflowService.enqueuePendingSteps(workflowRunId);
+        }
         return;
       }
 
@@ -178,6 +188,10 @@ export class WorkflowProcessor extends WorkerHost {
       // required keys reduces input cost without changing output quality.
       // When a step is not listed here, the full workflowContext is passed (backwards-compatible).
       const STEP_CONTEXT_KEYS: Record<string, string[]> = {
+        // method03 gets dedup data via prompt template variables ({{phase1-baseline.currentRankings}} etc.)
+        // Sending it again in <workflow_context> doubles input tokens and causes the agent to
+        // exhaust its 32K output budget on analysis text before calling return_output.
+        'method03-content-gap-import': [],
         'consolidated-keywords': [
           'seed-keywords',
           'method01-competitor-pages',
@@ -194,7 +208,8 @@ export class WorkflowProcessor extends WorkerHost {
           'consolidated-keywords',
         ],
         'topical-map': [
-          'consolidated-keywords',
+          // consolidated-keywords is already embedded in the prompt via template
+          // variables — including it here duplicates ~150KB of input tokens.
           'verdict-strategy',
           'business-profile',
         ],

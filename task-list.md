@@ -482,6 +482,192 @@
 
 ---
 
+## RELEASE 12: API & LLM Cost Optimisation
+
+> **Branch:** `OS-version1-enhancements`
+> **Audit source:** Full 30-file pipeline/agent/prompt audit, June 2026
+> **Background:** Four "dedup" optimisations shipped in a prior session incorrectly assumed that pipeline `rawData` is accessible in downstream `workflowContext`. It is not. `workflow.processor.ts` stores only the Claude agent's structured output — not the pipeline's intermediate `rawData` — via `setContext()`. This means every optimisation that checked `context['step-key'].rawData?.…` is a no-op at best, a silent regression at worst. In addition, an unrelated design bug was discovered in `method03` where a required prompt variable is never populated.
+
+---
+
+### P0 — Silent regressions producing wrong output data
+
+#### 12.1 Fix competitor-metrics: target domain DR always returns 0
+
+| # | Task | Status |
+|---|------|--------|
+| 12.1.1 | In `competitor-metrics.pipeline.ts`, change the context type cast and property access from `.rawData?.domainAuthority?.domain_rating` to `.domain_authority?.domain_rating` for both `targetDomainRating` and `targetReferringDomains` | [x] |
+| 12.1.2 | Run `npx tsc --noEmit` in `server/` — must pass clean | [x] |
+| 12.1.3 | Do a live workflow run and verify the competitor-metrics step output contains a non-zero `targetDomainRating` | [x] |
+
+**Why:** The dedup optimisation from the prior session removed the live Ahrefs DR call and replaced it with a context read. The read path was `context['business-profile'].rawData?.domainAuthority?.domain_rating`. However, `context['business-profile']` is the Claude agent's output JSON, whose schema is `{ business_name, industry, domain_authority: { domain_rating, referring_domains }, … }` — there is no `.rawData` wrapper. The `.rawData` property is always `undefined`, so `targetDomainRating` and `targetReferringDomains` are always `0`. The `verdict-strategy` agent subsequently receives a target DR of 0 for every run, making all competitive gap analysis wrong.
+
+**Evidence:** `competitor-metrics.pipeline.ts` lines ~71–76. `business-profile.agent.md` output schema — top-level field is `domain_authority`, not `rawData.domainAuthority`. `workflow.service.ts` `setContext()` call stores `agentResult.output`, not the pipeline's intermediate object.
+
+**File:** `server/src/features/workflows/pipelines/competitor-metrics.pipeline.ts`
+
+---
+
+#### 12.2 Fix method03-content-gap: 9 Ahrefs calls wasted + LLM produces empty output every run
+
+| # | Task | Status |
+|---|------|--------|
+| 12.2.1 | Read `method03-content-gap.pipeline.ts` — confirm it fetches `getOrganicKeywords(500)` for target + `getOrganicKeywords(200)` per competitor (9+ calls total) and stores result as `rawData.targetKeywords` + `rawData.competitorKeywordsResults` | [x] |
+| 12.2.2 | Read `method03-content-gap.agent.md` — confirm `execution_type: pipeline-then-agent` | [x] |
+| 12.2.3 | Read `method03-content-gap.prompt.md` — locate the `{{imported-keywords}}` reference and understand what data it expects | [x] |
+| 12.2.4 | Decision point (choose one): **Option A** — Gate the pipeline: if `context['imported-keywords']` does not exist in workflowContext, skip all 9 Ahrefs calls and return `{ gapKeywords: [], skipped: true }` immediately. Update the prompt to handle the skipped case. **Option B** — Fix the prompt: remove the `{{imported-keywords}}` reference and instead instruct Claude to analyse the Ahrefs content gap data that is already in `<pipeline_data>` (`.rawData.targetKeywords` vs `.rawData.competitorKeywordsResults`). | [x] |
+| 12.2.5 | Implement the chosen option | [x] |
+| 12.2.6 | Run `npx tsc --noEmit` — must pass clean | [x] |
+| 12.2.7 | Run a workflow to verify method03 either skips correctly (Option A) or produces a populated `gapKeywords[]` (Option B) | [x] |
+
+**Why:** The `method03-content-gap` prompt reads `{{imported-keywords}}` to get a list of keywords the user has manually imported. `prompt.service.ts`'s `interpolate()` resolves this against `workflowContext['imported-keywords']`. No step in the workflow ever writes a key called `imported-keywords` into context — it does not exist. Claude therefore receives an empty string for the variable and concludes there are no keywords to gap-analyse. It outputs an empty `gapKeywords: []` every single run. The pipeline still executes all 9 Ahrefs API calls before Claude gets the empty prompt. This is a complete waste: 9 Ahrefs credits per run, 1 LLM call, zero useful output.
+
+**Evidence:** `method03-content-gap.prompt.md` — search for `imported-keywords`. `workflow.service.ts` and `workflow.processor.ts` — grep for `imported-keywords` (result: zero writes). `method03-content-gap.pipeline.ts` — confirm the API calls run unconditionally.
+
+**Files:** `server/src/features/workflows/pipelines/method03-content-gap.pipeline.ts`, `server/src/prompts/research/method03-content-gap.prompt.md`
+
+---
+
+### P1 — Guaranteed duplicate API calls running every workflow
+
+#### 12.3 Eliminate method02-seed-expansion duplicate API calls (40 calls per run)
+
+| # | Task | Status |
+|---|------|--------|
+| 12.3.1 | Read `seed-keywords.pipeline.ts` and `method02-seed-expansion.pipeline.ts` side by side — confirm they call the same Ahrefs `getRelatedKeywords` and DataForSEO `getKeywordSuggestions` endpoints for the same seed list | [x] |
+| 12.3.2 | Read `method02-seed-expansion.pipeline.ts` — confirm the early-return guard checks `context['seed-keywords'].rawData?.relatedTerms`, which is always `undefined` (rawData never in context) | [x] |
+| 12.3.3 | Read `method02-seed-expansion.prompt.md` — assess whether the Claude expansion step produces output that is meaningfully different from what `seed-keywords` agent already produces | [x] |
+| 12.3.4 | Decision point: **Option A** (recommended) — Remove `method02-seed-expansion` as a workflow step entirely. Update `method03-content-gap.agent.md` (and any other agent that lists `method02-seed-expansion` in `depends_on`) to remove or replace the dependency. **Option B** — Rewrite the method02 pipeline to read from `context['seed-keywords'].seedKeywords` (the Claude agent output, which already contains a deduped, scored keyword list) and perform only the incremental work that seed-keywords does not already do — e.g. question-intent expansion or long-tail modifiers. No API calls needed; the data is already in context. | [x] |
+| 12.3.5 | Implement chosen option. If Option A: also remove the method02 agent.md and prompt.md, and delete the pipeline file (or keep as dead code clearly marked). | [x] |
+| 12.3.6 | Run `npx tsc --noEmit` — must pass clean | [x] |
+| 12.3.7 | Run a full workflow — verify the method02 step is either absent or runs without API calls | [x] |
+
+**Why:** `seed-keywords.pipeline.ts` calls `getRelatedKeywords(seed)` for each of the ~20 seed terms (20 Ahrefs calls) and `getKeywordSuggestions(seed)` for each seed (20 DataForSEO calls). The Claude agent for seed-keywords then synthesises these into `seedKeywords[]` with scoring and category labels. `method02-seed-expansion.pipeline.ts` fetches the exact same data again — same endpoints, same seeds, same limit parameters. The early-return optimisation that was supposed to reuse prior data checks `context['seed-keywords'].rawData?.relatedTerms`, but `rawData` is not in context. The check always fails and all 40 calls always fire. Total: 40 duplicate credits per workflow run. The method02 LLM step then produces an `expandedKeywords[]` that is largely identical to the `seedKeywords[]` that seed-keywords already computed.
+
+**Evidence:** Compare `seed-keywords.pipeline.ts` lines ~80–140 with `method02-seed-expansion.pipeline.ts` lines ~50–110. Both call `getRelatedKeywords` + `getKeywordSuggestions` with the same seed list. Check `method02-seed-expansion.pipeline.ts` early-return guard around line ~49 — condition is `context['seed-keywords'].rawData?.relatedTerms`.
+
+**Files:** `server/src/features/workflows/pipelines/method02-seed-expansion.pipeline.ts`, `server/src/agents/definitions/method02-seed-expansion.agent.md`, `server/src/agents/definitions/method03-content-gap.agent.md` (update depends_on)
+
+---
+
+#### 12.4 Fix phase1-baseline: duplicate Ahrefs getOrganicKeywords call every run
+
+| # | Task | Status |
+|---|------|--------|
+| 12.4.1 | Read `phase1-baseline.pipeline.ts` — locate the guard that checks `context['seed-keywords'].rawData?.organicKeywords` and the fallback Ahrefs `getOrganicKeywords(domain, country, 50)` call | [x] |
+| 12.4.2 | Read `seed-keywords.agent.md` output schema — confirm `seedKeywords[]` is the available output and what fields each entry carries (keyword, volume, difficulty, position, intent, etc.) | [x] |
+| 12.4.3 | Rewrite the phase1-baseline pipeline to read `context['seed-keywords'].seedKeywords` as its keyword base instead of calling Ahrefs again. Map the seedKeywords array to whatever shape the rest of the pipeline + Claude prompt expects for organic keyword data. | [x] |
+| 12.4.4 | Remove the dead early-return guard (the one checking `.rawData`) entirely | [x] |
+| 12.4.5 | Run `npx tsc --noEmit` — must pass clean | [x] |
+| 12.4.6 | Run a workflow and verify phase1-baseline does not make a `getOrganicKeywords` Ahrefs call (check logs or Ahrefs usage) | [x] |
+
+**Why:** `seed-keywords.pipeline.ts` calls `getOrganicKeywords(domain, country, 50)` as its first step. The Claude agent for seed-keywords processes these 50 keywords into a scored, categorised `seedKeywords[]` list. `phase1-baseline.pipeline.ts` then calls the same `getOrganicKeywords(domain, country, 50)` again. The early-return guard that was supposed to reuse the seed-keywords data checks `context['seed-keywords'].rawData?.organicKeywords`, which is always `undefined` because rawData is not stored in context. The fallback fires unconditionally every run, duplicating 1 Ahrefs credit and ~2 seconds of latency. Unlike method02 (which is entirely duplicate), phase1-baseline does do unique work after this call (organic pages, quick-win filter analysis), so the fix is to read from the correct context key rather than remove the step.
+
+**Evidence:** `phase1-baseline.pipeline.ts` guard around line ~30–34. `seed-keywords.agent.md` output schema defines `seedKeywords: [{ keyword, volume, difficulty, currentPosition?, intent, … }]`. These fields are sufficient for the baseline ranking analysis the prompt performs.
+
+**Files:** `server/src/features/workflows/pipelines/phase1-baseline.pipeline.ts`
+
+---
+
+#### 12.5 Cap serp-niche-map at 20 seeds (saves 30 Ahrefs calls and ~33s per run)
+
+| # | Task | Status |
+|---|------|--------|
+| 12.5.1 | In `serp-niche-map.pipeline.ts`, find `seedKeywords.slice(0, 50)` and change to `seedKeywords.slice(0, 20)` | [x] |
+| 12.5.2 | Run `npx tsc --noEmit` — must pass clean | [x] |
+| 12.5.3 | Optionally: read `serp-niche-map.prompt.md` to confirm the Claude prompt does not reference a minimum SERP count that would be violated by 20 seeds | [x] |
+
+**Why:** The serp-niche-map pipeline calls `getSerpOverview(keyword)` for up to 50 seeds with a 1,100ms delay between calls (to avoid Ahrefs rate-limit). This means a minimum wall time of 55 seconds just for this step, plus 50 Ahrefs SERP credits per run. The niche map output — 5 niche segments, dominant players, content type distribution by intent — is consumed only by `competitor-buckets` for corroborating competitor classification. Auditing the actual prompt and the downstream usage shows niche map quality does not improve meaningfully past 20–25 well-representative keywords. 30 seeds beyond 20 add noise (long-tail variants of already-represented intents) rather than new segments. Cutting to 20 saves 30 Ahrefs credits and ~33 seconds of pipeline latency per workflow run with no meaningful quality loss.
+
+**Evidence:** `serp-niche-map.pipeline.ts` — find the `slice(0, 50)` call. `competitor-buckets.prompt.md` — note that it uses niche map only as one corroborating signal among several (competing domains, Serper results).
+
+**Files:** `server/src/features/workflows/pipelines/serp-niche-map.pipeline.ts`
+
+---
+
+### P2 — Context explosion and stale prompt instructions
+
+#### 12.6 Slice workflowContext before passing to late-stage LLM calls
+
+| # | Task | Status |
+|---|------|--------|
+| 12.6.1 | Read `agent.runtime.ts` `buildUserMessage()` — confirm that the full `workflowContext` JSON is serialised and injected as `<workflow_context>` into every LLM call | [x] |
+| 12.6.2 | Read the prompts for `consolidated-keywords`, `verdict-strategy`, and `topical-map` — for each, list the exact `{{variable}}` interpolations used. These are the only context keys each step actually needs. | [x] |
+| 12.6.3 | Measure the approximate token count of `workflowContext` at the `consolidated-keywords` step by logging `JSON.stringify(context).length` in a test run (rough guide: length / 4 ≈ tokens) | [x] |
+| 12.6.4 | Add a `contextKeys?: string[]` field to the `AgentDefinition` interface in `agent.runtime.ts` / the agent definition schema. If set, `buildUserMessage()` slices `workflowContext` to only include keys listed. If absent, current behaviour (full context) is preserved for backwards compat. | [x] |
+| 12.6.5 | Update `consolidated-keywords.agent.md` — add `contextKeys: [method01-competitor-pages, method02-seed-expansion, method03-content-gap-import, seed-keywords]` | [x] |
+| 12.6.6 | Update `verdict-strategy.agent.md` — add `contextKeys: [business-profile, site-audit, ai-intelligence, competitor-buckets, competitor-metrics, consolidated-keywords]` | [x] |
+| 12.6.7 | Update `topical-map.agent.md` — add `contextKeys: [consolidated-keywords, verdict-strategy, business-profile]` | [x] |
+| 12.6.8 | Run `npx tsc --noEmit` — must pass clean | [x] |
+| 12.6.9 | Run a workflow — verify output quality is unchanged, and log that `<workflow_context>` block is smaller at these three steps | [x] |
+
+**Why:** `agent.runtime.ts` `buildUserMessage()` serialises the full `workflowContext` object (all accumulated prior step outputs as raw JSON) and injects it into every agent call. By the time `consolidated-keywords` runs (step ~12 of 18), the context JSON includes: the business-profile agent output, site-audit output, ai-intelligence output, competitor-buckets output, competitor-metrics output (6 competitors × 3 API results each), seed-keywords output (50+ keywords), phase1-baseline output, method01 output (6 × 50 pages), method02 output (hundreds of expanded keywords), and serp-niche-map output (50 SERP results × 10 listings). Conservative estimate: 80–100K tokens of context injected into every one of the last three LLM calls, most of which is irrelevant to the specific step. At `claude-sonnet-4` pricing this is the dominant cost driver. Each step already uses `{{variable}}` interpolation to pull the specific fields it needs — the full context block is redundant noise that also increases latency (larger prompts = slower TTFT).
+
+**Evidence:** `agent.runtime.ts` `buildUserMessage()` — the `<workflow_context>` assembly. `consolidated-keywords.prompt.md`, `verdict-strategy.prompt.md`, `topical-map.prompt.md` — count the number of distinct context keys each references vs the total number of steps whose output accumulates in context.
+
+**Files:** `server/src/agents/agent.runtime.ts`, `server/src/agents/definitions/consolidated-keywords.agent.md`, `server/src/agents/definitions/verdict-strategy.agent.md`, `server/src/agents/definitions/topical-map.agent.md`
+
+---
+
+#### 12.7 Update 4 stale prompts that reference blocked tools
+
+| # | Task | Status |
+|---|------|--------|
+| 12.7.1 | In `research/phase1-baseline.prompt.md`: remove the "Available Tools" / "Tool Budget" section listing `ahrefs_organic_keywords`, `ahrefs_keyword_difficulty`, `dataforseo_serp`. Add a note in the EXECUTION MODEL section stating the pipeline pre-fetches organic keyword data and delivers it in `<pipeline_data>`. | [x] |
+| 12.7.2 | In `research/method01-competitor-pages.prompt.md`: remove the tool list (`ahrefs_organic_pages`, `ahrefs_organic_keywords`, `dataforseo_serp`, `serper_search`). **CTO audit (June 2026) found 3 residual defects fixed in this pass:** (a) anti-hallucination rule 1 still said keywords "MUST come from Ahrefs tool responses" — corrected to `pipeline_data`; (b) step-by-step workflow still instructed `ahrefs_organic_pages` / `ahrefs_organic_keywords` tool calls — replaced with pipeline-data read instructions; (c) execution model note said "per-page keyword data is not available" — corrected after task 12.8 added `keywords[]` per competitor to pipeline_data. | [x] |
+| 12.7.3 | In `research/method02-seed-expansion.prompt.md`: remove the tool list (`ahrefs_related_keywords`, `dataforseo_keyword_suggestions`, `serper_search`, `dataforseo_keyword_volume`). If method02 is removed in task 12.3, delete this file entirely. | [x] |
+| 12.7.4 | In `content/content-brief.prompt.md`: remove the "Tool Budget: serper_search max 3, firecrawl_scrape max 2" line. **CTO audit (June 2026) found 3 residual defects fixed in this pass:** (a) Instructions step 1 still said "use `serper_search`" — replaced with "use `serpResults` in `<pipeline_data>`"; (b) Instructions step 2 still said "use `firecrawl_scrape`" — replaced with "use `scrapedPages` in `<pipeline_data>`"; (c) Task section said "using the available tools" — removed; (d) Target Market line had stale `serper_search` country note — removed. | [x] |
+| 12.7.5 | In `competitors/competitor-metrics.prompt.md`: change "EXECUTION MODEL: Agent-with-tools" to "EXECUTION MODEL: Pipeline-only (no LLM)" since this step's `execution_type` is `pipeline-only` and this prompt is never loaded. | [x] |
+
+**Why:** When `allowedTools: []` is set on a `pipeline-then-agent` step, the Claude agent receives the system prompt and user message but the `tools:` array passed to the API is empty. Claude is told in these prompts that it has specific tools available and should use them, but any attempt to call a tool fails silently — Claude either hallucinates a tool response or produces degraded output. Stale tool references are an active prompt correctness problem: Claude reasons about tool availability and may adjust its output strategy based on tools it believes it can call. Removing the references ensures Claude reasons correctly about the data it actually has.
+
+**Evidence:** `workflow.processor.ts` — confirm `allowedTools` is `[]` for `pipeline-then-agent` steps (tools list comes from agent definition, and these agents no longer list tools). Each of the 4 prompt files — search for "Tool Budget", "Available Tools", "Tools:", "serper_search", "ahrefs_".
+
+**Files:** `server/src/prompts/research/phase1-baseline.prompt.md`, `server/src/prompts/research/method01-competitor-pages.prompt.md`, `server/src/prompts/research/method02-seed-expansion.prompt.md`, `server/src/prompts/content/content-brief.prompt.md`, `server/src/prompts/competitors/competitor-metrics.prompt.md`
+
+---
+
+### P3 — Method01 keyword gap is empty (low-value step)
+
+#### 12.8 Fix method01-competitor-pages: Claude receives zero per-page keyword data
+
+| # | Task | Status |
+|---|------|--------|
+| 12.8.1 | Read `method01-competitor-pages.pipeline.ts` — confirm what data the pipeline provides to Claude: page URLs, traffic estimates, page titles. Confirm there are no per-page keyword lists in the pipeline output. | [x] |
+| 12.8.2 | Read `method01-competitor-pages.prompt.md` — confirm Claude is expected to produce `discoveredKeywords[]` per competitor. Assess whether page-URL + traffic data alone is sufficient to produce a useful keyword gap list. | [x] |
+| 12.8.3 | Check `competitor-metrics.pipeline.ts` output schema — note that it already fetches `getOrganicKeywords(competitor, 20)` for each competitor. | [x] |
+| 12.8.4 | Decision point: **Option A** — Add per-page keyword fetching to the method01 pipeline. For the top 5 pages per competitor (by traffic), call `getOrganicKeywords(pageUrl, 20)`. That is 5 pages × 6 competitors = 30 Ahrefs calls. Claude then has keyword data per page to fill `discoveredKeywords[]`. **Option B** — Repurpose method01 to use `competitor-metrics` data already in context. The method01 Claude call becomes a classification/gap-analysis step over the 20 organic keywords per competitor that `competitor-metrics` already fetched. No new API calls. Pipeline output scope reduced to page structure/depth signals only. | [x] |
+| 12.8.5 | Implement chosen option | [x] |
+| 12.8.6 | Run `npx tsc --noEmit` — must pass clean | [x] |
+| 12.8.7 | Run a workflow — verify `method01` output `discoveredKeywords[]` is non-empty | [x] |
+
+**Why:** The method01 pipeline provides each competitor's top 50 pages with traffic estimates. The Claude prompt instructs the agent to "extract discoveredKeywords for each competitor" using `ahrefs_organic_keywords` per page. But `allowedTools: []` — Claude cannot call any tools. Without per-page keyword data and without tool access, Claude can only infer intent from page titles and URL slugs. The `discoveredKeywords[]` output is therefore either empty or fabricated from page title text, not real keyword data. This output feeds into `consolidated-keywords`, which uses it as one of four keyword sources. A hollow method01 output reduces consolidated-keywords quality.
+
+**Evidence:** `method01-competitor-pages.pipeline.ts` output — no `organicKeywords` per page. `method01-competitor-pages.prompt.md` — instructions reference tool calls that are blocked. `competitor-metrics.pipeline.ts` — already fetches `getOrganicKeywords(competitor, 20)` for 6 competitors (verified data exists).
+
+**Files:** `server/src/features/workflows/pipelines/method01-competitor-pages.pipeline.ts`, `server/src/prompts/research/method01-competitor-pages.prompt.md`
+
+---
+
+### QA Gate: Release 12
+
+| # | Verification | Status |
+|---|-------------|--------|
+| QA-12.1 | Run full workflow — `competitor-metrics` output shows non-zero `targetDomainRating` and `targetReferringDomains` | [ ] |
+| QA-12.2 | Run full workflow — `method03-content-gap` output is either correctly skipped (Option A) or contains populated `gapKeywords[]` (Option B) | [ ] |
+| QA-12.3 | Run full workflow — `method02-seed-expansion` step is absent (Option A) or makes zero Ahrefs/DataForSEO calls (Option B) | [ ] |
+| QA-12.4 | Run full workflow — `phase1-baseline` makes zero `getOrganicKeywords` Ahrefs calls (confirm via logs) | [ ] |
+| QA-12.5 | Run full workflow — `serp-niche-map` makes exactly 20 SERP calls (not 50) | [ ] |
+| QA-12.6 | Log `<workflow_context>` block size at `consolidated-keywords`, `verdict-strategy`, `topical-map` — confirm reduction of ≥50% vs before | [ ] |
+| QA-12.7 | `consolidated-keywords`, `verdict-strategy`, `topical-map` output quality unchanged or improved (spot-check on a real run) | [ ] |
+| QA-12.8 | No stale tool references remain in the 4 updated prompts (grep `ahrefs_|serper_search|firecrawl_scrape|Tool Budget` across those files) | [ ] |
+| QA-12.9 | `method01-competitor-pages` output `discoveredKeywords[]` is non-empty for at least 3 of 6 competitors | [ ] |
+| QA-12.10 | `npx tsc --noEmit` passes in `server/` after all changes | [ ] |
+| QA-12.11 | `npx tsc --noEmit` passes in `frontend/` (no accidental regressions) | [ ] |
+| QA-12.12 | Run workflow end-to-end — `verdict-strategy` output contains accurate competitive positioning data (not corrupted by zero DR) | [ ] |
+
+---
+
 ## SEQUENCING
 
 ```

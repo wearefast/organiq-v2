@@ -81,6 +81,28 @@ export class DataForSeoService {
     ]);
   }
 
+  async searchRedditThreads(query: string, country = 'us', depth = 20) {
+    const keyword = `site:reddit.com ${query.trim()}`;
+    const raw = (await this.post('/serp/google/organic/live/advanced', [
+      { keyword, location_name: this.resolveLocation(country), language_code: 'en', depth },
+    ])) as {
+      tasks?: Array<{
+        result?: Array<{
+          items?: Array<{
+            type?: string;
+            title?: string;
+            url?: string;
+            description?: string;
+            rank_absolute?: number;
+            timestamp?: string;
+          }>;
+        }>;
+      }>;
+    };
+    const items = raw.tasks?.[0]?.result?.[0]?.items ?? [];
+    return items.filter((i) => i.type === 'organic');
+  }
+
   // ─── Keywords Data ────────────────────────────────────────
 
   async getKeywordSearchVolume(keywords: string[], location: string = 'United States', language: string = 'en') {
@@ -165,7 +187,13 @@ export class DataForSeoService {
       { target: domain },
     ]);
   }
+  // ─── DataForSEO Labs ────────────────────────────────────────────────────────
 
+  async getRankedKeywords(domain: string, location: string = 'United States', language: string = 'en', limit: number = 500) {
+    return this.post('/dataforseo_labs/google/ranked_keywords/live', [
+      { target: domain, location_name: this.resolveLocation(location), language_code: language, limit },
+    ]);
+  }
   // ─── Core Request Methods ─────────────────────────────────
 
   private async post(endpoint: string, data: unknown[]): Promise<unknown> {

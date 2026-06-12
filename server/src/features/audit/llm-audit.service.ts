@@ -8,14 +8,10 @@ import { randomUUID } from 'crypto';
 
 // ─── Types ───────────────────────────────────────────────────
 
-export interface BotPermissions {
-  GPTBot: 'allowed' | 'blocked' | 'not_specified';
-  ClaudeBot: 'allowed' | 'blocked' | 'not_specified';
-  PerplexityBot: 'allowed' | 'blocked' | 'not_specified';
-  'Google-Extended': 'allowed' | 'blocked' | 'not_specified';
-  Applebot: 'allowed' | 'blocked' | 'not_specified';
-  'cohere-ai': 'allowed' | 'blocked' | 'not_specified';
-}
+export type BotStatus = 'allowed' | 'blocked' | 'not_specified';
+
+/** Keyed by bot user-agent string. Stored as jsonb so new bots are backwards-compatible. */
+export type BotPermissions = Record<string, BotStatus>;
 
 export interface ContentChecks {
   h1Present: boolean;
@@ -25,6 +21,15 @@ export interface ContentChecks {
   imagesWithAlt: number;
   imagesTotal: number;
   jsRenderedOnly: boolean;
+  // LLM discovery signals (optional — old stored rows pre-date this check)
+  llmsTxtPresent?: boolean;
+  llmsTxtValid?: boolean;
+  pageInLlmsTxt?: boolean;
+  llmsFullTxtPresent?: boolean; // /llms-full.txt full-content variant (used by Perplexity & Claude)
+  // Content freshness signals (optional — old stored rows pre-date this check)
+  dateModifiedPresent?: boolean;
+  dateModifiedRecent?: boolean;  // true if dateModified/datePublished is within the last 12 months
+  sitemapHasLastmod?: boolean;
 }
 
 export interface TrustSignals {
@@ -34,16 +39,31 @@ export interface TrustSignals {
   schemaTypes: string[];
   ogTags: boolean;
   twitterTags: boolean;
+  // E-E-A-T depth signals (optional — old stored rows pre-date this check)
+  hasPersonSchema?: boolean;        // Person JSON-LD with name + url
+  hasOrganizationSchema?: boolean;  // Organization / LocalBusiness JSON-LD with name + url
+  authorHasCredentials?: boolean;   // Person.sameAs or Person.affiliation present
+  // Page-level robots directives (optional — old stored rows pre-date this check)
+  metaRobotsNoindex?: boolean;      // <meta name="robots" content="noindex">
+  metaRobotsNoai?: boolean;         // <meta name="robots" content="noai">
+  xRobotsNoindex?: boolean;         // X-Robots-Tag: noindex response header
+  xRobotsNoai?: boolean;            // X-Robots-Tag: noai or noimageai response header
 }
 
 export interface ContentChunking {
   avgParagraphLength: number;
   hasLists: boolean;
   internalLinkCount: number;
+  // Citation-readiness signals (optional — old stored rows pre-date this check)
+  hasFaq?: boolean;
+  hasComparisonTable?: boolean;
+  hasStepList?: boolean;        // <ol> with ≥3 items
+  answerFirst?: boolean;        // substantive paragraph found in first 3 <p> elements
+  hasOutboundLinks?: boolean;   // links to .gov, .edu, or .org sources
 }
 
 export interface AuditIssue {
-  type: 'bot_blocked' | 'structure' | 'trust' | 'chunking' | 'schema' | 'sitemap';
+  type: 'bot_blocked' | 'structure' | 'trust' | 'chunking' | 'schema' | 'sitemap' | 'llms_txt' | 'freshness' | 'citation' | 'eeat' | 'xrobots';
   severity: 'high' | 'medium' | 'low';
   description: string;
   fix: string;
@@ -69,8 +89,29 @@ export interface AuditRunSummary {
 }
 
 // ─── Bot list ────────────────────────────────────────────────
-
-const LLM_BOTS = ['GPTBot', 'ClaudeBot', 'PerplexityBot', 'Google-Extended', 'Applebot', 'cohere-ai'] as const;
+// Organized by category so the UI can group them meaningfully.
+// All are significant AI crawlers that publishers routinely encounter in access logs.
+const LLM_BOTS = [
+  // ── Training crawlers (index content for model training) ──
+  'GPTBot',             // OpenAI — ChatGPT / GPT-4 training
+  'ClaudeBot',          // Anthropic — Claude training
+  'Google-Extended',    // Google — Gemini / AI Overviews training opt-out token
+  'Applebot-Extended',  // Apple — Apple Intelligence training
+  'cohere-ai',          // Cohere — enterprise RAG model training
+  'Bytespider',         // ByteDance (TikTok) — Doubao LLM training
+  // ── Search & answer bots (real-time crawl for citations) ──
+  'OAI-SearchBot',      // OpenAI — ChatGPT Search real-time index
+  'PerplexityBot',      // Perplexity AI — real-time answer crawl
+  'Applebot',           // Apple — Siri Knowledge / Spotlight Suggestions
+  'DuckAssistBot',      // DuckDuckGo — AI-assisted answer feature
+  'Gemini-Deep-Research', // Google — Gemini Deep Research feature
+  'Bravebot',           // Brave — Brave Search AI answers
+  // ── Real-time user-initiated fetchers ──
+  'ChatGPT-User',       // OpenAI — fetches URLs shared by ChatGPT users
+  'Claude-User',        // Anthropic — fetches URLs shared by Claude users
+  'Perplexity-User',    // Perplexity — fetches pages during user queries
+  'meta-externalagent', // Meta — Meta AI search crawler
+] as const;
 
 // ─── Service ─────────────────────────────────────────────────
 
@@ -108,6 +149,13 @@ export class LlmAuditService {
 
     // Always fetch fresh robots.txt (needed for bot permission checks, tiny payload)
     const robotsTxt = await this.webCrawler.fetchText(`${origin}/robots.txt`);
+    // Fetch /llms.txt once per run — LLM-native discovery file (llmstxt.org standard).
+    // /llms-full.txt is the full-content variant used by Perplexity and Claude.
+    // Both return empty string on 404/error; downstream checks handle that gracefully.
+    const [llmsTxt, llmsFullTxt] = await Promise.all([
+      this.webCrawler.fetchText(`${origin}/llms.txt`).catch(() => ''),
+      this.webCrawler.fetchText(`${origin}/llms-full.txt`).catch(() => ''),
+    ]);
 
     // Use stored sitemap URLs if available; otherwise fall back to live discovery
     let pageUrls: string[];
@@ -128,6 +176,12 @@ export class LlmAuditService {
       sitemapXml = discovery.sitemapXml;
     }
 
+    // P0 fix: when stored URLs are used, sitemapXml is '' above — fetch the raw XML now so that
+    // the <lastmod> freshness check can run. Non-fatal if the sitemap is unreachable.
+    if (!sitemapXml) {
+      sitemapXml = await this.webCrawler.fetchText(`${origin}/sitemap.xml`).catch(() => '');
+    }
+
     this.logger.log(`runAudit: auditing ${pageUrls.length} page(s) on ${origin}`);
 
     // Bot permissions are site-wide — evaluate once against robots.txt
@@ -139,7 +193,7 @@ export class LlmAuditService {
     for (let i = 0; i < pageUrls.length; i += AUDIT_BATCH_SIZE) {
       const batch = pageUrls.slice(i, i + AUDIT_BATCH_SIZE);
       const batchResults = await Promise.all(
-        batch.map((url) => this.auditSinglePage(url, botPermissions, botIssues, sitemapXml, origin)),
+        batch.map((url) => this.auditSinglePage(url, botPermissions, botIssues, llmsTxt, llmsFullTxt, sitemapXml, origin)),
       );
       results.push(...batchResults.filter((r): r is PageAuditResult => r !== null));
     }
@@ -185,10 +239,12 @@ export class LlmAuditService {
     pageUrl: string,
     botPermissions: BotPermissions,
     botIssues: AuditIssue[],
+    llmsTxt: string,
+    llmsFullTxt: string,
     sitemapXml: string,
     origin: string,
   ): Promise<PageAuditResult | null> {
-    const pageHtml = await this.webCrawler.fetchText(pageUrl);
+    const { body: pageHtml, headers: pageHeaders } = await this.webCrawler.fetchWithHeaders(pageUrl);
     if (!pageHtml) {
       this.logger.warn(`auditSinglePage: skipping unreachable page ${pageUrl}`);
       return null;
@@ -199,24 +255,48 @@ export class LlmAuditService {
     const contentChunking = this.checkContentChunking(pageHtml);
     const schemaIssues = this.checkSchemaMarkup(pageHtml);
     const sitemapIssues = this.checkSitemap(sitemapXml, pageUrl);
+    const { present: llmsTxtPresent, valid: llmsTxtValid, pageReferenced: pageInLlmsTxt, fullPresent: llmsFullTxtPresent, issues: llmsIssues } =
+      this.checkLlmsTxt(llmsTxt, llmsFullTxt, pageUrl);
+    const { dateModifiedPresent, dateModifiedRecent, sitemapHasLastmod, issues: freshnessIssues } =
+      this.checkContentFreshness(pageHtml, sitemapXml, pageUrl);
+    const { hasFaq, hasComparisonTable, hasStepList, answerFirst, hasOutboundLinks, issues: citationIssues } =
+      this.checkCitationReadiness(pageHtml);
+    const { metaRobotsNoindex, metaRobotsNoai, xRobotsNoindex, xRobotsNoai, issues: robotsIssues } =
+      this.checkRobotsDirectives(pageHtml, pageHeaders);
+
+    // Merge optional signals into the respective jsonb columns — no schema migration needed
+    const fullContentChecks: ContentChecks = {
+      ...contentChecks,
+      llmsTxtPresent, llmsTxtValid, pageInLlmsTxt, llmsFullTxtPresent,
+      dateModifiedPresent, dateModifiedRecent, sitemapHasLastmod,
+    };
+    const fullContentChunking: ContentChunking = {
+      ...contentChunking,
+      hasFaq, hasComparisonTable, hasStepList, answerFirst, hasOutboundLinks,
+    };
+    const fullTrustSignals: TrustSignals = { ...trustSignals, metaRobotsNoindex, metaRobotsNoai, xRobotsNoindex, xRobotsNoai };
 
     const issues: AuditIssue[] = [
       ...botIssues,
       ...this.structureIssues(contentChecks),
-      ...this.trustIssues(trustSignals),
+      ...this.trustIssues(fullTrustSignals),
       ...this.chunkingIssues(contentChunking),
       ...schemaIssues,
       ...sitemapIssues,
+      ...llmsIssues,
+      ...freshnessIssues,
+      ...citationIssues,
+      ...robotsIssues,
     ];
 
     const aiIndexabilityScore = this.calculateScore(
       botPermissions,
-      contentChecks,
-      trustSignals,
-      contentChunking,
+      fullContentChecks,
+      fullTrustSignals,
+      fullContentChunking,
     );
 
-    return { pageUrl, aiIndexabilityScore, botPermissions, contentChecks, trustSignals, contentChunking, issues };
+    return { pageUrl, aiIndexabilityScore, botPermissions, contentChecks: fullContentChecks, trustSignals: fullTrustSignals, contentChunking: fullContentChunking, issues };
   }
 
   // ─── Read ────────────────────────────────────────────────
@@ -284,54 +364,67 @@ export class LlmAuditService {
   // ─── Check 1: Bot Permissions (robots.txt) ───────────────
 
   private checkBotPermissions(robotsTxt: string): BotPermissions {
-    const result: Record<string, 'allowed' | 'blocked' | 'not_specified'> = {};
+    const result: Record<string, BotStatus> = {};
     for (const bot of LLM_BOTS) {
       result[bot] = this.parseBotStatus(robotsTxt, bot);
     }
-    return result as unknown as BotPermissions;
+    return result;
   }
 
-  private parseBotStatus(robotsTxt: string, botName: string): 'allowed' | 'blocked' | 'not_specified' {
+  private parseBotStatus(robotsTxt: string, botName: string): BotStatus {
     if (!robotsTxt) return 'not_specified';
 
     const lines = robotsTxt.split('\n').map((l) => l.trim().toLowerCase());
+    const bot = botName.toLowerCase();
+
+    // ── Pass 1: find rules in the bot's own named section ─────────────────────
     let inBotSection = false;
     let foundSection = false;
     let disallowAll = false;
+    let allowRoot = false; // Allow: / in the same section overrides Disallow: /
 
     for (const line of lines) {
       if (line.startsWith('user-agent:')) {
         const agent = line.replace('user-agent:', '').trim();
-        if (agent === botName.toLowerCase() || agent === '*') {
-          inBotSection = agent === botName.toLowerCase();
-          if (inBotSection) foundSection = true;
-        } else {
-          inBotSection = false;
-        }
-      } else if (inBotSection && line.startsWith('disallow:')) {
-        const path = line.replace('disallow:', '').trim();
-        if (path === '/' || path === '/*') {
-          disallowAll = true;
+        inBotSection = agent === bot;
+        if (inBotSection) foundSection = true;
+      } else if (inBotSection) {
+        if (line.startsWith('disallow:')) {
+          const path = line.replace('disallow:', '').trim();
+          if (path === '/' || path === '/*') disallowAll = true;
+        } else if (line.startsWith('allow:')) {
+          const path = line.replace('allow:', '').trim();
+          // Allow: / explicitly grants root access — overrides a Disallow: /
+          if (path === '/' || path === '') allowRoot = true;
         }
       }
     }
 
-    if (foundSection && disallowAll) return 'blocked';
-    if (foundSection && !disallowAll) return 'allowed';
+    if (foundSection) {
+      // Named section found: blocked only if root is disallowed and not explicitly re-allowed
+      return disallowAll && !allowRoot ? 'blocked' : 'allowed';
+    }
 
-    // Check wildcard block
+    // ── Pass 2: fall back to wildcard (*) rules ────────────────────────────────
     let inWildcard = false;
-    let wildcardBlocked = false;
+    let wildcardDisallowAll = false;
+    let wildcardAllowRoot = false;
+
     for (const line of lines) {
       if (line.startsWith('user-agent:')) {
         inWildcard = line.replace('user-agent:', '').trim() === '*';
-      } else if (inWildcard && line.startsWith('disallow:')) {
-        const path = line.replace('disallow:', '').trim();
-        if (path === '/' || path === '/*') wildcardBlocked = true;
+      } else if (inWildcard) {
+        if (line.startsWith('disallow:')) {
+          const path = line.replace('disallow:', '').trim();
+          if (path === '/' || path === '/*') wildcardDisallowAll = true;
+        } else if (line.startsWith('allow:')) {
+          const path = line.replace('allow:', '').trim();
+          if (path === '/' || path === '') wildcardAllowRoot = true;
+        }
       }
     }
 
-    if (wildcardBlocked) return 'blocked';
+    if (wildcardDisallowAll && !wildcardAllowRoot) return 'blocked';
     return 'not_specified';
   }
 
@@ -380,19 +473,41 @@ export class LlmAuditService {
 
     const ssl = siteUrl.startsWith('https://');
     const hasAboutPage = $('a[href*="/about"]').length > 0;
-    const authorByline = $('[class*="author"], [rel="author"], [itemprop="author"]').length > 0
-      || /(?:author|byline|written.by)/i.test($('body').text());
 
-    // Schema.org types from JSON-LD
+    // Improved author byline: prefer structural HTML attributes; scope text search to main/article
+    // to avoid firing on copyright footers and site-wide boilerplate text.
+    const authorByline =
+      $('[class*="author"], [rel="author"], [itemprop="author"], [data-author]').length > 0 ||
+      /\bby\s+[A-Z][a-z]+|written\s+by\b/i.test($('main, article').text());
+
+    // Schema.org types from JSON-LD + E-E-A-T depth detection
     const schemaTypes: string[] = [];
+    let hasPersonSchema = false;
+    let hasOrganizationSchema = false;
+    let authorHasCredentials = false;
+
     $('script[type="application/ld+json"]').each((_, el) => {
       try {
         const data = JSON.parse($(el).html() ?? '');
-        if (data['@type']) schemaTypes.push(data['@type']);
+        const nodes: Array<Record<string, unknown>> = [data];
         if (Array.isArray(data['@graph'])) {
-          data['@graph'].forEach((item: { '@type'?: string }) => {
-            if (item['@type']) schemaTypes.push(item['@type']);
-          });
+          nodes.push(...(data['@graph'] as Array<Record<string, unknown>>));
+        }
+        for (const node of nodes) {
+          const type = node['@type'] as string | undefined;
+          if (type) schemaTypes.push(type);
+
+          // Person schema: must have both name + url to count as an E-E-A-T credentialing signal
+          if (type === 'Person' && node.name && node.url) {
+            hasPersonSchema = true;
+            // Author credentials: sameAs (LinkedIn, Wikipedia, ORCID, etc.) or affiliation
+            if (node.sameAs || node.affiliation) authorHasCredentials = true;
+          }
+
+          // Organization schema: must have name + url to count as entity establishment
+          if ((type === 'Organization' || type === 'LocalBusiness') && node.name && node.url) {
+            hasOrganizationSchema = true;
+          }
         }
       } catch { /* skip invalid JSON-LD */ }
     });
@@ -400,7 +515,11 @@ export class LlmAuditService {
     const ogTags = $('meta[property^="og:"]').length > 0;
     const twitterTags = $('meta[name^="twitter:"], meta[property^="twitter:"]').length > 0;
 
-    return { ssl, hasAboutPage, authorByline, schemaTypes: [...new Set(schemaTypes)], ogTags, twitterTags };
+    return {
+      ssl, hasAboutPage, authorByline,
+      schemaTypes: [...new Set(schemaTypes)], ogTags, twitterTags,
+      hasPersonSchema, hasOrganizationSchema, authorHasCredentials,
+    };
   }
 
   // ─── Check 4: Content Chunking ───────────────────────────
@@ -507,21 +626,322 @@ export class LlmAuditService {
     return issues;
   }
 
-  // ─── Issue generators ────────────────────────────────────
+  // ─── Check 7: /llms.txt (llmstxt.org standard) ───────────────────────────
 
-  private botPermissionIssues(perms: BotPermissions): AuditIssue[] {
-    const issues: AuditIssue[] = [];
-    for (const [bot, status] of Object.entries(perms)) {
-      if (status === 'blocked') {
-        issues.push({
-          type: 'bot_blocked',
+  private checkLlmsTxt(
+    llmsTxt: string,
+    llmsFullTxt: string,
+    pageUrl: string,
+  ): { present: boolean; valid: boolean; pageReferenced: boolean; fullPresent: boolean; issues: AuditIssue[] } {
+    // /llms-full.txt is independent of /llms.txt — credit it even when /llms.txt is absent
+    const fullPresent = llmsFullTxt.trim().length > 10;
+
+    if (!llmsTxt || llmsTxt.trim().length < 10) {
+      return {
+        present: false,
+        valid: false,
+        pageReferenced: false,
+        fullPresent,
+        issues: [{
+          type: 'llms_txt',
           severity: 'high',
-          description: `${bot} is blocked in robots.txt`,
-          fix: `Remove "Disallow: /" for ${bot} in robots.txt to allow LLM crawling`,
+          description: 'No /llms.txt file found at site root',
+          fix: 'Create /llms.txt — a Markdown file summarising your site for LLMs. Must begin with # Site Name and > Brief description. See llmstxt.org.',
+        }],
+      };
+    }
+
+    // Structural validation per llmstxt.org spec: must have H1 + blockquote
+    const hasH1 = /^#\s+.+/m.test(llmsTxt);
+    const hasBlockquote = /^>\s+.+/m.test(llmsTxt);
+    const valid = hasH1 && hasBlockquote;
+
+    const issues: AuditIssue[] = [];
+    if (!valid) {
+      issues.push({
+        type: 'llms_txt',
+        severity: 'medium',
+        description: '/llms.txt found but missing required structure (H1 + blockquote)',
+        fix: 'Your /llms.txt must begin with # Site Name (H1) and > Brief description (blockquote) per the llmstxt.org specification',
+      });
+    }
+
+    // Page-level: is this specific URL referenced in llms.txt?
+    // Check both trailing-slash and non-trailing-slash variants since authors may use either form.
+    const normalizedUrl = pageUrl.replace(/\/$/, '');
+    const pageReferenced = llmsTxt.includes(normalizedUrl) || llmsTxt.includes(normalizedUrl + '/');
+
+    if (valid && !pageReferenced) {
+      issues.push({
+        type: 'llms_txt',
+        severity: 'low',
+        description: 'Page not referenced in /llms.txt',
+        fix: 'Add this page URL and a brief description to a section in /llms.txt so AI agents can discover and prioritise this content',
+      });
+    }
+
+    // /llms-full.txt: Perplexity and Claude use this full-content dump for direct content injection
+    if (valid && !fullPresent) {
+      issues.push({
+        type: 'llms_txt',
+        severity: 'low',
+        description: '/llms-full.txt not found — Perplexity and Claude use this for direct content injection without re-crawling',
+        fix: 'Create /llms-full.txt with the complete text of your key pages. This unlocks direct content injection by Perplexity AI and Claude. See llmstxt.org for the full-content variant spec.',
+      });
+    }
+
+    return { present: true, valid, pageReferenced, fullPresent, issues };
+  }
+
+  // ─── Check 8: Content Freshness ──────────────────────────────────
+
+  private checkContentFreshness(
+    html: string,
+    sitemapXml: string,
+    pageUrl: string,
+  ): { dateModifiedPresent: boolean; dateModifiedRecent: boolean; sitemapHasLastmod: boolean; issues: AuditIssue[] } {
+    const $ = cheerio.load(html);
+    const issues: AuditIssue[] = [];
+
+    // 1. dateModified / datePublished in JSON-LD schema
+    let dateModifiedPresent = false;
+    let dateModifiedRecent = false;
+    const twelveMonthsAgo = new Date();
+    twelveMonthsAgo.setMonth(twelveMonthsAgo.getMonth() - 12);
+
+    $('script[type="application/ld+json"]').each((_, el) => {
+      if (dateModifiedPresent) return false as unknown as void; // break — date already found
+      try {
+        const data = JSON.parse($(el).html() ?? '');
+        const nodes: Array<Record<string, unknown>> = [data];
+        if (Array.isArray(data['@graph'])) {
+          nodes.push(...(data['@graph'] as Array<Record<string, unknown>>));
+        }
+        for (const node of nodes) {
+          const rawDate = (node.dateModified ?? node.datePublished) as string | undefined;
+          if (rawDate) {
+            dateModifiedPresent = true;
+            const d = new Date(rawDate);
+            if (!isNaN(d.getTime())) dateModifiedRecent = d > twelveMonthsAgo;
+            break;
+          }
+        }
+      } catch { /* skip invalid JSON-LD */ }
+    });
+
+    if (!dateModifiedPresent) {
+      issues.push({
+        type: 'freshness',
+        severity: 'high',
+        description: 'No dateModified in JSON-LD schema',
+        fix: 'Add dateModified (ISO 8601) to your Article or WebPage JSON-LD schema. AI answer engines deprioritize undated content.',
+      });
+    } else if (!dateModifiedRecent) {
+      issues.push({
+        type: 'freshness',
+        severity: 'medium',
+        description: 'dateModified is older than 12 months',
+        fix: 'Update dateModified whenever you refresh page content. Real-time AI answer engines favour recently updated pages.',
+      });
+    }
+
+    // 2. <lastmod> in sitemap for this page — only flag if we have sitemap XML to inspect
+    const normalizedUrl = pageUrl.replace(/\/$/, '');
+    let sitemapHasLastmod = false;
+
+    if (sitemapXml && sitemapXml.includes('<urlset')) {
+      const urlBlockRegex = /<url>([\s\S]*?)<\/url>/g;
+      let urlMatch: RegExpExecArray | null;
+      while ((urlMatch = urlBlockRegex.exec(sitemapXml)) !== null) {
+        const block = urlMatch[1];
+        const locMatch = block.match(/<loc>(.*?)<\/loc>/);
+        if (locMatch) {
+          const loc = locMatch[1].replace(/\/$/, '');
+          if (loc === normalizedUrl && block.includes('<lastmod>')) {
+            sitemapHasLastmod = true;
+            break;
+          }
+        }
+      }
+      if (!sitemapHasLastmod) {
+        issues.push({
+          type: 'freshness',
+          severity: 'medium',
+          description: 'No <lastmod> in sitemap.xml for this page',
+          fix: 'Add <lastmod> to each <url> in sitemap.xml. Crawlers use this to prioritise re-fetching recently updated content.',
         });
       }
     }
-    return issues;
+
+    return { dateModifiedPresent, dateModifiedRecent, sitemapHasLastmod, issues };
+  }
+
+  // ─── Check 9: Citation Readiness ─────────────────────────────────
+
+  private checkCitationReadiness(html: string): {
+    hasFaq: boolean;
+    hasComparisonTable: boolean;
+    hasStepList: boolean;
+    answerFirst: boolean;
+    hasOutboundLinks: boolean;
+    issues: AuditIssue[];
+  } {
+    const $ = cheerio.load(html);
+    const issues: AuditIssue[] = [];
+
+    // 1. FAQ section: FAQPage JSON-LD, or <details>/<summary>, or <dt>/<dd> pairs
+    let hasFaq = false;
+    $('script[type="application/ld+json"]').each((_, el) => {
+      if (hasFaq) return false as unknown as void; // break — FAQ already found
+      try {
+        const data = JSON.parse($(el).html() ?? '');
+        const nodes: Array<Record<string, unknown>> = [data];
+        if (Array.isArray(data['@graph'])) {
+          nodes.push(...(data['@graph'] as Array<Record<string, unknown>>));
+        }
+        if (nodes.some((n) => n['@type'] === 'FAQPage')) hasFaq = true;
+      } catch { /* skip */ }
+    });
+    if (!hasFaq) hasFaq = $('details summary, dl dt').length > 3;
+
+    // 2. Comparison table: <table> with a header row (thead or th cells)
+    const hasComparisonTable = $('table').filter((_, el) => $(el).find('thead, th').length > 0).length > 0;
+
+    // 3. Step-by-step numbered list: <ol> with ≥3 direct <li> children
+    const hasStepList = $('ol').filter((_, el) => $(el).find('> li').length >= 3).length > 0;
+
+    // 4. Answer-first: a substantive paragraph (>80 chars) in the first 3 <p> elements of main content
+    const mainContent = $('main, article').first();
+    const container = mainContent.length ? mainContent : $('body');
+    let answerFirst = false;
+    container.find('p').slice(0, 3).each((_, el) => {
+      if (!answerFirst && $(el).text().trim().length > 80) answerFirst = true;
+    });
+
+    // 5. Outbound links to authoritative domains (.gov, .edu, .org)
+    const authorityRe = /^https?:\/\/[^/]+\.(gov|edu|org)(\/|$)/i;
+    let hasOutboundLinks = false;
+    $('a[href]').each((_, el) => {
+      if (!hasOutboundLinks && authorityRe.test($(el).attr('href') ?? '')) hasOutboundLinks = true;
+    });
+
+    if (!hasFaq) {
+      issues.push({
+        type: 'citation',
+        severity: 'medium',
+        description: 'No FAQ section detected',
+        fix: 'Add a FAQ section with FAQPage JSON-LD or <details>/<summary> HTML. FAQs are the most-cited format in AI Overviews.',
+      });
+    }
+    if (!hasComparisonTable) {
+      issues.push({
+        type: 'citation',
+        severity: 'low',
+        description: 'No comparison table found',
+        fix: 'Add a <table> with a header row for comparisons or feature matrices. AI systems efficiently extract and cite tabular data.',
+      });
+    }
+    if (!hasStepList) {
+      issues.push({
+        type: 'citation',
+        severity: 'low',
+        description: 'No numbered step list found (≥3 steps)',
+        fix: 'Add an <ol> with 3+ steps for processes or how-to content. Step lists are prominently featured in AI Overviews.',
+      });
+    }
+    if (!hasOutboundLinks) {
+      issues.push({
+        type: 'citation',
+        severity: 'low',
+        description: 'No outbound links to authoritative sources (.gov, .edu, .org)',
+        fix: 'Link to primary sources and authoritative references. AI systems assign higher trust to content that cites evidence.',
+      });
+    }
+
+    return { hasFaq, hasComparisonTable, hasStepList, answerFirst, hasOutboundLinks, issues };
+  }
+
+  // ─── Check 10: Page-Level Robots Directives ────────────────────────
+
+  private checkRobotsDirectives(
+    html: string,
+    headers: Record<string, string>,
+  ): {
+    metaRobotsNoindex: boolean;
+    metaRobotsNoai: boolean;
+    xRobotsNoindex: boolean;
+    xRobotsNoai: boolean;
+    issues: AuditIssue[];
+  } {
+    const $ = cheerio.load(html);
+    const issues: AuditIssue[] = [];
+
+    // 1. <meta name="robots"> content attribute — page-level crawl directive
+    const metaContent = ($('meta[name="robots"]').attr('content') ?? '').toLowerCase();
+    const metaDirectives = metaContent.split(/[\s,]+/);
+    const metaRobotsNoindex = metaDirectives.includes('noindex') || metaDirectives.includes('none');
+    const metaRobotsNoai = metaDirectives.includes('noai') || metaDirectives.includes('noimageai');
+
+    // 2. X-Robots-Tag HTTP response header (lower-cased by fetchWithHeaders)
+    const xRobotsRaw = (headers['x-robots-tag'] ?? '').toLowerCase();
+    const xRobotsDirectives = xRobotsRaw.split(/[\s,;]+/);
+    const xRobotsNoindex = xRobotsDirectives.includes('noindex') || xRobotsDirectives.includes('none');
+    const xRobotsNoai = xRobotsDirectives.includes('noai') || xRobotsDirectives.includes('noimageai');
+
+    if (metaRobotsNoindex) {
+      issues.push({
+        type: 'xrobots',
+        severity: 'high',
+        description: 'Page has <meta name="robots" content="noindex"> — excluded from all crawlers',
+        fix: 'Remove "noindex" from the meta robots tag to allow AI crawlers to index this page.',
+      });
+    }
+    if (metaRobotsNoai) {
+      issues.push({
+        type: 'xrobots',
+        severity: 'high',
+        description: 'Page has <meta name="robots" content="noai"> — explicitly blocks AI crawlers',
+        fix: 'Remove "noai" and "noimageai" from the meta robots tag to restore AI crawler access.',
+      });
+    }
+    if (xRobotsNoindex) {
+      issues.push({
+        type: 'xrobots',
+        severity: 'high',
+        description: 'X-Robots-Tag: noindex header blocks all crawlers including AI bots',
+        fix: 'Remove or update the X-Robots-Tag response header to allow AI crawlers to index this page.',
+      });
+    }
+    if (xRobotsNoai) {
+      issues.push({
+        type: 'xrobots',
+        severity: 'high',
+        description: 'X-Robots-Tag: noai/noimageai header explicitly blocks AI training crawlers',
+        fix: 'Remove "noai" and "noimageai" from X-Robots-Tag if you want AI training crawlers to access this page.',
+      });
+    }
+
+    return { metaRobotsNoindex, metaRobotsNoai, xRobotsNoindex, xRobotsNoai, issues };
+  }
+
+  // ─── Issue generators ────────────────────────────────────────────
+
+  private botPermissionIssues(perms: BotPermissions): AuditIssue[] {
+    const blocked = Object.entries(perms)
+      .filter(([, status]) => status === 'blocked')
+      .map(([bot]) => bot);
+
+    if (blocked.length === 0) return [];
+
+    // Consolidate all blocked bots into one issue — prevents flooding the recommendations panel
+    const botList = blocked.join(', ');
+    const disallowList = blocked.map((b) => `"Disallow: /" for ${b}`).join('; remove ');
+    return [{
+      type: 'bot_blocked',
+      severity: 'high',
+      description: `${blocked.length} AI bot${blocked.length > 1 ? 's' : ''} blocked in robots.txt: ${botList}`,
+      fix: `In robots.txt, remove ${disallowList} to restore LLM crawl access`,
+    }];
   }
 
   private structureIssues(checks: ContentChecks): AuditIssue[] {
@@ -564,6 +984,23 @@ export class LlmAuditService {
     if (!signals.twitterTags) {
       issues.push({ type: 'trust', severity: 'low', description: 'No Twitter Card meta tags found', fix: 'Add twitter:card, twitter:title meta tags' });
     }
+    // E-E-A-T depth issues — only surface these when the check ran (fresh audit, not old stored row)
+    if (signals.hasPersonSchema === false) {
+      issues.push({
+        type: 'eeat',
+        severity: 'medium',
+        description: 'No Person schema with name + url found',
+        fix: 'Add Person JSON-LD schema (name, url, sameAs) on author and about pages. This is the primary E-E-A-T credentialing signal for Google AI Overviews.',
+      });
+    }
+    if (signals.hasOrganizationSchema === false) {
+      issues.push({
+        type: 'eeat',
+        severity: 'low',
+        description: 'No Organization schema with name + url found',
+        fix: 'Add Organization JSON-LD (name, url, logo) to establish entity identity for AI answer systems.',
+      });
+    }
     return issues;
   }
 
@@ -583,24 +1020,37 @@ export class LlmAuditService {
 
   // ─── Scoring ─────────────────────────────────────────────
 
+  // Priority bots: blocking any of these is a critical AI-visibility failure
+  private static readonly PRIORITY_BOTS = ['GPTBot', 'ClaudeBot', 'OAI-SearchBot', 'PerplexityBot', 'Google-Extended'] as const;
+
   private calculateScore(
     bots: BotPermissions,
     content: ContentChecks,
     trust: TrustSignals,
     chunking: ContentChunking,
   ): number {
-    // Bot permissions: 25 points
-    const botEntries = Object.values(bots);
-    const allowedBots = botEntries.filter((s) => s !== 'blocked').length;
-    const botScore = Math.round((allowedBots / botEntries.length) * 25);
+    // Bot permissions: 20 points
+    // Explicit 'allowed' earns full credit; 'not_specified' earns half credit; 'blocked' earns none.
+    // This rewards sites that explicitly allow AI bots rather than passively relying on defaults.
+    const botEntries = Object.entries(bots);
+    const allowedCount = botEntries.filter(([, s]) => s === 'allowed').length;
+    const notSpecifiedCount = botEntries.filter(([, s]) => s === 'not_specified').length;
+    const botScore = Math.round((allowedCount + notSpecifiedCount * 0.5) / botEntries.length * 20);
 
-    // Content structure: 30 points
+    // Hard penalty cap: if any priority bot is blocked, or the page has a noindex directive,
+    // the site is fundamentally inaccessible to AI — cap the total at 40 (top of 'Needs Work').
+    const hasBlockedPriorityBot = LlmAuditService.PRIORITY_BOTS.some((b) => bots[b] === 'blocked');
+    const isPageBlocked = trust.metaRobotsNoindex === true || trust.xRobotsNoindex === true;
+    const scoreMax = (hasBlockedPriorityBot || isPageBlocked) ? 40 : 100;
+
+    // Content structure: 25 points (reduced from 30 — reflects that structure is necessary but
+    // E-E-A-T and freshness are more decisive for AI citation decisions in 2025+)
     let contentScore = 0;
-    if (content.h1Present) contentScore += 6;
-    if (content.hierarchyValid) contentScore += 6;
-    if (content.metaDescriptionPresent) contentScore += 6;
-    if (content.semanticHtml) contentScore += 6;
-    if (content.imagesTotal === 0 || content.imagesWithAlt === content.imagesTotal) contentScore += 3;
+    if (content.h1Present) contentScore += 5;
+    if (content.hierarchyValid) contentScore += 5;
+    if (content.metaDescriptionPresent) contentScore += 5;
+    if (content.semanticHtml) contentScore += 5;
+    if (content.imagesTotal === 0 || content.imagesWithAlt === content.imagesTotal) contentScore += 2;
     if (!content.jsRenderedOnly) contentScore += 3;
 
     // Trust signals: 25 points
@@ -620,7 +1070,34 @@ export class LlmAuditService {
     if (chunking.internalLinkCount >= 5) chunkScore += 6;
     else if (chunking.internalLinkCount >= 3) chunkScore += 3;
 
-    return Math.min(100, botScore + contentScore + trustScore + chunkScore);
+    // LLM Discovery bonus: up to +12 pts for /llms.txt signals (capped at 100 with base score)
+    let llmsBonus = 0;
+    if (content.llmsTxtPresent) llmsBonus += 5;
+    if (content.llmsTxtValid) llmsBonus += 3;
+    if (content.pageInLlmsTxt) llmsBonus += 2;
+    if (content.llmsFullTxtPresent) llmsBonus += 2; // /llms-full.txt full-content variant bonus
+
+    // Content Freshness bonus: up to +7 pts
+    let freshnessBonus = 0;
+    if (content.dateModifiedPresent && content.dateModifiedRecent) freshnessBonus += 4;
+    if (content.sitemapHasLastmod) freshnessBonus += 3;
+
+    // Citation Readiness bonus: up to +20 pts
+    let citationBonus = 0;
+    if (chunking.hasFaq) citationBonus += 5;
+    if (chunking.hasComparisonTable) citationBonus += 4;
+    if (chunking.hasStepList) citationBonus += 4;
+    if (chunking.answerFirst) citationBonus += 4;
+    if (chunking.hasOutboundLinks) citationBonus += 3;
+
+    // E-E-A-T depth bonus: up to +8 pts
+    let eeaatBonus = 0;
+    if (trust.hasPersonSchema) eeaatBonus += 4;
+    if (trust.hasOrganizationSchema) eeaatBonus += 2;
+    if (trust.authorHasCredentials) eeaatBonus += 2;
+
+    const rawScore = Math.min(100, botScore + contentScore + trustScore + chunkScore + llmsBonus + freshnessBonus + citationBonus + eeaatBonus);
+    return Math.min(rawScore, scoreMax);
   }
 
 }

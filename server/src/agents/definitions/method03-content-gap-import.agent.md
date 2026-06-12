@@ -1,7 +1,7 @@
 ---
 name: "Method 03: Content Gap Import"
 step_key: method03-content-gap-import
-execution_type: pipeline-then-agent
+execution_type: pipeline-only
 skill: content-gap-analysis
 depends_on:
   - phase1-baseline

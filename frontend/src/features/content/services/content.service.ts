@@ -20,6 +20,7 @@ export interface ContentPiece {
     overall?: number;
   };
   wordCount?: number;
+  scheduledPublishAt?: string;
   createdAt: string;
   updatedAt: string;
 }
