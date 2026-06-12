@@ -35,7 +35,12 @@ frontend/src/
 │   │                   ├── agents/
 │   │                   │   ├── page.tsx           On-demand agents
 │   │                   │   └── scheduled/page.tsx Scheduled workflows
-│   │                   ├── ai-search/page.tsx     AI search features
+│   │                   ├── scheduled-workflows/page.tsx Scheduled workflows (alt route)
+│   │                   ├── ai-search/
+│   │                   │   ├── page.tsx           AI Search overview
+│   │                   │   ├── llm-audit/page.tsx LLM audit dashboard
+│   │                   │   ├── traffic/page.tsx   LLM traffic (alt route)
+│   │                   │   └── visibility/page.tsx Prompt visibility (alt route)
 │   │                   ├── analytics/
 │   │                   │   ├── page.tsx           Analytics overview
 │   │                   │   ├── traffic/page.tsx   LLM traffic
@@ -82,13 +87,16 @@ frontend/src/
     │   ├── command-palette.tsx     ⌘K palette
     │   ├── top-bar.tsx            48px top bar
     │   ├── side-nav.tsx           56px icon rail (expands to 240px)
+    │   ├── notification-bell.tsx  Notification dropdown
     │   ├── status-badge.tsx       Step/workflow status
     │   ├── button.tsx             CVA-based variants
     │   ├── card.tsx               Content containers
-    │   └── ...                    (15 components total)
+    │   ├── markdown-preview.tsx   Rendered markdown content
+    │   ├── error-boundary.tsx     Error boundary wrapper
+    │   └── ...                    (17 components total)
     ├── hooks/
-    │   ├── use-keyboard-shortcuts.ts  Global shortcuts
-    │   └── use-theme.ts              Dark/light mode
+    │   ├── use-notifications.ts       Notification state + polling
+    │   └── use-theme.tsx              Dark/light mode
     └── utils/
         ├── api.ts                 Typed fetch wrapper (apiFetch<T>)
         ├── cn.ts                  Class name merge utility
@@ -136,10 +144,6 @@ Fonts: Inter (primary), JetBrains Mono (scores, URLs, data).
 | Key | Action |
 |-----|--------|
 | ⌘K | Command palette |
-| J / K | Navigate steps |
-| A | Approve current step |
-| R | Request revision |
-| E | Edit artifact (if editable) |
 
 ## State Management
 

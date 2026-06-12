@@ -21,7 +21,7 @@ Agent-led SEO/GEO/AEO strategy consultant operating system for agencies.
 | **Features** | [Content](docs/features/content.md) | Briefs, articles, scoring framework |
 | **Features** | [Reports](docs/features/reports.md) | PDF generation, templates, download flow |
 | **Features** | [Topical Maps](docs/features/topical-maps.md) | Pillar → cluster → keyword hierarchy |
-| **Features** | [Integrations](docs/features/integrations.md) | All 8 external services, retry logic, tool registry |
+| **Features** | [Integrations](docs/features/integrations.md) | All 9 external services, retry logic, tool registry |
 | **Features** | [Auth & Orgs](docs/features/auth.md) | Clerk SSO, webhooks, idempotency |
 | **Features** | [Credits](docs/features/credits.md) | Credit system, ledger, debit flow |
 | **Features** | [Billing](docs/features/billing.md) | Stripe subscriptions, credit packs, customer portal |
@@ -30,7 +30,8 @@ Agent-led SEO/GEO/AEO strategy consultant operating system for agencies.
 | **Features** | [LLM Traffic](docs/features/llm-traffic.md) | AI engine traffic tracking and analytics |
 | **Features** | [Notifications](docs/features/notifications.md) | Decay alerts, workflow events, in-app notifications |
 | **Features** | [On-Demand Agents](docs/features/on-demand-agents.md) | Ad-hoc agent execution outside workflow |
-| **Features** | [Leads](docs/features/leads.md) | Lead generation from audit reports |
+| **Features** | [Scheduled Workflows](docs/features/scheduled-workflows.md) | Cron-based recurring agent execution with delivery |
+| **Features** | [Prompt Visibility](docs/features/prompt-visibility.md) | AI search prompt tracking and visibility checks |
 | **Changelog** | [Changelog](docs/changelog.md) | All fixes and updates with details |
 | **Planning** | [Implementation Plan](docs/implementation-plan.md) | Master task checklist (90 tasks, all complete) |
 | **Planning** | [Roadmap](docs/roadmap.md) | Product backlog and pending features |
@@ -74,7 +75,6 @@ npm run dev
 | Frontend (Next.js) | http://localhost:3001 |
 | Backend API (NestJS) | http://localhost:3002 |
 | API Docs (Swagger) | http://localhost:3002/docs |
-| Python Sidecar | http://localhost:8000 |
 | Drizzle Studio | `npm run db:studio` |
 
 ## Infrastructure
@@ -91,9 +91,9 @@ npm run dev
 | Frontend | Next.js 15, React 19, Tailwind CSS, Zustand, Clerk |
 | Backend | NestJS 10, Drizzle ORM, BullMQ, Redis |
 | Database | PostgreSQL 16 |
-| AI/Agents | OpenAI (function calling), custom runtime (~200 LOC) |
-| Integrations | Ahrefs v3, DataForSEO, Firecrawl, Serper.dev, PageSpeed/CrUX |
-| Python Sidecar | FastAPI, ReportLab (PDF), 12 analysis endpoints |
+| AI/Agents | Anthropic Claude (primary), OpenAI (image generation), custom agent runtime |
+| Integrations | Ahrefs v3, DataForSEO, Firecrawl, Serper.dev, PageSpeed/CrUX, Google Search Console |
+| PDF | pdfmake (in-process, no sidecar) |
 
 ## Environment Variables
 

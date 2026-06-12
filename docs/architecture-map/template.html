@@ -1,0 +1,668 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Pulse OS — Product Architecture Map</title>
+<script src="https://unpkg.com/cytoscape@3.30.4/dist/cytoscape.min.js"></script>
+<script src="https://unpkg.com/dagre@0.8.5/dist/dagre.min.js"></script>
+<script src="https://unpkg.com/cytoscape-dagre@2.5.0/cytoscape-dagre.js"></script>
+<style>
+* { margin: 0; padding: 0; box-sizing: border-box; }
+body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; background: #0f1117; color: #e2e8f0; overflow: hidden; height: 100vh; }
+
+/* Header */
+.header { height: 56px; background: #1a1d28; border-bottom: 1px solid #2d3348; display: flex; align-items: center; padding: 0 24px; gap: 16px; z-index: 100; }
+.header h1 { font-size: 18px; font-weight: 600; color: #f1f5f9; }
+.header .subtitle { font-size: 13px; color: #94a3b8; }
+.header .generated { margin-left: auto; font-size: 11px; color: #64748b; }
+
+/* Layout */
+.main { display: flex; height: calc(100vh - 56px); }
+
+/* Filter bar */
+.filter-bar { width: 100%; background: #1a1d28; border-bottom: 1px solid #2d3348; padding: 10px 20px; display: flex; gap: 8px; flex-wrap: wrap; align-items: center; position: relative; z-index: 10; }
+.filter-btn { padding: 6px 14px; border-radius: 6px; border: 1px solid #334155; background: transparent; color: #94a3b8; font-size: 12px; cursor: pointer; transition: all 0.2s; }
+.filter-btn:hover { border-color: #6366f1; color: #c7d2fe; }
+.filter-btn.active { background: #6366f1; border-color: #6366f1; color: #fff; }
+.filter-label { font-size: 11px; color: #64748b; text-transform: uppercase; letter-spacing: 0.5px; margin-right: 8px; }
+
+/* Graph container */
+.graph-area { flex: 1; display: flex; flex-direction: column; min-width: 0; }
+#cy { flex: 1; background: #0f1117; position: relative; }
+
+/* Detail panel */
+.detail-panel { width: 420px; background: #1a1d28; border-left: 1px solid #2d3348; overflow-y: auto; transition: transform 0.3s ease; padding: 0; }
+.detail-panel.hidden { transform: translateX(100%); width: 0; padding: 0; border: none; }
+.detail-header { padding: 20px; border-bottom: 1px solid #2d3348; position: sticky; top: 0; background: #1a1d28; z-index: 10; }
+.detail-header h2 { font-size: 16px; font-weight: 600; margin-bottom: 4px; }
+.detail-header .type-badge { font-size: 11px; padding: 3px 8px; border-radius: 4px; display: inline-block; margin-top: 6px; }
+.detail-body { padding: 20px; }
+.detail-section { margin-bottom: 20px; }
+.detail-section h3 { font-size: 12px; text-transform: uppercase; letter-spacing: 0.5px; color: #64748b; margin-bottom: 8px; }
+.detail-section p, .detail-section li { font-size: 13px; color: #cbd5e1; line-height: 1.6; }
+.detail-section ul { list-style: none; padding: 0; }
+.detail-section li { padding: 4px 0; padding-left: 16px; position: relative; }
+.detail-section li::before { content: '→'; position: absolute; left: 0; color: #6366f1; }
+.detail-close { position: absolute; top: 20px; right: 20px; background: none; border: none; color: #94a3b8; font-size: 20px; cursor: pointer; }
+.detail-close:hover { color: #f1f5f9; }
+
+/* Collapsible sections */
+.collapsible { border: 1px solid #2d3348; border-radius: 8px; margin-bottom: 12px; overflow: hidden; }
+.collapsible-header { padding: 12px 16px; background: #1e2130; cursor: pointer; display: flex; align-items: center; justify-content: space-between; font-size: 13px; font-weight: 500; }
+.collapsible-header:hover { background: #252a3a; }
+.collapsible-header .arrow { transition: transform 0.2s; font-size: 10px; }
+.collapsible-header.open .arrow { transform: rotate(90deg); }
+.collapsible-body { padding: 12px 16px; font-size: 12px; line-height: 1.7; color: #94a3b8; white-space: pre-wrap; word-break: break-word; max-height: 400px; overflow-y: auto; display: none; border-top: 1px solid #2d3348; }
+.collapsible-body.open { display: block; }
+
+/* Meta pills */
+.meta-row { display: flex; gap: 8px; flex-wrap: wrap; margin-bottom: 16px; }
+.meta-pill { padding: 4px 10px; border-radius: 4px; font-size: 11px; background: #1e2130; border: 1px solid #334155; }
+.meta-pill.credits { background: #1a2e1a; border-color: #22c55e40; color: #86efac; }
+.meta-pill.approval { background: #2e1a1a; border-color: #ef444440; color: #fca5a5; }
+.meta-pill.phase { background: #1a1a2e; border-color: #6366f140; color: #c7d2fe; }
+
+/* Legend */
+.legend { position: fixed; bottom: 20px; left: 20px; background: #1a1d28; border: 1px solid #2d3348; border-radius: 8px; padding: 16px; z-index: 50; font-size: 11px; }
+.legend h4 { font-size: 11px; text-transform: uppercase; letter-spacing: 0.5px; color: #64748b; margin-bottom: 10px; }
+.legend-item { display: flex; align-items: center; gap: 8px; margin-bottom: 6px; color: #94a3b8; }
+.legend-dot { width: 12px; height: 12px; border-radius: 3px; }
+.legend-line { width: 20px; height: 2px; }
+
+/* Search */
+.search-box { position: relative; }
+.search-box input { padding: 6px 12px; border-radius: 6px; border: 1px solid #334155; background: #0f1117; color: #e2e8f0; font-size: 12px; width: 200px; }
+.search-box input:focus { outline: none; border-color: #6366f1; }
+
+/* API call cards */
+.api-call-card { background: #0f1117; border: 1px solid #334155; border-radius: 8px; padding: 12px; margin-bottom: 10px; }
+.api-call-header { display: flex; align-items: center; gap: 8px; margin-bottom: 6px; flex-wrap: wrap; }
+.api-integration { font-size: 11px; font-weight: 600; color: #f59e0b; background: #451a0320; padding: 2px 8px; border-radius: 4px; border: 1px solid #f59e0b30; }
+.api-endpoint { font-size: 10px; color: #94a3b8; background: #1e2130; padding: 2px 6px; border-radius: 3px; }
+.api-call-method { font-size: 12px; color: #e2e8f0; font-family: monospace; margin-bottom: 8px; padding: 4px 0; border-bottom: 1px solid #2d3348; }
+.api-call-row { font-size: 11px; color: #cbd5e1; line-height: 1.6; margin-bottom: 4px; }
+.api-call-row code { font-size: 10px; background: #1e2130; padding: 1px 4px; border-radius: 3px; color: #a78bfa; }
+.api-label { color: #64748b; font-weight: 500; }
+</style>
+</head>
+<body>
+
+<div class="header">
+  <h1>Pulse OS</h1>
+  <span class="subtitle">Product Architecture Map</span>
+  <div class="search-box">
+    <input type="text" id="search" placeholder="Search agents, tools, integrations..." />
+  </div>
+  <span class="generated" id="generated-at"></span>
+</div>
+
+<div class="main">
+  <div class="graph-area">
+    <div class="filter-bar">
+      <span class="filter-label">Filter:</span>
+      <button class="filter-btn active" data-filter="all">All</button>
+      <button class="filter-btn" data-filter="phase-1">Phase 1: Discovery</button>
+      <button class="filter-btn" data-filter="phase-2">Phase 2: Research</button>
+      <button class="filter-btn" data-filter="phase-3">Phase 3: Strategy</button>
+      <button class="filter-btn" data-filter="phase-4">Phase 4: Content</button>
+      <button class="filter-btn" data-filter="on-demand">On-Demand Agents</button>
+      <button class="filter-btn" data-filter="integrations">Integrations</button>
+      <button class="filter-btn" data-filter="data-stores">Data Stores</button>
+      <button class="filter-btn" data-filter="infrastructure">Infrastructure</button>
+    </div>
+    <div id="cy"></div>
+  </div>
+  <div class="detail-panel hidden" id="detail-panel">
+    <div class="detail-header">
+      <button class="detail-close" id="detail-close">&times;</button>
+      <h2 id="detail-title"></h2>
+      <span class="type-badge" id="detail-badge"></span>
+    </div>
+    <div class="detail-body" id="detail-body"></div>
+  </div>
+</div>
+
+<div class="legend">
+  <h4>Node Types</h4>
+  <div class="legend-item"><div class="legend-dot" style="background:#6366f1"></div> Pipeline Agent</div>
+  <div class="legend-item"><div class="legend-dot" style="background:#22c55e"></div> On-Demand Agent</div>
+  <div class="legend-item"><div class="legend-dot" style="background:#f59e0b"></div> Integration</div>
+  <div class="legend-item"><div class="legend-dot" style="background:#a855f7"></div> Data Store</div>
+  <div class="legend-item"><div class="legend-dot" style="background:#64748b"></div> Frontend</div>
+  <div class="legend-item"><div class="legend-dot" style="background:#ef4444"></div> Infrastructure</div>
+  <h4 style="margin-top:12px">Edge Types</h4>
+  <div class="legend-item"><div class="legend-line" style="background:#6366f1"></div> Dependency</div>
+  <div class="legend-item"><div class="legend-line" style="background:#f59e0b; border-top: 2px dashed #f59e0b; height:0"></div> API Call</div>
+  <div class="legend-item"><div class="legend-line" style="background:#a855f7; height:4px"></div> Materialization</div>
+</div>
+
+<script>
+// ===== DATA (will be replaced by generator) =====
+const DATA = __DATA_PLACEHOLDER__;
+
+// ===== Build Cytoscape elements =====
+function buildElements(data) {
+  const elements = [];
+
+  // Pipeline agents
+  for (const agent of data.pipeline.agents) {
+    elements.push({
+      group: 'nodes',
+      data: {
+        id: agent.stepKey,
+        label: agent.name,
+        type: 'pipeline-agent',
+        phase: agent.phase,
+        ...agent,
+      },
+    });
+  }
+
+  // On-demand agents
+  for (const agent of data.onDemandAgents) {
+    elements.push({
+      group: 'nodes',
+      data: {
+        id: agent.id,
+        label: agent.name,
+        type: 'on-demand-agent',
+        ...agent,
+      },
+    });
+  }
+
+  // Integrations
+  for (const integ of data.integrations) {
+    elements.push({
+      group: 'nodes',
+      data: {
+        id: integ.id,
+        label: integ.name,
+        type: 'integration',
+        ...integ,
+      },
+    });
+  }
+
+  // Data stores
+  for (const ds of data.dataStores) {
+    elements.push({
+      group: 'nodes',
+      data: {
+        id: ds.id,
+        label: ds.name,
+        type: 'data-store',
+        ...ds,
+      },
+    });
+  }
+
+  // Infrastructure
+  for (const infra of data.infrastructure) {
+    elements.push({
+      group: 'nodes',
+      data: {
+        id: infra.id,
+        label: infra.name,
+        type: 'infrastructure',
+        ...infra,
+      },
+    });
+  }
+
+  // Frontend features
+  for (const fe of data.frontendFeatures) {
+    elements.push({
+      group: 'nodes',
+      data: {
+        id: fe.id,
+        label: fe.name,
+        type: 'frontend',
+        ...fe,
+      },
+    });
+  }
+
+  // Edges
+  for (const edge of data.edges) {
+    elements.push({
+      group: 'edges',
+      data: {
+        id: `${edge.source}-${edge.target}-${edge.type}`,
+        source: edge.source,
+        target: edge.target,
+        edgeType: edge.type,
+        label: edge.label || '',
+      },
+    });
+  }
+
+  return elements;
+}
+
+// ===== Cytoscape styles =====
+const cyStyle = [
+  {
+    selector: 'node',
+    style: {
+      'label': 'data(label)',
+      'text-valign': 'center',
+      'text-halign': 'center',
+      'font-size': '10px',
+      'color': '#e2e8f0',
+      'text-wrap': 'wrap',
+      'text-max-width': '100px',
+      'width': '60px',
+      'height': '60px',
+      'border-width': 2,
+      'text-outline-color': '#0f1117',
+      'text-outline-width': 2,
+    },
+  },
+  {
+    selector: 'node[type="pipeline-agent"]',
+    style: {
+      'background-color': '#1e1b4b',
+      'border-color': '#6366f1',
+      'shape': 'roundrectangle',
+      'width': '80px',
+      'height': '50px',
+      'font-size': '9px',
+    },
+  },
+  {
+    selector: 'node[type="on-demand-agent"]',
+    style: {
+      'background-color': '#052e16',
+      'border-color': '#22c55e',
+      'shape': 'roundrectangle',
+      'width': '80px',
+      'height': '50px',
+      'font-size': '9px',
+    },
+  },
+  {
+    selector: 'node[type="integration"]',
+    style: {
+      'background-color': '#451a03',
+      'border-color': '#f59e0b',
+      'shape': 'diamond',
+      'width': '70px',
+      'height': '70px',
+      'font-size': '8px',
+    },
+  },
+  {
+    selector: 'node[type="data-store"]',
+    style: {
+      'background-color': '#2e1065',
+      'border-color': '#a855f7',
+      'shape': 'barrel',
+      'width': '70px',
+      'height': '50px',
+      'font-size': '8px',
+    },
+  },
+  {
+    selector: 'node[type="infrastructure"]',
+    style: {
+      'background-color': '#1c1917',
+      'border-color': '#ef4444',
+      'shape': 'hexagon',
+      'width': '60px',
+      'height': '60px',
+      'font-size': '8px',
+    },
+  },
+  {
+    selector: 'node[type="frontend"]',
+    style: {
+      'background-color': '#1e293b',
+      'border-color': '#64748b',
+      'shape': 'round-rectangle',
+      'width': '75px',
+      'height': '45px',
+      'font-size': '8px',
+    },
+  },
+  // Edges
+  {
+    selector: 'edge[edgeType="dependency"]',
+    style: {
+      'line-color': '#6366f1',
+      'target-arrow-color': '#6366f1',
+      'target-arrow-shape': 'triangle',
+      'curve-style': 'bezier',
+      'width': 2,
+      'opacity': 0.7,
+    },
+  },
+  {
+    selector: 'edge[edgeType="api-call"]',
+    style: {
+      'line-color': '#f59e0b',
+      'target-arrow-color': '#f59e0b',
+      'target-arrow-shape': 'triangle',
+      'line-style': 'dashed',
+      'curve-style': 'bezier',
+      'width': 1.5,
+      'opacity': 0.5,
+    },
+  },
+  {
+    selector: 'edge[edgeType="materialization"]',
+    style: {
+      'line-color': '#a855f7',
+      'target-arrow-color': '#a855f7',
+      'target-arrow-shape': 'triangle',
+      'curve-style': 'bezier',
+      'width': 3,
+      'opacity': 0.6,
+    },
+  },
+  {
+    selector: 'edge[edgeType="infra"]',
+    style: {
+      'line-color': '#ef4444',
+      'target-arrow-color': '#ef4444',
+      'target-arrow-shape': 'triangle',
+      'curve-style': 'bezier',
+      'width': 1.5,
+      'opacity': 0.4,
+      'line-style': 'dotted',
+    },
+  },
+  // Highlight states
+  {
+    selector: 'node.highlighted',
+    style: {
+      'border-width': 4,
+      'z-index': 999,
+    },
+  },
+  {
+    selector: 'node.dimmed',
+    style: {
+      'opacity': 0.15,
+    },
+  },
+  {
+    selector: 'edge.dimmed',
+    style: {
+      'opacity': 0.05,
+    },
+  },
+  {
+    selector: 'node.search-match',
+    style: {
+      'border-width': 4,
+      'border-color': '#fbbf24',
+      'z-index': 999,
+    },
+  },
+];
+
+// ===== Init =====
+document.addEventListener('DOMContentLoaded', () => {
+  document.getElementById('generated-at').textContent = `Generated: ${new Date(DATA.generatedAt).toLocaleDateString()}`;
+
+  const elements = buildElements(DATA);
+  const cy = cytoscape({
+    container: document.getElementById('cy'),
+    elements,
+    style: cyStyle,
+    layout: {
+      name: 'dagre',
+      rankDir: 'LR',
+      nodeSep: 60,
+      rankSep: 120,
+      edgeSep: 30,
+      padding: 50,
+    },
+    minZoom: 0.2,
+    maxZoom: 3,
+    wheelSensitivity: 0.3,
+  });
+
+  // ===== Detail panel =====
+  const panel = document.getElementById('detail-panel');
+  const detailTitle = document.getElementById('detail-title');
+  const detailBadge = document.getElementById('detail-badge');
+  const detailBody = document.getElementById('detail-body');
+  const detailClose = document.getElementById('detail-close');
+
+  function showDetail(nodeData) {
+    panel.classList.remove('hidden');
+    detailTitle.textContent = nodeData.label;
+
+    const typeLabels = {
+      'pipeline-agent': 'Pipeline Agent',
+      'on-demand-agent': 'On-Demand Agent',
+      'integration': 'Integration',
+      'data-store': 'Data Store',
+      'infrastructure': 'Infrastructure',
+      'frontend': 'Frontend Feature',
+    };
+    const typeColors = {
+      'pipeline-agent': '#6366f1',
+      'on-demand-agent': '#22c55e',
+      'integration': '#f59e0b',
+      'data-store': '#a855f7',
+      'infrastructure': '#ef4444',
+      'frontend': '#64748b',
+    };
+
+    detailBadge.textContent = typeLabels[nodeData.type] || nodeData.type;
+    detailBadge.style.background = typeColors[nodeData.type] + '20';
+    detailBadge.style.color = typeColors[nodeData.type];
+    detailBadge.style.border = `1px solid ${typeColors[nodeData.type]}40`;
+
+    let html = '';
+
+    if (nodeData.type === 'pipeline-agent') {
+      html += `<div class="meta-row">`;
+      html += `<span class="meta-pill phase">Phase ${nodeData.phase}</span>`;
+      html += `<span class="meta-pill credits">${nodeData.creditCost} credits</span>`;
+      if (nodeData.requiresApproval) html += `<span class="meta-pill approval">Requires Approval</span>`;
+      html += `</div>`;
+
+      html += `<div class="detail-section"><h3>Execution Type</h3><p>${formatExecutionType(nodeData.executionType)}</p></div>`;
+
+      if (nodeData.dependsOn && nodeData.dependsOn.length > 0) {
+        html += `<div class="detail-section"><h3>Dependencies</h3><ul>${nodeData.dependsOn.map(d => `<li>${findAgentName(d)}</li>`).join('')}</ul></div>`;
+      }
+
+      if (nodeData.tools && nodeData.tools.length > 0) {
+        html += `<div class="detail-section"><h3>Tools Used</h3><ul>${nodeData.tools.map(t => `<li>${t}</li>`).join('')}</ul></div>`;
+      }
+
+      if (nodeData.pipelineCalls && nodeData.pipelineCalls.length > 0) {
+        html += `<div class="detail-section"><h3>Pipeline API Calls</h3>`;
+        html += `<p style="font-size:12px;color:#94a3b8;margin-bottom:12px">These API calls run <strong>before</strong> the agent — collecting raw data that is then fed to the LLM for analysis.</p>`;
+        for (const call of nodeData.pipelineCalls) {
+          html += `<div class="api-call-card">`;
+          html += `<div class="api-call-header"><span class="api-integration">${call.integration}</span><code class="api-endpoint">${call.endpoint}</code></div>`;
+          html += `<div class="api-call-method">${call.method}</div>`;
+          html += `<div class="api-call-row"><span class="api-label">Purpose:</span> ${call.purpose}</div>`;
+          html += `<div class="api-call-row"><span class="api-label">Data collected:</span> ${call.dataCollected}</div>`;
+          html += `<div class="api-call-row"><span class="api-label">Fed to agent as:</span> <code>${call.fedToAgent}</code></div>`;
+          html += `</div>`;
+        }
+        html += `</div>`;
+      } else if (nodeData.executionType === 'agent-only') {
+        html += `<div class="detail-section"><h3>Pipeline API Calls</h3><p style="font-size:12px;color:#94a3b8">None — this is an <strong>agent-only</strong> step. It receives the outputs from its dependency steps as context and reasons over them without making any API calls.</p></div>`;
+      } else if (nodeData.executionType === 'pipeline-only' && (!nodeData.pipelineCalls || nodeData.pipelineCalls.length === 0)) {
+        html += `<div class="detail-section"><h3>Pipeline API Calls</h3><p style="font-size:12px;color:#94a3b8">None — this is a <strong>pure computation</strong> step. It merges/deduplicates data from upstream steps using TypeScript logic without calling any external APIs.</p></div>`;
+      }
+
+      if (nodeData.skillSummary) {
+        html += buildCollapsible('Skill / Expertise', nodeData.skillSummary);
+      }
+
+      if (nodeData.prompt && nodeData.prompt.systemPrompt) {
+        html += buildCollapsible('System Prompt', nodeData.prompt.systemPrompt);
+      }
+
+      if (nodeData.prompt && nodeData.prompt.userPrompt) {
+        html += buildCollapsible('User Prompt Template', nodeData.prompt.userPrompt);
+      }
+
+    } else if (nodeData.type === 'on-demand-agent') {
+      html += `<div class="meta-row">`;
+      html += `<span class="meta-pill credits">${nodeData.credits} credits</span>`;
+      html += `</div>`;
+      html += `<div class="detail-section"><h3>Description</h3><p>${nodeData.description}</p></div>`;
+      html += `<div class="detail-section"><h3>How It Works</h3><p>Receives pre-assembled context data (no live tool calls). Uses Claude to analyze project-specific data and provide recommendations. Triggered on-demand by user prompts.</p></div>`;
+
+    } else if (nodeData.type === 'integration') {
+      html += `<div class="detail-section"><h3>Category</h3><p>${nodeData.category}</p></div>`;
+      html += `<div class="detail-section"><h3>Base URL</h3><p style="font-family:monospace;font-size:11px">${nodeData.baseUrl}</p></div>`;
+      if (nodeData.methods && nodeData.methods.length > 0) {
+        html += `<div class="detail-section"><h3>Methods</h3><ul>${nodeData.methods.map(m => `<li>${m}()</li>`).join('')}</ul></div>`;
+      }
+      // Show which agents use this integration
+      const usedBy = findAgentsUsingIntegration(nodeData.id);
+      if (usedBy.length > 0) {
+        html += `<div class="detail-section"><h3>Used By Agents</h3><ul>${usedBy.map(a => `<li>${a}</li>`).join('')}</ul></div>`;
+      }
+
+    } else if (nodeData.type === 'data-store') {
+      html += `<div class="detail-section"><h3>Description</h3><p>${nodeData.description}</p></div>`;
+      if (nodeData.writtenBy && nodeData.writtenBy.length > 0) {
+        html += `<div class="detail-section"><h3>Written By</h3><ul>${nodeData.writtenBy.map(w => `<li>${findAgentName(w)}</li>`).join('')}</ul></div>`;
+      }
+      if (nodeData.readBy && nodeData.readBy.length > 0) {
+        html += `<div class="detail-section"><h3>Read By</h3><ul>${nodeData.readBy.map(r => `<li>${r}</li>`).join('')}</ul></div>`;
+      }
+
+    } else if (nodeData.type === 'infrastructure') {
+      html += `<div class="detail-section"><h3>Description</h3><p>${nodeData.description}</p></div>`;
+
+    } else if (nodeData.type === 'frontend') {
+      html += `<div class="detail-section"><h3>Description</h3><p>${nodeData.description}</p></div>`;
+    }
+
+    detailBody.innerHTML = html;
+
+    // Attach collapsible handlers
+    document.querySelectorAll('.collapsible-header').forEach(header => {
+      header.addEventListener('click', () => {
+        header.classList.toggle('open');
+        header.nextElementSibling.classList.toggle('open');
+      });
+    });
+  }
+
+  function hideDetail() {
+    panel.classList.add('hidden');
+  }
+
+  detailClose.addEventListener('click', hideDetail);
+
+  cy.on('tap', 'node', (evt) => {
+    const node = evt.target;
+    showDetail(node.data());
+    // Highlight connected
+    cy.elements().removeClass('highlighted dimmed');
+    const connected = node.neighborhood().add(node);
+    cy.elements().not(connected).addClass('dimmed');
+    node.addClass('highlighted');
+  });
+
+  cy.on('tap', (evt) => {
+    if (evt.target === cy) {
+      hideDetail();
+      cy.elements().removeClass('highlighted dimmed search-match');
+    }
+  });
+
+  // ===== Filtering =====
+  document.querySelectorAll('.filter-btn').forEach(btn => {
+    btn.addEventListener('click', () => {
+      document.querySelectorAll('.filter-btn').forEach(b => b.classList.remove('active'));
+      btn.classList.add('active');
+      const filter = btn.dataset.filter;
+      applyFilter(cy, filter);
+    });
+  });
+
+  function applyFilter(cy, filter) {
+    cy.elements().removeClass('dimmed highlighted');
+    if (filter === 'all') return;
+
+    const filterMap = {
+      'phase-1': n => n.data('type') === 'pipeline-agent' && n.data('phase') === 1,
+      'phase-2': n => n.data('type') === 'pipeline-agent' && n.data('phase') === 2,
+      'phase-3': n => n.data('type') === 'pipeline-agent' && n.data('phase') === 3,
+      'phase-4': n => n.data('type') === 'pipeline-agent' && n.data('phase') === 4,
+      'on-demand': n => n.data('type') === 'on-demand-agent',
+      'integrations': n => n.data('type') === 'integration',
+      'data-stores': n => n.data('type') === 'data-store',
+      'infrastructure': n => n.data('type') === 'infrastructure',
+    };
+
+    const matcher = filterMap[filter];
+    if (!matcher) return;
+
+    const matchedNodes = cy.nodes().filter(matcher);
+    const connected = matchedNodes.neighborhood().add(matchedNodes);
+    cy.elements().not(connected).addClass('dimmed');
+  }
+
+  // ===== Search =====
+  const searchInput = document.getElementById('search');
+  let searchTimeout;
+  searchInput.addEventListener('input', () => {
+    clearTimeout(searchTimeout);
+    searchTimeout = setTimeout(() => {
+      const q = searchInput.value.toLowerCase().trim();
+      cy.elements().removeClass('search-match dimmed');
+      if (!q) return;
+      const matched = cy.nodes().filter(n => {
+        const label = (n.data('label') || '').toLowerCase();
+        const tools = (n.data('tools') || []).join(' ').toLowerCase();
+        const desc = (n.data('description') || '').toLowerCase();
+        return label.includes(q) || tools.includes(q) || desc.includes(q);
+      });
+      if (matched.length > 0) {
+        cy.elements().not(matched.neighborhood().add(matched)).addClass('dimmed');
+        matched.addClass('search-match');
+        cy.animate({ fit: { eles: matched, padding: 80 } }, { duration: 400 });
+      }
+    }, 300);
+  });
+
+  // ===== Helpers =====
+  function findAgentName(stepKey) {
+    const agent = DATA.pipeline.agents.find(a => a.stepKey === stepKey);
+    return agent ? agent.name : stepKey;
+  }
+
+  function findAgentsUsingIntegration(integrationId) {
+    return DATA.edges
+      .filter(e => e.target === integrationId && e.type === 'api-call')
+      .map(e => findAgentName(e.source));
+  }
+
+  function formatExecutionType(type) {
+    const map = {
+      'pipeline-then-agent': '<strong>Pipeline → Agent</strong>: A deterministic pipeline step collects raw data first (API calls, scraping), then an LLM agent analyzes and synthesizes the collected data.',
+      'pipeline-only': '<strong>Pipeline Only</strong>: Fully deterministic — makes API calls to collect and aggregate data. No LLM reasoning involved.',
+      'agent-only': '<strong>Agent Only</strong>: Pure LLM reasoning — receives prior step outputs as context and produces strategic analysis.',
+      'agent-with-tools': '<strong>Agent with Tools</strong>: LLM agent that can call tools during execution (e.g., image generation).',
+    };
+    return map[type] || type;
+  }
+
+  function buildCollapsible(title, content) {
+    const escaped = content.replace(/</g, '&lt;').replace(/>/g, '&gt;');
+    return `<div class="collapsible">
+      <div class="collapsible-header"><span>${title}</span><span class="arrow">▶</span></div>
+      <div class="collapsible-body">${escaped}</div>
+    </div>`;
+  }
+});
+</script>
+</body>
+</html>

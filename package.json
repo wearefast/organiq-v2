@@ -17,7 +17,8 @@
     "typecheck": "concurrently \"npm run typecheck:frontend\" \"npm run typecheck:server\"",
     "typecheck:frontend": "cd frontend && npx tsc --noEmit",
     "typecheck:server": "cd server && npx tsc --noEmit",
-    "format": "prettier --write \"**/*.{ts,tsx,js,jsx,json,md}\""
+    "format": "prettier --write \"**/*.{ts,tsx,js,jsx,json,md}\"",
+    "generate:map": "npx tsx scripts/generate-architecture-map.ts"
   },
   "devDependencies": {
     "concurrently": "^8.2.2",

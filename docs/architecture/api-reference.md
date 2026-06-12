@@ -243,9 +243,80 @@ Base: `/projects/:projectId/audit/llm`
 
 | Method | Path | Description |
 |--------|------|-------------|
-| `GET` | `/sessions` | List LLM traffic sessions |
-| `GET` | `/sessions/:id` | Get session details |
-| `GET` | `/results` | Get audit results |
+| `POST` | `/run` | Trigger a new LLM crawlability audit |
+| `GET` | `/latest` | Get most recent audit results |
+| `GET` | `/history` | Get historical audits for the project |
+
+---
+
+## LLM Traffic
+
+Base: `/projects/:projectId/traffic` (overview/engines) + `/traffic` (ingest)
+
+| Method | Path | Description | Auth |
+|--------|------|-------------|------|
+| `POST` | `/traffic/ingest` | Ingest traffic event from pulse-tracker.js | None (public) |
+| `GET` | `/projects/:projectId/traffic/overview` | Traffic overview with date range | ClerkGuard |
+| `GET` | `/projects/:projectId/traffic/engines` | Supported AI engines list with colors | ClerkGuard |
+
+---
+
+## Notifications
+
+Base: `/organizations/:organizationId/notifications`
+
+| Method | Path | Description |
+|--------|------|-------------|
+| `GET` | `/` | List notifications (`?unreadOnly`, `?limit`) |
+| `GET` | `/unread-count` | Get unread notification count |
+| `PATCH` | `/:id/read` | Mark notification as read |
+| `PATCH` | `/read-all` | Mark all notifications as read |
+| `DELETE` | `/:id` | Delete a notification |
+
+---
+
+## Prompt Visibility
+
+Base: `/projects/:projectId/prompts`
+
+| Method | Path | Description |
+|--------|------|-------------|
+| `GET` | `/` | List tracked prompts |
+| `POST` | `/` | Create a new prompt to track |
+| `DELETE` | `/:promptId` | Delete a tracked prompt |
+| `PATCH` | `/:promptId/toggle` | Toggle prompt active/inactive |
+| `POST` | `/:promptId/run` | Manually trigger visibility check |
+| `GET` | `/:promptId/history` | Get check history for a prompt |
+| `GET` | `/overview` | Project-level visibility summary |
+| `GET` | `/suggestions` | AI-generated prompt suggestions |
+| `GET` | `/engines` | List supported LLM engines |
+| `GET` | `/schedule` | Get check schedule config |
+| `PATCH` | `/schedule` | Update schedule hour (0–23) |
+
+---
+
+## Google Search Console (GSC)
+
+Base: `/projects/:projectId/gsc`
+
+| Method | Path | Description | Auth |
+|--------|------|-------------|------|
+| `GET` | `/connect` | Initiate OAuth flow → Google consent | ClerkGuard |
+| `GET` | `/callback` | OAuth callback (exchanges code for tokens) | None (redirect) |
+| `GET` | `/status` | Connection status (connected, siteUrl, lastSync) | ClerkGuard |
+| `GET` | `/keywords` | GSC keyword data (`?startDate`, `?endDate`, `?limit`) | ClerkGuard |
+| `GET` | `/summary` | Aggregated performance summary (last 28 days) | ClerkGuard |
+
+---
+
+## Keywords — Decay Alerts
+
+Base: `/projects/:projectId/keywords/decay`
+
+| Method | Path | Description |
+|--------|------|-------------|
+| `GET` | `/alerts` | Get decay alerts (`?includeResolved`, `?limit`) |
+| `PATCH` | `/alerts/:alertId/resolve` | Resolve a decay alert |
 
 ---
 
