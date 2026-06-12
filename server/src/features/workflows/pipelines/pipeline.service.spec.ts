@@ -70,15 +70,15 @@ describe('PipelineService', () => {
   beforeEach(() => {
     vi.clearAllMocks();
 
-    const competitorMetrics = new CompetitorMetricsPipeline(mockAhrefs as any);
-    const searchDemand = new SearchDemandPipeline(mockDataforseo as any, mockAhrefs as any);
+    const competitorMetrics = new CompetitorMetricsPipeline(mockDataforseo as any);
+    const searchDemand = new SearchDemandPipeline(mockDataforseo as any);
     const method01 = new Method01CompetitorPagesPipeline(mockAhrefs as any);
     const method02 = new Method02SeedExpansionPipeline();
     const method03 = new Method03ContentGapPipeline(mockAhrefs as any);
-    const businessProfile = new BusinessProfilePipeline(mockFirecrawl as any, mockAhrefs as any);
-    const seedKeywords = new SeedKeywordsPipeline(mockAhrefs as any, mockDataforseo as any);
+    const businessProfile = new BusinessProfilePipeline(mockFirecrawl as any, mockDataforseo as any);
+    const seedKeywords = new SeedKeywordsPipeline(mockDataforseo as any);
     const serpNicheMap = new SerpNicheMapPipeline(mockAhrefs as any);
-    const competitorBuckets = new CompetitorBucketsPipeline(mockAhrefs as any, mockSerper as any);
+    const competitorBuckets = new CompetitorBucketsPipeline(mockDataforseo as any, mockSerper as any);
     const phase1Baseline = new Phase1BaselinePipeline(mockAhrefs as any);
     const contentBrief = new ContentBriefPipeline(mockSerper as any, mockFirecrawl as any);
     const siteAudit = new SiteAuditPipeline(mockFirecrawl as any, mockDataforSeoOnPage as any, mockPageSpeed as any);
@@ -124,7 +124,7 @@ describe('CompetitorMetricsPipeline', () => {
 
   beforeEach(() => {
     vi.clearAllMocks();
-    pipeline = new CompetitorMetricsPipeline(mockAhrefs as any);
+    pipeline = new CompetitorMetricsPipeline(mockDataforseo as any);
   });
 
   it('has correct stepKey', () => {
@@ -167,7 +167,7 @@ describe('SearchDemandPipeline', () => {
 
   beforeEach(() => {
     vi.clearAllMocks();
-    pipeline = new SearchDemandPipeline(mockDataforseo as any, mockAhrefs as any);
+    pipeline = new SearchDemandPipeline(mockDataforseo as any);
   });
 
   it('has correct stepKey', () => {

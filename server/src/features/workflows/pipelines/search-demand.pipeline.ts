@@ -1,11 +1,10 @@
 import { Injectable, Logger } from '@nestjs/common';
 import { Pipeline } from './pipeline.interface';
 import { DataForSeoService } from '../../integrations/dataforseo/dataforseo.service';
-import { AhrefsService } from '../../integrations/ahrefs/ahrefs.service';
 
 /**
  * Tier 1 pipeline: Search Demand
- * Batch volume + difficulty lookups for seed keywords.
+ * Batch volume + difficulty lookups for seed keywords via DataForSEO.
  * No LLM needed — pure API aggregation + scoring.
  */
 @Injectable()
@@ -15,7 +14,6 @@ export class SearchDemandPipeline implements Pipeline {
 
   constructor(
     private readonly dataforseo: DataForSeoService,
-    private readonly ahrefs: AhrefsService,
   ) {}
 
   async execute(context: Record<string, unknown>): Promise<unknown> {
@@ -23,8 +21,8 @@ export class SearchDemandPipeline implements Pipeline {
     // seed-keywords output shape: { seedKeywords: [{keyword, volume, difficulty, ...}] }
     const seedKwCtx = context['seed-keywords'] as { seedKeywords?: Array<{ keyword: string }> } | undefined;
     const keywords = seedKwCtx?.seedKeywords?.map((kw) => kw.keyword) ?? [];
-    const country = (context.country as string) || 'us';
     const location = (context.location as string) || 'United States';
+    const language = (context.language as string) || 'en';
 
     this.logger.log(`Fetching search demand for ${keywords.length} keywords`);
 
@@ -42,7 +40,7 @@ export class SearchDemandPipeline implements Pipeline {
 
       const [volumes, difficulties] = await Promise.all([
         this.dataforseo.getKeywordSearchVolume(batch, location),
-        this.ahrefs.getKeywordDifficulty(batch, country),
+        this.dataforseo.getBulkKeywordDifficulty(batch, location, language),
       ]);
 
       const volumeMap = this.parseVolumeResponse(volumes);
@@ -153,15 +151,11 @@ export class SearchDemandPipeline implements Pipeline {
   private parseDifficultyResponse(response: unknown): Map<string, number> {
     const map = new Map<string, number>();
     if (!response || typeof response !== 'object') return map;
-    const data = response as Record<string, unknown>;
-    // Ahrefs returns { keywords: [...] }
-    if (Array.isArray(data.keywords)) {
-      for (const item of data.keywords as Array<Record<string, unknown>>) {
-        const keyword = item.keyword as string;
-        const difficulty = item.difficulty as number;
-        if (keyword && typeof difficulty === 'number') {
-          map.set(keyword.toLowerCase(), difficulty);
-        }
+    const data = response as { tasks?: Array<{ result?: Array<{ items?: Array<{ keyword?: string; keyword_difficulty?: number }> }> }> };
+    const items = data?.tasks?.[0]?.result?.[0]?.items ?? [];
+    for (const item of items) {
+      if (item.keyword && typeof item.keyword_difficulty === 'number') {
+        map.set(item.keyword.toLowerCase(), item.keyword_difficulty);
       }
     }
     return map;
