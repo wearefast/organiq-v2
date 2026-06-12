@@ -4,6 +4,89 @@ All notable changes to the Pulse OS codebase, organized by audit and implementat
 
 ---
 
+## [R12 — LLM Crawlability Audit, Content Pipeline Refactor, Agent Runtime Consolidation] — June 12, 2026
+
+**Major feature release: standalone LLM crawlability audit, content pipeline enhancements, agent runtime refactoring, and pipeline improvements.**
+
+### LLM Crawlability Audit (Standalone Feature)
+
+Full-featured standalone audit for evaluating how AI search engines can crawl, parse, and trust project web pages.
+
+| File | Purpose |
+|------|---------|
+| `server/src/features/audit/llm-audit.service.ts` | Crawl orchestration, HTML parsing, score computation |
+| `server/src/db/schema.ts` | `llmAuditResults` table definition |
+| `frontend/src/app/(dashboard)/.../ai-search/llm-audit/page.tsx` | Full audit dashboard (score banner, sparkline, section grid, bot matrix) |
+| `frontend/src/features/analytics/services/llm-audit.service.ts` | Frontend API client |
+| `docs/features/llm-crawlability-audit.md` | Complete feature documentation |
+
+Scoring system: 4 categories (bot permissions 20pts, content structure 25pts, trust signals 25pts, content chunking 20pts), hard penalty cap, grade labels, 17 issue types, batch processing (5 URLs), delta badges, sparkline history.
+
+### Content Pipeline Enhancements
+
+| Component | Change |
+|-----------|--------|
+| `content.controller.ts` | New endpoints for content assets and forum intelligence |
+| `forum-intelligence.service.ts` | New service for forum content analysis |
+| `forum-intelligence.processor.ts` | BullMQ processor for forum intel |
+| `content/assets/page.tsx` | New content assets page |
+| `content/forums/page.tsx` | Enhanced forum intelligence page |
+
+### Agent Runtime Refactoring
+
+| File | Change |
+|------|--------|
+| `server/src/agents/agent.runtime.ts` | Major refactor — 422 lines rewritten for robustness |
+| `server/src/agents/agent.runtime.spec.ts` | New test suite (296 lines) |
+| `server/src/agents/agents.module.ts` | Module restructure |
+
+### Pipeline Improvements
+
+| Pipeline | Change |
+|----------|--------|
+| `consolidated-keywords.pipeline.ts` | New pipeline (378 lines) — keyword consolidation |
+| `method03-content-gap.pipeline.ts` | Major enhancement (288+ lines) |
+| `seed-keywords.pipeline.ts` | Extended (244+ lines) |
+| `search-demand.pipeline.ts` | Extended with new data flows |
+| `ai-intelligence.pipeline.ts` | Enhanced intelligence gathering |
+| `business-profile.pipeline.ts` | Updated profile handling |
+| `competitor-metrics.pipeline.ts` | Extended metric collection |
+
+### Prompt Visibility Enhancements
+
+| File | Change |
+|------|--------|
+| `frontend/src/app/(dashboard)/.../ai-search/visibility/page.tsx` | Major UI expansion (537+ lines) |
+| `frontend/src/features/analytics/services/prompt-visibility.service.ts` | New service methods |
+
+### Frontend Enhancements
+
+- `refresh-suggestions-card.tsx` — New component for content refresh suggestions
+- `use-business-profile-ready.ts` — New hook for business profile state
+- `project.service.ts` — Extended project API service
+- `rich-text.tsx` — New rich text shared component
+- Business profile renderer expanded (748+ lines)
+- Topical map renderer expanded (507+ lines)
+- Search demand renderer expanded (330+ lines)
+- Overview page enhanced (276+ lines)
+- Start-run component improved with workflow context
+
+### Infrastructure
+
+- `.github/workflows/deploy.yml` — CI/CD deployment workflow added
+- `web-crawler.service.ts` — Major expansion (414+ lines) for enhanced crawling
+- Multiple integration service enhancements (Anthropic, DataForSEO, OpenAI, Serper)
+
+### Deleted Stale Files
+
+- `script1.js`, `script2.js` — One-off migration scripts
+- `server/scripts/add-return-output.ts`, `deploy-agents.ts`, `export-tool-schemas.ts` — Stale managed-agent deployment artifacts
+- `frontend/src/shared/hooks/use-keyboard-shortcuts.ts` — Unused
+- `docs/debugging/phase-ab-audit.md`, `docs/debugging/phase-abc-audit.md` — Resolved audit snapshots
+- `docs/workflow-pipeline-visual.html` — Orphaned visualization
+
+---
+
 ## [Documentation & Code Cleanup] — May 30, 2026
 
 **CPTO documentation audit: deleted stale docs, resolved circular deps, removed dead code.**

@@ -156,15 +156,16 @@ frontend/           → Next.js 15, App Router, Tailwind, Zustand, Clerk
   src/
     app/            → Route tree (App Router)
       (dashboard)/  → Authenticated routes
-    features/       → Feature modules (workflow, workspace, project, keywords, content, reports, credits)
+    features/       → Feature modules (workflow, agents, analytics, billing, content, reports, projects)
     shared/         → Reusable UI, shared hooks, utilities
 
 server/             → NestJS 10, Drizzle ORM, BullMQ
   src/
     agents/         → Agent runtime (definitions/, runtime, registry, sandbox, validator)
+    skills/         → Skill implementations (16 pipeline skills)
     prompts/        → Tunable prompt files (~51 .prompt.md, .rubric.md, .config.md)
-    features/       → Feature modules (auth, organizations, credits, workspaces, projects, workflows, keywords, topical-maps, content, reports, integrations, billing)
-    shared/         → Database module, prompt service, health
+    features/       → Feature modules (auth, organizations, credits, workspaces, projects, workflows, keywords, topical-maps, content, reports, integrations, billing, on-demand-agents, scheduled-workflows, notifications, llm-traffic, audit, prompt-visibility)
+    shared/         → Database module, prompt service, health, web-crawler
     db/             → Drizzle schema, client, seed
 
 docs/               → Documentation (READ before touching a feature)
@@ -176,7 +177,7 @@ docs/               → Documentation (READ before touching a feature)
 infra/              → Docker Compose (Postgres + Redis)
 ```
 
-**Tech stack:** Next.js 15 · NestJS 10 · Drizzle ORM · PostgreSQL · BullMQ · Redis · Clerk · OpenAI · Ahrefs v3 · DataForSEO · Firecrawl · Serper.dev · PageSpeed/CrUX · Stripe
+**Tech stack:** Next.js 15 · NestJS 10 · Drizzle ORM · PostgreSQL · BullMQ · Redis · Clerk · Anthropic Claude · OpenAI · Ahrefs v3 · DataForSEO · Firecrawl · Serper.dev · PageSpeed/CrUX · Google Search Console · Stripe
 
 **Before touching any feature:** Read `docs/project-handbook.md` and relevant section
 **After any change to API, schema, or architecture:** Update the relevant file in `docs/`
