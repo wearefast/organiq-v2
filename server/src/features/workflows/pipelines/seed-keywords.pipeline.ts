@@ -1,6 +1,5 @@
 import { Injectable, Logger } from '@nestjs/common';
 import { Pipeline } from './pipeline.interface';
-import { AhrefsService } from '../../integrations/ahrefs/ahrefs.service';
 import { DataForSeoService } from '../../integrations/dataforseo/dataforseo.service';
 
 const sleep = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms));
@@ -29,15 +28,13 @@ const COUNTRY_TO_LOCATION: Record<string, string> = {
 
 /**
  * V7 Pipeline: Seed Keywords
- * Fetches seed keywords via Ahrefs organic keywords + related terms + DataForSEO suggestions.
+ * Fetches seed keywords via DataForSEO ranked keywords + keyword suggestions.
  * Returns raw API responses for agent analysis — NO analysis logic here.
  *
- * Fallback strategy: When the target domain has no organic keyword footprint in
- * Ahrefs (common for new/low-DR sites), the pipeline derives seed terms from the
+ * Fallback strategy: When the target domain has no organic keyword footprint
+ * (common for new/low-DR sites), the pipeline derives seed terms from the
  * project's industry, business-profile (ICP pain points, positioning), and
  * competitor domains. This ensures the agent always receives keyword evidence.
- *
- * Rate limit strategy: Ahrefs 60 req/min. Batch seeds in groups of 10 with 1s delay.
  */
 @Injectable()
 export class SeedKeywordsPipeline implements Pipeline {
@@ -45,7 +42,6 @@ export class SeedKeywordsPipeline implements Pipeline {
   private readonly logger = new Logger(SeedKeywordsPipeline.name);
 
   constructor(
-    private readonly ahrefs: AhrefsService,
     private readonly dataforseo: DataForSeoService,
   ) {}
 
@@ -61,14 +57,13 @@ export class SeedKeywordsPipeline implements Pipeline {
 
     let apiCallCount = 0;
 
-    // Step 1: Get domain's existing organic keywords (top 50 by traffic)
-    this.logger.log(`Seed keywords: fetching organic keywords for ${domain} (country=${country})`);
-    const organicRaw = await this.ahrefs.getOrganicKeywords(domain, country, 50);
+    // Step 1: Get domain's existing organic keywords via DataForSEO ranked keywords (top 50)
+    this.logger.log(`Seed keywords: fetching ranked keywords for ${domain} (country=${country})`);
+    const organicRaw = await this.dataforseo.getRankedKeywords(domain, location, language, 50);
     apiCallCount++;
 
     // Step 2: Extract seed terms from organic keywords
-    const organicData = organicRaw as { keywords?: Array<Record<string, unknown>> };
-    const organicKeywords = this.slimKeywordList(organicData?.keywords ?? []);
+    const organicKeywords = this.slimDfsRankedKeywords(organicRaw);
     let seedTerms: string[] = organicKeywords.map((k) => k.keyword).filter(Boolean).slice(0, 20);
 
     // Step 2b: FALLBACK — If no organic keywords, derive seeds from context
@@ -78,7 +73,7 @@ export class SeedKeywordsPipeline implements Pipeline {
     if (seedTerms.length === 0) {
       fallbackUsed = true;
       this.logger.warn(
-        `Seed keywords: Ahrefs returned 0 organic keywords for ${domain}. Activating fallback seed generation.`,
+        `Seed keywords: DataForSEO returned 0 ranked keywords for ${domain}. Activating fallback seed generation.`,
       );
 
       const fallbackSeeds = this.deriveFallbackSeeds(domain, industry, context['business-profile']);
@@ -86,16 +81,15 @@ export class SeedKeywordsPipeline implements Pipeline {
       // Also try to get organic keywords from competitor domains (max 2, 20 kws each)
       const competitorDomains = this.extractCompetitorDomains(context['business-profile']);
       if (competitorDomains.length > 0) {
-        this.logger.log(`Seed keywords: fetching competitor organic keywords from ${competitorDomains.length} competitors`);
+        this.logger.log(`Seed keywords: fetching competitor ranked keywords from ${competitorDomains.length} competitors`);
         const competitorResults = await Promise.all(
           competitorDomains.slice(0, 2).map(async (comp) => {
             try {
-              const raw = await this.ahrefs.getOrganicKeywords(comp, country, 20);
+              const raw = await this.dataforseo.getRankedKeywords(comp, location, language, 20);
               apiCallCount++;
-              const rawData = raw as { keywords?: Array<Record<string, unknown>> };
-              return { competitor: comp, keywords: this.slimKeywordList(rawData?.keywords ?? []) };
+              return { competitor: comp, keywords: this.slimDfsRankedKeywords(raw) };
             } catch (err) {
-              this.logger.warn(`Competitor organic fetch failed for "${comp}": ${(err as Error).message}`);
+              this.logger.warn(`Competitor ranked fetch failed for "${comp}": ${(err as Error).message}`);
               return null;
             }
           }),
@@ -113,10 +107,9 @@ export class SeedKeywordsPipeline implements Pipeline {
       this.logger.log(`Seed keywords: fallback generated ${seedTerms.length} seed terms`);
     }
 
-    // Step 3: For each seed, get related terms + DataForSEO suggestions (10 each max)
-    // Batch in groups of 5 with 1s delay between batches (Ahrefs 60 req/min limit)
+    // Step 3: For each seed, get DataForSEO keyword suggestions
+    // Batch in groups of 5 with 500ms delay between batches
     const BATCH_SIZE = 5;
-    const relatedTermsResults: Array<{ seed: string; keywords: SlimKeyword[] }> = [];
     const suggestionsResults: Array<{ seed: string; keywords: SlimKeyword[] }> = [];
 
     for (let i = 0; i < seedTerms.length; i += BATCH_SIZE) {
@@ -125,14 +118,9 @@ export class SeedKeywordsPipeline implements Pipeline {
       await Promise.all(
         batch.map(async (seed) => {
           try {
-            const [relatedRaw, suggestionsRaw] = await Promise.all([
-              this.ahrefs.getRelatedKeywords(seed, country, 15),
-              this.dataforseo.getKeywordSuggestions(seed, location, language, 15),
-            ]);
-            apiCallCount += 2;
-            const relatedData = relatedRaw as { keywords?: Array<Record<string, unknown>> };
+            const suggestionsRaw = await this.dataforseo.getKeywordSuggestions(seed, location, language, 25);
+            apiCallCount++;
             const suggData = suggestionsRaw as { tasks?: Array<{ result?: Array<{ items?: Array<Record<string, unknown>> }> }> };
-            relatedTermsResults.push({ seed, keywords: this.slimKeywordList(relatedData?.keywords ?? []) });
             suggestionsResults.push({ seed, keywords: this.slimDfsKeywordList(suggData) });
           } catch (err) {
             this.logger.warn(`Seed expansion failed for "${seed}": ${(err as Error).message}`);
@@ -142,7 +130,7 @@ export class SeedKeywordsPipeline implements Pipeline {
 
       // Throttle between batches
       if (i + BATCH_SIZE < seedTerms.length) {
-        await sleep(1000);
+        await sleep(500);
       }
     }
 
@@ -150,7 +138,7 @@ export class SeedKeywordsPipeline implements Pipeline {
       rawData: {
         organicKeywords,
         seedTerms,
-        relatedTerms: relatedTermsResults,
+        relatedTerms: suggestionsResults, // Populated from DFS suggestions (same shape as before)
         suggestions: suggestionsResults,
         ...(competitorOrganicKeywords.length > 0 ? { competitorOrganicKeywords } : {}),
       },
@@ -167,18 +155,33 @@ export class SeedKeywordsPipeline implements Pipeline {
   }
 
   /**
-   * Slim an Ahrefs keyword array to only the fields the agent needs.
-   * Drops URL, position, traffic, etc. — keeps keyword, volume, difficulty, cpc.
+   * Slim a DataForSEO ranked_keywords response to SlimKeyword[].
+   * Maps items[].keyword_data + ranked_serp_element into the standard shape.
    */
-  private slimKeywordList(items: Array<Record<string, unknown>>): SlimKeyword[] {
-    return items.map((k) => ({
-      keyword: String(k['keyword'] ?? k['keyword_phrase'] ?? ''),
-      volume: (k['volume'] ?? k['search_volume'] ?? null) as number | null,
-      difficulty: (k['keyword_difficulty'] ?? k['difficulty'] ?? null) as number | null,
-      cpc: (k['cpc'] ?? null) as number | null,
-      // Preserve current SERP position — Ahrefs v3 organic-keywords returns best_position.
-      // Downstream steps (phase1-baseline, method02) need this to compute ranking distribution.
-      currentPosition: (k['best_position'] ?? null) as number | null,
+  private slimDfsRankedKeywords(raw: unknown): SlimKeyword[] {
+    const data = raw as {
+      tasks?: Array<{
+        result?: Array<{
+          items?: Array<{
+            keyword_data?: {
+              keyword?: string;
+              keyword_info?: { search_volume?: number; cpc?: number };
+              keyword_properties?: { keyword_difficulty?: number };
+            };
+            ranked_serp_element?: {
+              serp_item?: { rank_group?: number };
+            };
+          }>;
+        }>;
+      }>;
+    };
+    const items = data?.tasks?.[0]?.result?.[0]?.items ?? [];
+    return items.map((item) => ({
+      keyword: String(item.keyword_data?.keyword ?? ''),
+      volume: (item.keyword_data?.keyword_info?.search_volume ?? null) as number | null,
+      difficulty: (item.keyword_data?.keyword_properties?.keyword_difficulty ?? null) as number | null,
+      cpc: (item.keyword_data?.keyword_info?.cpc ?? null) as number | null,
+      currentPosition: (item.ranked_serp_element?.serp_item?.rank_group ?? null) as number | null,
     })).filter((k) => k.keyword.length > 0);
   }
 

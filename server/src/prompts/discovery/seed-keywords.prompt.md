@@ -9,10 +9,10 @@ The deterministic pipeline has already collected the raw keyword evidence for yo
 The expected structure is:
 
 - `metadata`: execution metadata such as `domain`, `country`, `location`, `seedTermsDiscovered`, `apiCallCount`, `durationMs`, `fallbackUsed`
-- `rawData.organicKeywords`: existing organic keywords for the target domain
+- `rawData.organicKeywords`: existing organic keywords for the target domain (from DataForSEO ranked keywords)
 - `rawData.seedTerms`: extracted seed terms (from organic keywords OR fallback derivation)
-- `rawData.relatedTerms`: related-keyword responses grouped by seed term
-- `rawData.suggestions`: keyword-suggestion responses grouped by seed term
+- `rawData.relatedTerms`: keyword suggestion responses grouped by seed term (from DataForSEO)
+- `rawData.suggestions`: keyword suggestion responses grouped by seed term (same data as relatedTerms)
 - `rawData.competitorOrganicKeywords` (optional): organic keywords from competitor domains, present when fallback was used
 
 When `metadata.fallbackUsed` is `true`, the domain had no organic keyword footprint. In this case, seeds were derived from the project's industry, business profile, and competitor domains. Treat ALL data sources equally — `relatedTerms`, `suggestions`, and `competitorOrganicKeywords` are valid keyword evidence regardless of whether they came from the primary or fallback path.

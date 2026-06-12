@@ -191,9 +191,29 @@ export class DataForSeoService {
 
   async getRankedKeywords(domain: string, location: string = 'United States', language: string = 'en', limit: number = 500) {
     return this.post('/dataforseo_labs/google/ranked_keywords/live', [
-      { target: domain, location_name: this.resolveLocation(location), language_code: language, limit },
+      { target: domain, location_name: this.resolveLocation(location), language_code: language, limit, item_types: ['organic'] },
     ]);
   }
+
+  async getBulkKeywordDifficulty(keywords: string[], location: string = 'United States', language: string = 'en') {
+    return this.post('/dataforseo_labs/google/bulk_keyword_difficulty/live', [
+      { keywords, location_name: this.resolveLocation(location), language_code: language },
+    ]);
+  }
+
+  async getCompetitorsDomain(domain: string, location: string = 'United States', language: string = 'en', limit: number = 20) {
+    return this.post('/dataforseo_labs/google/competitors_domain/live', [
+      {
+        target: domain,
+        location_name: this.resolveLocation(location),
+        language_code: language,
+        limit,
+        item_types: ['organic'],
+        exclude_top_domains: true,
+      },
+    ]);
+  }
+
   // ─── Core Request Methods ─────────────────────────────────
 
   private async post(endpoint: string, data: unknown[]): Promise<unknown> {

@@ -1,7 +1,7 @@
 ﻿import { Injectable, Logger } from '@nestjs/common';
 import { Pipeline } from './pipeline.interface';
 import { FirecrawlService } from '../../integrations/firecrawl/firecrawl.service';
-import { AhrefsService } from '../../integrations/ahrefs/ahrefs.service';
+import { DataForSeoService } from '../../integrations/dataforseo/dataforseo.service';
 
 /**
  * V7 Pipeline: Business Profile
@@ -15,7 +15,7 @@ export class BusinessProfilePipeline implements Pipeline {
 
   constructor(
     private readonly firecrawl: FirecrawlService,
-    private readonly ahrefs: AhrefsService,
+    private readonly dataforseo: DataForSeoService,
   ) {}
 
   async execute(context: Record<string, unknown>): Promise<unknown> {
@@ -56,26 +56,32 @@ export class BusinessProfilePipeline implements Pipeline {
         scrapedPages: scrapedPages.filter((p) => p.data !== null),
         ...(await (async () => {
           try {
-            const [drData, backlinkData] = await Promise.all([
-              this.ahrefs.getDomainRating(domain),
-              this.ahrefs.getBacklinksStats(domain),
-            ]);
-            // Ahrefs v3 /site-explorer/domain-rating returns { domain_rating: { domain_rating: number, ahrefs_rank: number } }
-            const dr = drData as { domain_rating?: { domain_rating?: number; ahrefs_rank?: number } } | null;
-            // Ahrefs v3 /site-explorer/backlinks-stats returns { metrics: { live, all_time, live_refdomains, all_time_refdomains } }
-            const bl = backlinkData as { metrics?: { live?: number; all_time?: number; live_refdomains?: number; all_time_refdomains?: number } } | null;
+            const backlinkData = await this.dataforseo.getBacklinksSummary(domain);
+            apiCallCount++;
+            // DataForSEO /backlinks/summary/live returns { tasks[0].result[0]: { backlinks, dofollow, referring_domains, referring_main_domains, rank, main_domain_rank } }
+            const blRaw = backlinkData as {
+              tasks?: Array<{ result?: Array<{
+                backlinks?: number;
+                dofollow?: number;
+                referring_domains?: number;
+                referring_main_domains?: number;
+                rank?: number;
+                main_domain_rank?: number;
+              }> }>;
+            };
+            const bl = blRaw?.tasks?.[0]?.result?.[0];
             return {
               domainAuthority: {
-                domain_rating: dr?.domain_rating?.domain_rating ?? null,
-                ahrefs_rank: dr?.domain_rating?.ahrefs_rank ?? null,
-                referring_domains: bl?.metrics?.live_refdomains ?? null,
-                backlinks: bl?.metrics?.live ?? null,
-                backlinks_all_time: bl?.metrics?.all_time ?? null,
-                data_source: 'ahrefs',
+                domain_rating: bl?.main_domain_rank ? Math.round(bl.main_domain_rank / 10) : null,
+                ahrefs_rank: bl?.rank ?? null,
+                referring_domains: bl?.referring_domains ?? null,
+                backlinks: bl?.backlinks ?? null,
+                backlinks_all_time: bl?.backlinks ?? null,
+                data_source: 'dataforseo',
               },
             };
           } catch (err) {
-            this.logger.warn(`Ahrefs enrichment failed for ${domain}: ${(err as Error).message}`);
+            this.logger.warn(`DataForSEO backlinks enrichment failed for ${domain}: ${(err as Error).message}`);
             return {};
           }
         })()),
