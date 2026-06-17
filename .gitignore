@@ -30,5 +30,21 @@ docker-data/
 # Debug
 npm-debug.log*
 
+# Server log / diagnostic output files
+*.log
+server-out.txt
+server-err.txt
+server/live.log
+server/server-out.txt
+server/server-err.txt
+server/server-live.txt
+server/server-diag.txt
+server/server-diag-err.txt
+server/server-*.txt
+
+# Lighthouse temp dirs (contain Chrome session data)
+server/.lh-tmp/
+server/.lighthouse-tmp/
+
 # Coverage
 coverage/

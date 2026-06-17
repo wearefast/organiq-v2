@@ -61,6 +61,27 @@ export class ConsolidatedKeywordsPipeline implements Pipeline {
         : 0,
     };
 
+    // Quick wins: keywords already ranking 4–20 with low difficulty — easy to push up
+    const quickWins = (deduped as Array<NormalizedKeyword & { currentPosition?: number }>)
+      .filter((k) => k.currentPosition && k.currentPosition >= 4 && k.currentPosition <= 20 && k.difficulty <= 40)
+      .sort((a, b) => (b.opportunityScore - a.opportunityScore) || (b.volume - a.volume))
+      .slice(0, 20)
+      .map((k) => ({
+        keyword: k.keyword,
+        volume: k.volume,
+        difficulty: k.difficulty,
+        currentPosition: k.currentPosition,
+        opportunityScore: k.opportunityScore,
+        intent: k.intent,
+        funnelStage: k.funnelStage,
+      }));
+
+    // Summary: structured prose for agent consumption
+    const summary = this.buildSummary(stats, topicClusters, deduped);
+
+    // Recommendations: data-driven strategic suggestions
+    const recommendations = this.buildRecommendations(stats, topicClusters, quickWins, deduped);
+
     this.logger.log(
       `Consolidation complete: ${stats.totalBeforeDedup} → ${stats.afterDedup} keywords (${stats.totalBeforeDedup - stats.afterDedup} duplicates removed)`,
     );
@@ -68,6 +89,11 @@ export class ConsolidatedKeywordsPipeline implements Pipeline {
     return {
       keywords: deduped,
       topicClusters,
+      // Aliases expected by verdict-strategy and topical-map prompt templates
+      clusters: topicClusters,
+      quickWins,
+      summary,
+      recommendations,
       stats,
     };
   }
@@ -294,6 +320,72 @@ export class ConsolidatedKeywordsPipeline implements Pipeline {
       counts[k.funnelStage] = (counts[k.funnelStage] ?? 0) + 1;
     }
     return counts;
+  }
+
+  // ─── Summary & Recommendations ──────────────────────────────
+
+  private buildSummary(
+    stats: { totalBeforeDedup: number; afterDedup: number; bySources: Record<string, number>; byIntent: Record<string, number>; byFunnel: Record<string, number>; totalVolume: number; avgDifficulty: number; avgOpportunityScore: number },
+    clusters: TopicCluster[],
+    keywords: NormalizedKeyword[],
+  ): string {
+    const topClusters = clusters.slice(0, 5).map((c) => `${c.topic} (${c.keywordCount} kws, ${c.totalVolume} vol)`).join('; ');
+    const intentBreakdown = Object.entries(stats.byIntent).map(([k, v]) => `${k}: ${v}`).join(', ');
+    const funnelBreakdown = Object.entries(stats.byFunnel).map(([k, v]) => `${k}: ${v}`).join(', ');
+
+    return [
+      `${stats.afterDedup} unique keywords consolidated from ${stats.totalBeforeDedup} raw entries (${stats.totalBeforeDedup - stats.afterDedup} duplicates removed).`,
+      `Total search volume: ${stats.totalVolume.toLocaleString()}. Average difficulty: ${stats.avgDifficulty}/100. Average opportunity score: ${stats.avgOpportunityScore}.`,
+      `Intent distribution: ${intentBreakdown}.`,
+      `Funnel distribution: ${funnelBreakdown}.`,
+      `${clusters.length} topic clusters identified. Largest: ${topClusters}.`,
+    ].join(' ');
+  }
+
+  private buildRecommendations(
+    stats: { byFunnel: Record<string, number>; avgDifficulty: number; afterDedup: number },
+    clusters: TopicCluster[],
+    quickWins: Array<{ keyword: string; volume: number; difficulty: number; currentPosition?: number }>,
+    keywords: NormalizedKeyword[],
+  ): string[] {
+    const recs: string[] = [];
+
+    // Quick wins
+    if (quickWins.length > 0) {
+      const topQw = quickWins.slice(0, 5).map((k) => `"${k.keyword}" (pos ${k.currentPosition}, vol ${k.volume})`).join(', ');
+      recs.push(`${quickWins.length} quick-win keywords in positions 4–20 with low difficulty. Top: ${topQw}. Prioritise these for immediate ranking gains.`);
+    }
+
+    // Funnel balance
+    const tofu = stats.byFunnel['TOFU'] ?? 0;
+    const mofu = stats.byFunnel['MOFU'] ?? 0;
+    const bofu = stats.byFunnel['BOFU'] ?? 0;
+    if (bofu > tofu) {
+      recs.push(`Funnel imbalance: ${bofu} BOFU vs ${tofu} TOFU keywords. Consider expanding informational content to build topical authority.`);
+    } else if (tofu > bofu * 4) {
+      recs.push(`Heavy TOFU skew (${tofu} informational vs ${bofu} transactional). Ensure commercial/transactional content anchors the conversion path.`);
+    }
+
+    // Cluster concentration
+    const topCluster = clusters[0];
+    if (topCluster && topCluster.keywordCount > stats.afterDedup * 0.3) {
+      recs.push(`Cluster "${topCluster.topic}" contains ${topCluster.keywordCount} keywords (${Math.round(topCluster.keywordCount / stats.afterDedup * 100)}% of total). Consider splitting into sub-clusters for focused content.`);
+    }
+
+    // Difficulty assessment
+    if (stats.avgDifficulty > 60) {
+      recs.push(`High average difficulty (${stats.avgDifficulty}/100). Focus on long-tail variations and supporting content to build authority before targeting head terms.`);
+    } else if (stats.avgDifficulty < 25) {
+      recs.push(`Low average difficulty (${stats.avgDifficulty}/100). Strong opportunity to capture rankings quickly with quality content.`);
+    }
+
+    // Volume clusters
+    const highVolClusters = clusters.filter((c) => c.totalVolume > 10000);
+    if (highVolClusters.length > 0) {
+      recs.push(`${highVolClusters.length} high-volume clusters (>10K monthly searches): ${highVolClusters.map((c) => c.topic).join(', ')}. These should be content pillars.`);
+    }
+
+    return recs;
   }
 }
 

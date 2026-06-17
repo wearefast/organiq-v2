@@ -59,7 +59,7 @@ Organization (agency)
 | 5 | `serp-niche-map` | SERP & Niche Map | SERP analysis |
 | 6 | `competitor-buckets` | Competitor Identification | Classification |
 | 7 | `competitor-metrics` | Competitor Metrics | Enhanced with AI SoV |
-| 8 | `search-demand` | Search Demand & Seasonality | DataForSEO + Ahrefs |
+| 8 | `search-demand` | Search Demand & Seasonality | DataForSEO (Labs) |
 
 ### Phase 2: Keyword Research (Steps 9-13) — Preserved workflow
 
@@ -128,8 +128,9 @@ Step 13 → Step 14 → Step 15 → Step 16 → Step 17 → Step 18
 | Auth | Clerk |
 | Backend | NestJS 10, Drizzle ORM, BullMQ |
 | AI | Anthropic (Claude — Messages API, tool use, extended thinking), OpenAI (gpt-image-2 for images) |
-| SEO Data | Ahrefs v3 (Site Explorer + Keywords Explorer + Brand Radar) |
-| SERP Data | DataForSEO (9 modules), Serper.dev |
+| SEO Data — Primary | DataForSEO (Labs: ranked keywords, KD, competitors; Backlinks; On-Page; SERP) |
+| SEO Data — Secondary | Ahrefs v3 (SERP overview, organic pages — `serp-niche-map` and `phase1-baseline` pipelines only; agent tools) |
+| SERP Data | Serper.dev |
 | Scraping | Firecrawl |
 | Performance | PageSpeed / CrUX |
 | Reports | pdfmake (server-side PDF generation) |

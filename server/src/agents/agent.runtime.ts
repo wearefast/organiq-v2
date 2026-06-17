@@ -133,8 +133,8 @@ export class AgentRuntime {
     let thinkingContent: string | null = null;
     let capturedOutput: unknown = undefined;
 
-    // Build system prompt with intelligence context
-    const system = this.buildSystemPrompt(config);
+    // Build system prompt blocks with cache control for cost reduction
+    const system = this.buildSystemBlocks(config);
 
     // Build tool definitions for Claude
     const tools = this.buildToolDefs(config.allowedTools);
@@ -166,6 +166,13 @@ export class AgentRuntime {
 
         totalInput += response.usage.inputTokens;
         totalOutput += response.usage.outputTokens;
+
+        // Log cache utilization on first iteration for cost visibility
+        if (iterations === 1 && (response.usage.cacheReadTokens || response.usage.cacheCreationTokens)) {
+          this.logger.log(
+            `AgentRuntime: [${config.stepKey}] cache: ${response.usage.cacheReadTokens ?? 0} read, ${response.usage.cacheCreationTokens ?? 0} created`,
+          );
+        }
 
         // Capture thinking content from first iteration (most relevant)
         if (response.thinkingContent && !thinkingContent) {
@@ -300,24 +307,34 @@ export class AgentRuntime {
 
   // ─── Private Helpers ─────────────────────────────────────────
 
-  private buildSystemPrompt(config: AgentRuntimeConfig): string {
-    const parts: string[] = [];
+  private buildSystemBlocks(config: AgentRuntimeConfig): Array<{ type: 'text'; text: string; cache_control?: { type: 'ephemeral' } | null }> {
+    const blocks: Array<{ type: 'text'; text: string; cache_control?: { type: 'ephemeral' } | null }> = [];
 
-    parts.push(config.systemPrompt);
+    // Main system prompt — cacheable (same prompt reused across agentic loop iterations,
+    // and Anthropic's 5-min cache means sequential steps in a workflow run share the cache).
+    blocks.push({
+      type: 'text',
+      text: config.systemPrompt,
+      cache_control: { type: 'ephemeral' },
+    });
 
+    // Project intelligence context — cacheable (identical across all steps in a run;
+    // changes only when a new step writes to PIS, which is rare mid-run).
     if (config.intelligenceContext) {
-      parts.push(config.intelligenceContext);
+      blocks.push({
+        type: 'text',
+        text: config.intelligenceContext,
+        cache_control: { type: 'ephemeral' },
+      });
     }
 
-    // All steps must call return_output with their structured result.
-    // Steps that generate large outputs (e.g. method02 with 200 keywords) are given
-    // a higher output token budget via STEP_MAX_OUTPUT_TOKENS so they can write
-    // planning prose before the tool call without exhausting the budget.
-    parts.push(
-      '\n\nIMPORTANT: When you have completed your analysis, you MUST call the `return_output` tool with your structured JSON result. Do not output raw JSON text — use the tool.',
-    );
+    // Instruction block — not cached (small, and always the same static text)
+    blocks.push({
+      type: 'text',
+      text: '\n\nIMPORTANT: When you have completed your analysis, you MUST call the `return_output` tool with your structured JSON result. Do not output raw JSON text — use the tool.',
+    });
 
-    return parts.join('\n\n');
+    return blocks;
   }
 
   private buildUserMessage(config: AgentRuntimeConfig): string {

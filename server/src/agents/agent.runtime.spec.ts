@@ -229,8 +229,10 @@ describe('AgentRuntime', () => {
       });
 
       const callArgs = mockAnthropicChat.mock.calls[0][0];
-      expect(callArgs.system).toContain('<project_intelligence>');
-      expect(callArgs.system).toContain('site-audit');
+      // system is now an array of cacheable text blocks
+      const systemText = callArgs.system.map((b: any) => b.text).join('\n');
+      expect(systemText).toContain('<project_intelligence>');
+      expect(systemText).toContain('site-audit');
     });
 
     it('includes pipeline data and workflow context in user message', async () => {

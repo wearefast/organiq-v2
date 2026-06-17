@@ -258,9 +258,12 @@ Located in `server/src/features/workflows/pipelines/`:
 
 | Pipeline | Step Key | API Calls | Description |
 |----------|----------|-----------|-------------|
-| CompetitorMetricsPipeline | competitor-metrics | Ahrefs: DR + backlinks + top-keywords × N competitors | Batch competitor metrics. Reads target DR from `context['business-profile']` (no duplicate call). Exposes `keywords[]` per competitor for downstream use. |
-| SearchDemandPipeline | search-demand | DataForSEO/Ahrefs volume per keyword | Volume + difficulty batch enrichment |
-| Phase1BaselinePipeline | phase1-baseline | 0–1 Ahrefs calls | Reads organic keywords from `context['seed-keywords']` if available (0 Ahrefs calls). Falls back to `getOrganicKeywords` only if context is empty. Always calls `getOrganicPages` (1 call). |
+| BusinessProfilePipeline | business-profile | Firecrawl ×4 + DataForSEO `getBacklinksSummary` | Scrapes homepage + 3 pages; enriches with DataForSEO backlink/domain metrics. |
+| CompetitorBucketsPipeline | competitor-buckets | DataForSEO `getCompetitorsDomain` + Serper ×3 | Discovers competitors via DataForSEO Labs keyword overlap, corroborates with SERP. |
+| CompetitorMetricsPipeline | competitor-metrics | DataForSEO `getBacklinksSummary` + `getRankedKeywords` × N competitors | Batch competitor backlinks + organic rankings via DataForSEO. Reads target DR from `context['business-profile']` (no duplicate call). |
+| SeedKeywordsPipeline | seed-keywords | DataForSEO `getRankedKeywords` (domain + fallback competitors) + `getKeywordSuggestions` | Fetches organic footprint via DataForSEO Labs; expands with suggestions (batched 5/group). |
+| SearchDemandPipeline | search-demand | DataForSEO `getKeywordSearchVolume` + `getBulkKeywordDifficulty` | Volume + difficulty batch enrichment via DataForSEO Labs (batched 50/chunk). |
+| Phase1BaselinePipeline | phase1-baseline | 0–1 Ahrefs calls | Reads organic keywords from `context['seed-keywords']` if available (0 Ahrefs calls). Always calls Ahrefs `getOrganicPages` (1 call). |
 | SerpNicheMapPipeline | serp-niche-map | Ahrefs SERP × ≤20 seeds | Capped at 20 seeds. Reads from `context['seed-keywords'].seedKeywords[]`. |
 | Method01CompetitorPagesPipeline | method01-competitor-pages | Ahrefs `getOrganicPages` × N competitors | Top organic pages per competitor. Reads `keywords[]` from `context['competitor-metrics']` — no extra keyword API calls. |
 | Method02SeedExpansionPipeline | method02-seed-expansion | **0 API calls** | Passes `seedKeywords[]` from `context['seed-keywords']` directly to the agent. No Ahrefs or DataForSEO calls. |
@@ -274,7 +277,7 @@ Release 12 implemented 8 targeted optimisations. All changes are backward-compat
 
 | Step | Before | After | Saving |
 |------|--------|-------|--------|
-| method02-seed-expansion | 40+ API calls (Ahrefs + DataForSEO) | **0 calls** — reads from `seed-keywords` context | ~40 credits/run |
+| method02-seed-expansion | 40+ API calls (DataForSEO) | **0 calls** — reads from `seed-keywords` context | ~40 credits/run |
 | phase1-baseline | 2 API calls (Ahrefs organic keywords + pages) | **1 call** (pages only) — keywords from `seed-keywords` context | ~1 Ahrefs unit/run |
 | serp-niche-map | Up to 50 SERP calls | **≤20 calls** — capped at 20 seeds | ~30 SERP credits/run |
 | method03-content-gap-import | ~9 API calls | **0 calls** (when no imports) — early gate | ~9 credits when skipped |
