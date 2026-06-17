@@ -5,7 +5,7 @@ import { useRouter } from 'next/navigation';
 import { useState } from 'react';
 
 export default function OnboardingPage() {
-  const { createOrganization } = useOrganizationList();
+  const { createOrganization, setActive } = useOrganizationList();
   const { user } = useUser();
   const router = useRouter();
 
@@ -30,7 +30,12 @@ export default function OnboardingPage() {
       }
 
       // Create Clerk organization — triggers organization.created webhook → backend saves it
-      await createOrganization?.({ name: orgName.trim() });
+      const org = await createOrganization?.({ name: orgName.trim() });
+
+      // Activate the new org in the session so Clerk doesn't redirect to choose-organization
+      if (org) {
+        await setActive?.({ organization: org.id });
+      }
 
       router.push('/workspaces');
     } catch (err: any) {
