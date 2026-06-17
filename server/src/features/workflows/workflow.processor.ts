@@ -564,7 +564,6 @@ export class WorkflowProcessor extends WorkerHost {
     if (stepKey !== 'topical-map') return context;
 
     const competitorBrands = this.extractCompetitorBrands(context);
-    if (competitorBrands.length === 0) return context;
 
     const targetDomain = String(context['domain'] ?? '').toLowerCase();
     const targetBrand = targetDomain.replace(/\.[^.]+$/, '').toLowerCase();
@@ -574,34 +573,53 @@ export class WorkflowProcessor extends WorkerHost {
       (b) => b !== targetBrand && !targetBrand.includes(b),
     );
 
-    if (brandsToFilter.length === 0) return context;
-
-    // Deep-clone consolidated keywords and filter out competitor-branded entries
+    // Deep-clone consolidated keywords for transformation
     const consolidated = context['consolidated-keywords'] as
-      | { keywords?: Array<{ keyword: string; [k: string]: unknown }> }
+      | { keywords?: Array<{ keyword: string; volume?: number; difficulty?: number; intent?: string; funnelStage?: string; opportunityScore?: number; source?: string; [k: string]: unknown }> ; [k: string]: unknown }
       | undefined;
 
     if (!consolidated?.keywords?.length) {
-      return { ...context, 'competitor-brands': brandsToFilter };
+      return brandsToFilter.length > 0
+        ? { ...context, 'competitor-brands': brandsToFilter }
+        : context;
     }
 
-    const filteredKeywords = consolidated.keywords.filter((kw) => {
-      const lower = kw.keyword.toLowerCase();
-      return !brandsToFilter.some((brand) => lower.includes(brand));
-    });
-
-    const beforeCount = consolidated.keywords.length;
-    const afterCount = filteredKeywords.length;
-    if (beforeCount !== afterCount) {
-      this.logger.log(
-        `Topical-map brand filter: ${beforeCount} → ${afterCount} keywords (removed ${beforeCount - afterCount} competitor-branded)`,
-      );
+    // 1. Filter competitor-branded keywords
+    let keywords = consolidated.keywords;
+    if (brandsToFilter.length > 0) {
+      keywords = keywords.filter((kw) => {
+        const lower = kw.keyword.toLowerCase();
+        return !brandsToFilter.some((brand) => lower.includes(brand));
+      });
+      const removed = consolidated.keywords.length - keywords.length;
+      if (removed > 0) {
+        this.logger.log(
+          `Topical-map brand filter: ${consolidated.keywords.length} → ${keywords.length} keywords (removed ${removed} competitor-branded)`,
+        );
+      }
     }
+
+    // 2. Trim to top 200 keywords (prompt says "Every keyword from top 200") — saves ~30K+ tokens
+    const TOP_N = 200;
+    if (keywords.length > TOP_N) {
+      this.logger.log(`Topical-map keyword cap: ${keywords.length} → ${TOP_N} (already sorted by opportunityScore)`);
+      keywords = keywords.slice(0, TOP_N);
+    }
+
+    // 3. Slim keyword objects — strip fields the topical-map agent doesn't need
+    const slimKeywords = keywords.map((kw) => ({
+      keyword: kw.keyword,
+      volume: kw.volume ?? 0,
+      difficulty: kw.difficulty ?? 0,
+      intent: kw.intent ?? 'informational',
+      funnelStage: kw.funnelStage ?? 'TOFU',
+      opportunityScore: kw.opportunityScore ?? 0,
+    }));
 
     return {
       ...context,
-      'consolidated-keywords': { ...consolidated, keywords: filteredKeywords },
-      'competitor-brands': brandsToFilter,
+      'consolidated-keywords': { ...consolidated, keywords: slimKeywords },
+      ...(brandsToFilter.length > 0 ? { 'competitor-brands': brandsToFilter } : {}),
     };
   }
 

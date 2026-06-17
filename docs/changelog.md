@@ -4,6 +4,50 @@ All notable changes to the Pulse OS codebase, organized by audit and implementat
 
 ---
 
+## [DataForSEO Migration — Pipeline Keyword & Competitor Data] — June 12, 2026
+
+**DataForSEO is now the primary SEO data source for all keyword intelligence, competitor discovery, and backlink analysis pipelines. Ahrefs is retained for SERP overview and organic page lookups only.**
+
+### Pipelines Migrated from Ahrefs → DataForSEO
+
+| Pipeline | Before | After |
+|----------|--------|-------|
+| `business-profile` | Ahrefs `getDomainRating` + `getBacklinksStats` | DataForSEO `getBacklinksSummary` (backlinks, referring_domains, rank) |
+| `competitor-buckets` | Ahrefs `getCompetingDomains` | DataForSEO Labs `getCompetitorsDomain` (keyword-overlap based) |
+| `competitor-metrics` | Ahrefs `getDomainRating` + `getBacklinksStats` + `getOrganicKeywords` × N | DataForSEO `getBacklinksSummary` + Labs `getRankedKeywords` × N |
+| `seed-keywords` | Ahrefs `getOrganicKeywords` + `getRelatedKeywords` | DataForSEO Labs `getRankedKeywords` + `getKeywordSuggestions` |
+| `search-demand` | DataForSEO volume + Ahrefs `getKeywordDifficulty` | DataForSEO volume + DataForSEO Labs `getBulkKeywordDifficulty` |
+
+### New DataForSEO Service Methods
+
+| Method | Endpoint | Used By |
+|--------|----------|---------|
+| `getRankedKeywords(domain, location, language, limit)` | `POST /v3/dataforseo_labs/google/ranked_keywords/live` | `seed-keywords`, `competitor-metrics` |
+| `getBulkKeywordDifficulty(keywords[], location, language)` | `POST /v3/dataforseo_labs/google/bulk_keyword_difficulty/live` | `search-demand` |
+| `getCompetitorsDomain(domain, location, language, limit)` | `POST /v3/dataforseo_labs/google/competitors_domain/live` | `competitor-buckets` |
+| `searchRedditThreads(query, country, depth)` | `POST /v3/serp/google/organic/live/advanced` (site:reddit.com) | Forum intelligence |
+
+### Ahrefs Remaining Role
+
+Ahrefs is retained for:
+- **`serp-niche-map` pipeline**: `getSerpOverview` × ≤20 keywords (1.1s rate-limited)
+- **`method01-competitor-pages` pipeline**: `getOrganicPages` × N competitors
+- **`phase1-baseline` pipeline**: `getOrganicPages` × 1 (organic keywords come from `seed-keywords` context)
+- **Agent tools** (on-demand agents may still call any Ahrefs tool via the tool registry)
+
+### Location Normalization
+
+Added `LOCATION_MAP` to `DataForSeoService` resolving ISO country codes and short names (e.g., `us` → `United States`, `ae` → `United Arab Emirates`) for 50+ countries. Eliminates a previous class of DataForSEO 40xxx task errors caused by unrecognized location values.
+
+### Documentation Updated
+
+- `docs/features/integrations.md` — DataForSEO expanded to 13 methods; Ahrefs role narrowed; Tool Registry table updated
+- `docs/features/workflows.md` — Pipeline table updated with correct integration sources
+- `docs/project-handbook.md` — Tech stack updated (DataForSEO primary, Ahrefs secondary)
+- `docs/architecture-map/data.json` — Knowledge graph `pipelineCalls` updated for 5 agents
+
+---
+
 ## [R12 — LLM Crawlability Audit, Content Pipeline Refactor, Agent Runtime Consolidation] — June 12, 2026
 
 **Major feature release: standalone LLM crawlability audit, content pipeline enhancements, agent runtime refactoring, and pipeline improvements.**

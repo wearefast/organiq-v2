@@ -7,7 +7,8 @@ export interface AnthropicChatOptions {
     role: 'user' | 'assistant';
     content: string | Array<Record<string, unknown>>;
   }>;
-  system?: string;
+  /** System prompt — string (legacy) or array of text blocks with optional cache_control. */
+  system?: string | Array<{ type: 'text'; text: string; cache_control?: { type: 'ephemeral' } | null }>;
   model?: string;
   temperature?: number;
   maxTokens?: number;
@@ -29,7 +30,7 @@ export interface AnthropicChatResult {
   toolUse: Array<{ id: string; name: string; input: Record<string, unknown> }>;
   thinkingContent: string | null;
   stopReason: 'end_turn' | 'tool_use' | 'max_tokens' | 'stop_sequence';
-  usage: { inputTokens: number; outputTokens: number };
+  usage: { inputTokens: number; outputTokens: number; cacheCreationTokens?: number; cacheReadTokens?: number };
 }
 
 export interface AiBrandMentionResult {
@@ -76,7 +77,7 @@ export class AnthropicService {
         };
 
         if (options.system) {
-          params.system = options.system;
+          params.system = options.system as Anthropic.MessageCreateParams['system'];
         }
 
         if (options.temperature !== undefined) {
@@ -206,6 +207,8 @@ export class AnthropicService {
       usage: {
         inputTokens: response.usage.input_tokens,
         outputTokens: response.usage.output_tokens,
+        cacheCreationTokens: (response.usage as any).cache_creation_input_tokens ?? undefined,
+        cacheReadTokens: (response.usage as any).cache_read_input_tokens ?? undefined,
       },
     };
   }
