@@ -11,7 +11,7 @@ export default async function LoginPage() {
 
   return (
     <div className="flex min-h-screen items-center justify-center bg-gradient-hero px-6 py-12">
-      <SignIn routing="hash" fallbackRedirectUrl="/workspaces" />
+      <SignIn routing="hash" fallbackRedirectUrl="/auth/callback" forceRedirectUrl="/auth/callback" />
     </div>
   );
 }
