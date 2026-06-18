@@ -2,7 +2,7 @@
 
 import { useOrganizationList, useUser } from '@clerk/nextjs';
 import { useRouter } from 'next/navigation';
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 
 export default function OnboardingPage() {
   const { createOrganization, setActive } = useOrganizationList();
@@ -13,6 +13,25 @@ export default function OnboardingPage() {
   const [phone, setPhone] = useState('');
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
+
+  // Redirect back to invite page if user arrived here mid-invite-flow
+  useEffect(() => {
+    const token = sessionStorage.getItem('pendingInviteToken');
+    if (token) {
+      sessionStorage.removeItem('pendingInviteToken');
+      router.replace(`/invite/${token}`);
+    }
+  }, [router]);
+
+  // If the user arrived here mid-invite-flow (Clerk routed through onboarding
+  // despite the org requirement being off), redirect them back to the invite page.
+  useEffect(() => {
+    const token = sessionStorage.getItem('pendingInviteToken');
+    if (token) {
+      sessionStorage.removeItem('pendingInviteToken');
+      router.replace(`/invite/${token}`);
+    }
+  }, [router]);
 
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
