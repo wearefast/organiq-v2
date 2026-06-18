@@ -15,10 +15,13 @@ export default async function SignUpPage({ searchParams }: Props) {
 
   const { redirect_url } = await searchParams;
   const afterSignUp = redirect_url ?? '/onboarding';
+  const signInUrl = redirect_url
+    ? `/login?redirect_url=${encodeURIComponent(redirect_url)}`
+    : '/login';
 
   return (
     <div className="flex min-h-screen items-center justify-center bg-gradient-hero px-6 py-12">
-      <SignUp fallbackRedirectUrl={afterSignUp} forceRedirectUrl={afterSignUp} />
+      <SignUp fallbackRedirectUrl={afterSignUp} forceRedirectUrl={afterSignUp} signInUrl={signInUrl} />
     </div>
   );
 }

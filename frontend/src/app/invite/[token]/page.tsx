@@ -2,7 +2,7 @@
 
 import { useState, useEffect } from 'react';
 import { useParams, useRouter } from 'next/navigation';
-import { useAuth, useUser } from '@clerk/nextjs';
+import { useAuth, useUser, useOrganizationList } from '@clerk/nextjs';
 import { ShieldCheck, UserCheck, Mail, Building2, CheckCircle2, AlertCircle } from 'lucide-react';
 import { API_URL } from '@/shared/utils/api';
 
@@ -30,6 +30,7 @@ export default function InvitePage() {
   const router = useRouter();
   const { isLoaded: authLoaded, isSignedIn, signOut, getToken } = useAuth();
   const { user } = useUser();
+  const { setActive } = useOrganizationList();
 
   const [preview, setPreview] = useState<InvitePreview | null>(null);
   const [loadError, setLoadError] = useState<string | null>(null);
@@ -71,10 +72,16 @@ export default function InvitePage() {
         },
         body: JSON.stringify({}),
       });
+      const data = await res.json().catch(() => ({}));
       if (!res.ok) {
-        const body = await res.json().catch(() => ({}));
-        throw new Error(body?.message ?? `Request failed (${res.status})`);
+        throw new Error(data?.message ?? `Request failed (${res.status})`);
       }
+
+      // Activate the Clerk org in the session so dashboard routes work
+      if (data?.org?.clerkOrgId && setActive) {
+        await setActive({ organization: data.org.clerkOrgId });
+      }
+
       setAccepted(true);
     } catch (err) {
       setAcceptError(err instanceof Error ? err.message : 'Failed to accept invitation');
