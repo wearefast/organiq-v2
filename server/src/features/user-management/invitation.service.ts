@@ -38,7 +38,9 @@ export class InvitationService {
    */
   async create(
     orgId: string,
+    clerkOrgId: string,
     invitingMemberId: string,
+    inviterClerkUserId: string,
     dto: CreateInvitationDto,
   ) {
     // Validate email is not already an active member
@@ -108,8 +110,14 @@ export class InvitationService {
       })
       .returning();
 
-    // Send invitation email (fire-and-forget — failure logged, not thrown)
-    this.sendInviteEmail(invitation.token, dto.email, orgId).catch((err: Error) => {
+    // Send invitation email via Clerk (fire-and-forget — failure logged, not thrown)
+    this.sendClerkInviteEmail(
+      invitation.token,
+      dto.email,
+      dto.role,
+      clerkOrgId,
+      inviterClerkUserId,
+    ).catch((err: Error) => {
       this.logger.error(`Failed to send invitation email to ${dto.email}: ${err.message}`);
     });
 
@@ -345,77 +353,40 @@ export class InvitationService {
   }
 
   /**
-   * Send invitation email via Resend.
+   * Send invitation email via Clerk's organization invitation API.
+   * Clerk handles email delivery — no external email provider needed.
+   * The redirectUrl points to our custom accept page so our DB flow runs on accept.
    */
-  private async sendInviteEmail(token: string, toEmail: string, orgId: string) {
-    const apiKey = this.config.get<string>('RESEND_API_KEY');
-    const fromEmail =
-      this.config.get<string>('EMAIL_FROM') ?? 'invitations@rankorganiq.com';
+  private async sendClerkInviteEmail(
+    token: string,
+    toEmail: string,
+    role: string,
+    clerkOrgId: string,
+    inviterClerkUserId: string,
+  ) {
+    const secretKey = this.config.get<string>('CLERK_SECRET_KEY');
     const frontendUrl =
       this.config.get<string>('FRONTEND_URL') ?? 'https://app.rankorganiq.com';
 
-    if (!apiKey) {
-      this.logger.warn('RESEND_API_KEY not configured — invitation email skipped');
+    if (!secretKey) {
+      this.logger.warn('CLERK_SECRET_KEY not configured — invitation email skipped');
       return;
     }
 
-    const org = await this.db.db.query.organizations.findFirst({
-      where: eq(organizations.id, orgId),
-      columns: { name: true },
+    const { createClerkClient } = await import('@clerk/backend');
+    const clerk = createClerkClient({ secretKey });
+
+    const clerkRole = role === 'admin' ? 'org:admin' : 'org:member';
+    const redirectUrl = `${frontendUrl}/invite/${token}`;
+
+    await clerk.organizations.createOrganizationInvitation({
+      organizationId: clerkOrgId,
+      emailAddress: toEmail,
+      inviterUserId: inviterClerkUserId,
+      role: clerkRole,
+      redirectUrl,
     });
 
-    const orgName = org?.name ?? 'your team';
-    const inviteUrl = `${frontendUrl}/invite/${token}`;
-
-    const html = this.buildInviteEmailHtml(orgName, inviteUrl);
-
-    // Dynamically import Resend to avoid issues if the package is tree-shaken
-    const { Resend } = await import('resend');
-    const resend = new Resend(apiKey);
-
-    const { error } = await resend.emails.send({
-      from: `Pulse OS <${fromEmail}>`,
-      to: [toEmail],
-      subject: `You've been invited to join ${orgName} on Pulse`,
-      html,
-    });
-
-    if (error) {
-      throw new Error(`Resend error: ${error.message}`);
-    }
-
-    this.logger.log(`Invitation email sent to ${toEmail}`);
-  }
-
-  private buildInviteEmailHtml(orgName: string, inviteUrl: string): string {
-    return `<!DOCTYPE html>
-<html>
-<head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1"></head>
-<body style="font-family:Inter,Arial,sans-serif;background:#f5f5f5;margin:0;padding:24px">
-  <div style="max-width:520px;margin:0 auto;background:#fff;border-radius:12px;padding:40px;box-shadow:0 2px 8px rgba(0,0,0,0.08)">
-    <div style="margin-bottom:32px">
-      <span style="font-size:22px;font-weight:700;color:#111">Pulse OS</span>
-    </div>
-    <h1 style="font-size:20px;font-weight:600;color:#111;margin:0 0 12px">
-      You've been invited to join <em>${orgName}</em>
-    </h1>
-    <p style="font-size:15px;color:#444;line-height:1.6;margin:0 0 28px">
-      Someone on the <strong>${orgName}</strong> team has invited you to collaborate on Pulse OS — the SEO content intelligence platform.
-    </p>
-    <a href="${inviteUrl}"
-       style="display:inline-block;background:#111;color:#fff;font-size:15px;font-weight:600;
-              padding:12px 28px;border-radius:8px;text-decoration:none">
-      Accept Invitation
-    </a>
-    <p style="font-size:13px;color:#888;margin:28px 0 0;line-height:1.5">
-      This invitation expires in ${InvitationService.EXPIRY_DAYS} days.<br>
-      If you weren't expecting this, you can safely ignore this email.
-    </p>
-    <p style="font-size:12px;color:#bbb;margin:16px 0 0">
-      Or copy this link: <a href="${inviteUrl}" style="color:#666">${inviteUrl}</a>
-    </p>
-  </div>
-</body>
-</html>`;
+    this.logger.log(`Clerk invitation email sent to ${toEmail}`);
   }
 }
