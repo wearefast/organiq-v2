@@ -2,7 +2,7 @@
 
 import Link from 'next/link';
 import { useParams, useRouter } from 'next/navigation';
-import { useAuth } from '@clerk/nextjs';
+import { useAuth, useOrganization } from '@clerk/nextjs';
 import { FormEvent, useEffect, useState } from 'react';
 import { apiFetch, setAuthToken } from '@/shared/utils/api';
 import { CountrySelect } from '@/shared/components/country-select';
@@ -33,6 +33,8 @@ export default function ProjectsPage() {
   const params = useParams<{ wId: string }>();
   const router = useRouter();
   const { getToken, isLoaded, isSignedIn, orgId } = useAuth();
+  const { membership } = useOrganization();
+  const isAdmin = membership?.role === 'org:admin' || membership?.role === 'org:owner';
 
   const [workspace, setWorkspace] = useState<Workspace | null>(null);
   const [projects, setProjects] = useState<Project[]>([]);
@@ -142,19 +144,21 @@ export default function ProjectsPage() {
 
   return (
     <div>
-      <div className="mb-6 flex items-center justify-between">
+        <div className="mb-6 flex items-center justify-between">
         <div>
           <h1 className="text-page-title text-zinc-100">Projects</h1>
           <p className="mt-1 text-sm text-zinc-500">
             {workspace ? `SEO projects within ${workspace.name}.` : 'SEO projects within this workspace.'}
           </p>
         </div>
-        <button className="btn-primary disabled:cursor-not-allowed disabled:opacity-50" onClick={() => setShowForm((open) => !open)} disabled={loading || submitting || !workspace}>
-          {showForm ? 'Cancel' : 'New Project'}
-        </button>
+        {isAdmin && (
+          <button className="btn-primary disabled:cursor-not-allowed disabled:opacity-50" onClick={() => setShowForm((open) => !open)} disabled={loading || submitting || !workspace}>
+            {showForm ? 'Cancel' : 'New Project'}
+          </button>
+        )}
       </div>
 
-      {showForm && (
+      {isAdmin && showForm && (
         <form onSubmit={handleCreateProject} className="card mb-6 space-y-4 p-5">
           <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-4">
             <label className="space-y-2 text-sm text-zinc-300">

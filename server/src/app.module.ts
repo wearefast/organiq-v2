@@ -31,6 +31,8 @@ import { PromptVisibilityModule } from './features/prompt-visibility/prompt-visi
 import { OnDemandAgentsModule } from './features/on-demand-agents/on-demand-agents.module';
 import { ScheduledWorkflowsModule } from './features/scheduled-workflows/scheduled-workflows.module';
 import { BillingModule } from './features/billing/billing.module';
+import { UserManagementModule } from './features/user-management/user-management.module';
+import { InternalModule } from './features/internal/internal.module';
 import { validateEnv } from './shared/config/env.validation';
 
 function resolveBullRedisHost() {
@@ -99,6 +101,8 @@ function resolveEnvFilePaths() {
     OnDemandAgentsModule,
     ScheduledWorkflowsModule,
     BillingModule,
+    UserManagementModule,
+    InternalModule,
   ],
   providers: [
     // Enforce global rate limiting across all controllers.

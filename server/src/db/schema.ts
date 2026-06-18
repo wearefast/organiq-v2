@@ -22,7 +22,20 @@ export const orgPlanEnum = pgEnum('org_plan', [
   'enterprise',
 ]);
 
-export const orgRoleEnum = pgEnum('org_role', ['owner', 'admin', 'member']);
+export const orgRoleEnum = pgEnum('org_role', ['owner', 'admin', 'member', 'user']);
+
+export const invitationStatusEnum = pgEnum('invitation_status', [
+  'pending',
+  'accepted',
+  'expired',
+  'revoked',
+]);
+
+export const accessGrantTypeEnum = pgEnum('access_grant_type', [
+  'org',
+  'workspace',
+  'project',
+]);
 
 export const creditTypeEnum = pgEnum('credit_type', [
   'purchase',
@@ -127,13 +140,91 @@ export const orgMembers = pgTable(
     id: uuid('id').primaryKey().defaultRandom(),
     organizationId: uuid('organization_id').notNull().references(() => organizations.id, { onDelete: 'cascade' }),
     clerkUserId: text('clerk_user_id').notNull(),
-    role: orgRoleEnum('role').default('member').notNull(),
+    role: orgRoleEnum('role').default('user').notNull(),
     email: text('email').notNull(),
     name: text('name'),
     createdAt: timestamp('created_at').defaultNow().notNull(),
   },
   (table) => ({
     orgUserIdx: uniqueIndex('org_members_org_user_idx').on(table.organizationId, table.clerkUserId),
+  }),
+);
+
+// ─── Invitations ────────────────────────────────────────────
+
+export const invitations = pgTable(
+  'invitations',
+  {
+    id: uuid('id').primaryKey().defaultRandom(),
+    organizationId: uuid('organization_id').notNull().references(() => organizations.id, { onDelete: 'cascade' }),
+    /** Admin who sent this invitation — nullable (SET NULL) so pending invites survive admin departure */
+    invitedByMemberId: uuid('invited_by_member_id').references(() => orgMembers.id, { onDelete: 'set null' }),
+    email: text('email').notNull(),
+    role: orgRoleEnum('role').notNull().default('user'),
+    status: invitationStatusEnum('status').notNull().default('pending'),
+    /** Secure token included in the invite link */
+    token: text('token').notNull(),
+    /** [{type:'org'} | {type:'workspace',workspaceId:string} | {type:'project',workspaceId:string,projectId:string}] */
+    accessGrants: jsonb('access_grants').$type<Array<
+      | { type: 'org' }
+      | { type: 'workspace'; workspaceId: string }
+      | { type: 'project'; workspaceId: string; projectId: string }
+    >>().notNull().default([]),
+    expiresAt: timestamp('expires_at').notNull(),
+    acceptedAt: timestamp('accepted_at'),
+    /** When the invitation was revoked */
+    revokedAt: timestamp('revoked_at'),
+    /** Member who revoked — nullable (SET NULL) in case revoking admin later leaves */
+    revokedByMemberId: uuid('revoked_by_member_id').references(() => orgMembers.id, { onDelete: 'set null' }),
+    createdAt: timestamp('created_at').defaultNow().notNull(),
+  },
+  (table) => ({
+    tokenIdx: uniqueIndex('invitations_token_idx').on(table.token),
+    orgStatusIdx: index('invitations_org_status_idx').on(table.organizationId, table.status),
+    orgEmailIdx: index('invitations_org_email_idx').on(table.organizationId, table.email),
+  }),
+);
+
+// ─── Access Grants ───────────────────────────────────────────
+
+export const accessGrants = pgTable(
+  'access_grants',
+  {
+    id: uuid('id').primaryKey().defaultRandom(),
+    organizationId: uuid('organization_id').notNull().references(() => organizations.id, { onDelete: 'cascade' }),
+    memberId: uuid('member_id').notNull().references(() => orgMembers.id, { onDelete: 'cascade' }),
+    grantType: accessGrantTypeEnum('grant_type').notNull(),
+    workspaceId: uuid('workspace_id').references(() => workspaces.id, { onDelete: 'cascade' }),
+    projectId: uuid('project_id').references(() => projects.id, { onDelete: 'cascade' }),
+    grantedByMemberId: uuid('granted_by_member_id').references(() => orgMembers.id, { onDelete: 'set null' }),
+    createdAt: timestamp('created_at').defaultNow().notNull(),
+  },
+  (table) => ({
+    orgMemberIdx: index('access_grants_org_member_idx').on(table.organizationId, table.memberId),
+    memberTypeIdx: index('access_grants_member_type_idx').on(table.memberId, table.grantType),
+    workspaceIdx: index('access_grants_workspace_idx').on(table.workspaceId),
+    projectIdx: index('access_grants_project_idx').on(table.projectId),
+  }),
+);
+
+// ─── Workspace Credit Limits ──────────────────────────────────
+
+export const workspaceCreditLimits = pgTable(
+  'workspace_credit_limits',
+  {
+    id: uuid('id').primaryKey().defaultRandom(),
+    organizationId: uuid('organization_id').notNull().references(() => organizations.id, { onDelete: 'cascade' }),
+    workspaceId: uuid('workspace_id').notNull().references(() => workspaces.id, { onDelete: 'cascade' }),
+    monthlyLimit: integer('monthly_limit').notNull(),
+    currentMonthUsage: integer('current_month_usage').notNull().default(0),
+    /** Start of the current monthly billing period */
+    periodStart: timestamp('period_start').notNull(),
+    createdAt: timestamp('created_at').defaultNow().notNull(),
+    updatedAt: timestamp('updated_at').defaultNow().notNull(),
+  },
+  (table) => ({
+    workspaceIdx: uniqueIndex('workspace_credit_limits_workspace_idx').on(table.workspaceId),
+    orgIdx: index('workspace_credit_limits_org_idx').on(table.organizationId),
   }),
 );
 
@@ -150,6 +241,8 @@ export const creditLedger = pgTable(
     description: text('description').notNull(),
     workflowRunId: uuid('workflow_run_id'),
     stepKey: text('step_key'),
+    /** Workspace the credit debit belongs to — denormalized for fast workspace usage queries */
+    workspaceId: uuid('workspace_id').references(() => workspaces.id, { onDelete: 'set null' }),
     createdAt: timestamp('created_at').defaultNow().notNull(),
   },
   (table) => ({
@@ -578,14 +671,21 @@ export const organizationsRelations = relations(organizations, ({ many }) => ({
   creditLedger: many(creditLedger),
   workspaces: many(workspaces),
   workflowRuns: many(workflowRuns),
+  invitations: many(invitations),
+  workspaceCreditLimits: many(workspaceCreditLimits),
 }));
 
-export const orgMembersRelations = relations(orgMembers, ({ one }) => ({
+export const orgMembersRelations = relations(orgMembers, ({ one, many }) => ({
   organization: one(organizations, { fields: [orgMembers.organizationId], references: [organizations.id] }),
+  grants: many(accessGrants, { relationName: 'memberGrants' }),
+  grantedGrants: many(accessGrants, { relationName: 'grantedBy' }),
+  sentInvitations: many(invitations, { relationName: 'invitedBy' }),
+  revokedInvitations: many(invitations, { relationName: 'revokedBy' }),
 }));
 
 export const creditLedgerRelations = relations(creditLedger, ({ one }) => ({
   organization: one(organizations, { fields: [creditLedger.organizationId], references: [organizations.id] }),
+  workspace: one(workspaces, { fields: [creditLedger.workspaceId], references: [workspaces.id] }),
 }));
 
 export const subscriptionsRelations = relations(subscriptions, ({ one }) => ({
@@ -599,6 +699,8 @@ export const purchasesRelations = relations(purchases, ({ one }) => ({
 export const workspacesRelations = relations(workspaces, ({ one, many }) => ({
   organization: one(organizations, { fields: [workspaces.organizationId], references: [organizations.id] }),
   projects: many(projects),
+  accessGrants: many(accessGrants),
+  creditLimit: one(workspaceCreditLimits, { fields: [workspaces.id], references: [workspaceCreditLimits.workspaceId] }),
 }));
 
 export const projectsRelations = relations(projects, ({ one, many }) => ({
@@ -612,6 +714,7 @@ export const projectsRelations = relations(projects, ({ one, many }) => ({
   intelligence: many(projectIntelligence),
   refreshSuggestions: many(refreshSuggestions),
   assets: many(projectAssets),
+  accessGrants: many(accessGrants),
 }));
 
 export const projectAssetsRelations = relations(projectAssets, ({ one }) => ({
@@ -689,6 +792,47 @@ export const gscConnectionsRelations = relations(gscConnections, ({ one, many })
 export const gscKeywordDataRelations = relations(gscKeywordData, ({ one }) => ({
   connection: one(gscConnections, { fields: [gscKeywordData.connectionId], references: [gscConnections.id] }),
   project: one(projects, { fields: [gscKeywordData.projectId], references: [projects.id] }),
+}));
+
+// ─── Relations: Invitations ───────────────────────────────────
+
+export const invitationsRelations = relations(invitations, ({ one }) => ({
+  organization: one(organizations, { fields: [invitations.organizationId], references: [organizations.id] }),
+  invitedBy: one(orgMembers, {
+    fields: [invitations.invitedByMemberId],
+    references: [orgMembers.id],
+    relationName: 'invitedBy',
+  }),
+  revokedBy: one(orgMembers, {
+    fields: [invitations.revokedByMemberId],
+    references: [orgMembers.id],
+    relationName: 'revokedBy',
+  }),
+}));
+
+// ─── Relations: Access Grants ────────────────────────────────
+
+export const accessGrantsRelations = relations(accessGrants, ({ one }) => ({
+  organization: one(organizations, { fields: [accessGrants.organizationId], references: [organizations.id] }),
+  member: one(orgMembers, {
+    fields: [accessGrants.memberId],
+    references: [orgMembers.id],
+    relationName: 'memberGrants',
+  }),
+  grantedBy: one(orgMembers, {
+    fields: [accessGrants.grantedByMemberId],
+    references: [orgMembers.id],
+    relationName: 'grantedBy',
+  }),
+  workspace: one(workspaces, { fields: [accessGrants.workspaceId], references: [workspaces.id] }),
+  project: one(projects, { fields: [accessGrants.projectId], references: [projects.id] }),
+}));
+
+// ─── Relations: Workspace Credit Limits ──────────────────────
+
+export const workspaceCreditLimitsRelations = relations(workspaceCreditLimits, ({ one }) => ({
+  organization: one(organizations, { fields: [workspaceCreditLimits.organizationId], references: [organizations.id] }),
+  workspace: one(workspaces, { fields: [workspaceCreditLimits.workspaceId], references: [workspaces.id] }),
 }));
 
 // ─── Dead Letter Queue ───────────────────────────────────────

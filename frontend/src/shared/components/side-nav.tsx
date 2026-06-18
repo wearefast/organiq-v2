@@ -13,10 +13,23 @@ import {
   FlaskConical,
   CreditCard,
   Workflow,
+  Users,
+  ShieldAlert,
   type LucideIcon,
 } from 'lucide-react';
 import { cn } from '@/shared/utils/cn';
 import { useBusinessProfileReady } from '@/features/projects/hooks/use-business-profile-ready';
+import { useOrganization } from '@clerk/nextjs';
+import { useUser } from '@clerk/nextjs';
+
+function isSuperAdmin(clerkUserId: string | undefined | null): boolean {
+  if (!clerkUserId) return false;
+  const allowed = (process.env.NEXT_PUBLIC_SUPER_ADMIN_CLERK_IDS ?? '')
+    .split(',')
+    .map((s) => s.trim())
+    .filter(Boolean);
+  return allowed.includes(clerkUserId);
+}
 
 // ─── Types ────────────────────────────────────────────────────
 
@@ -40,7 +53,8 @@ const NAV_ITEMS: NavItem[] = [
   { href: '/workspaces', icon: LayoutGrid, label: 'Workspaces' },
 ];
 
-const BOTTOM_ITEMS: NavItem[] = [
+// BOTTOM_ITEMS is now computed inside SideNav to support role-based visibility
+const BOTTOM_ITEMS_BASE: NavItem[] = [
   { href: '/billing', icon: CreditCard, label: 'Billing' },
   { href: '/settings', icon: Settings, label: 'Settings' },
 ];
@@ -204,6 +218,10 @@ export function SideNav() {
   const projectMatch = pathname.match(/\/workspaces\/([^/]+)\/projects\/([^/]+)/);
   const projectItems = projectMatch ? getProjectItems(projectMatch[1], projectMatch[2]) : [];
   const profileReady = useBusinessProfileReady(projectMatch?.[2]);
+  const { membership } = useOrganization();
+  const { user } = useUser();
+  const isAdmin = membership?.role === 'org:admin' || membership?.role === 'org:owner';
+  const superAdmin = isSuperAdmin(user?.id);
 
   return (
     <aside className="group fixed left-0 top-topbar z-40 flex h-[calc(100vh-48px)] w-sidenav flex-col border-r border-zinc-800 bg-sidebar transition-[width] duration-200 hover:w-sidenav-expanded">
@@ -237,8 +255,26 @@ export function SideNav() {
       </nav>
 
       <div className="flex flex-col gap-1 border-t border-zinc-800 px-2 py-3">
-        {BOTTOM_ITEMS.map((item) => (
-          <NavLink key={item.href} item={item} pathname={pathname} />
+        {superAdmin && (
+          <NavLink
+            item={{ href: '/admin', icon: ShieldAlert, label: 'Platform Admin' }}
+            pathname={pathname}
+          />
+        )}
+        {BOTTOM_ITEMS_BASE.map((item) => (
+          item.href === '/settings' ? (
+            <div key={item.href}>
+              {isAdmin && (
+                <NavLink
+                  item={{ href: '/settings/members', icon: Users, label: 'Members' }}
+                  pathname={pathname}
+                />
+              )}
+              <NavLink item={item} pathname={pathname} />
+            </div>
+          ) : (
+            <NavLink key={item.href} item={item} pathname={pathname} />
+          )
         ))}
       </div>
     </aside>

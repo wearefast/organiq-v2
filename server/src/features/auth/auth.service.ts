@@ -1,8 +1,8 @@
 import { Injectable } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
-import { eq } from 'drizzle-orm';
+import { and, eq } from 'drizzle-orm';
 import { DatabaseService } from '../../shared/database/database.service';
-import { organizations, orgMembers } from '../../db/schema';
+import { organizations, orgMembers, accessGrants } from '../../db/schema';
 
 @Injectable()
 export class AuthService {
@@ -54,7 +54,7 @@ export class AuthService {
       .filter(Boolean)
       .join(' ') || null;
 
-    const role = payload.role === 'org:admin' ? 'admin' : 'member';
+    const role = payload.role === 'org:admin' ? 'admin' : 'user';
 
     const result = await this.db.db
       .insert(orgMembers)
@@ -63,12 +63,38 @@ export class AuthService {
         clerkUserId: payload.public_user_data.user_id,
         email: payload.public_user_data.identifier,
         name,
-        role: role as 'owner' | 'admin' | 'member',
+        role: role as 'admin' | 'user',
       })
       .onConflictDoNothing()
       .returning();
 
-    return result[0] ?? null;
+    // Resolve the member (either newly inserted or pre-existing)
+    const member =
+      result[0] ??
+      (await this.db.db.query.orgMembers.findFirst({
+        where: and(
+          eq(orgMembers.organizationId, org.id),
+          eq(orgMembers.clerkUserId, payload.public_user_data.user_id),
+        ),
+      }));
+
+    if (!member) return null;
+
+    // Ensure every member has at least an org-level access grant so they can
+    // access the product immediately after joining. Admins bypass the guard
+    // anyway, but the grant is inserted for consistency.
+    // Uses ON CONFLICT DO NOTHING — idempotent on webhook retries.
+    await this.db.db
+      .insert(accessGrants)
+      .values({
+        organizationId: org.id,
+        memberId: member.id,
+        grantType: 'org',
+        grantedByMemberId: member.id, // self-grant for initial onboarding
+      })
+      .onConflictDoNothing();
+
+    return member;
   }
 
   /**
