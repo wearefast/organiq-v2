@@ -13,7 +13,6 @@ import {
   BadRequestException,
 } from '@nestjs/common';
 import { Throttle } from '@nestjs/throttler';
-import { ConfigService } from '@nestjs/config';
 import { ApiTags, ApiBearerAuth } from '@nestjs/swagger';
 import { ClerkGuard } from '../auth/clerk.guard';
 import { OrgMembershipGuard } from '../auth/org-membership.guard';
@@ -157,10 +156,7 @@ export class UserManagementController {
 @ApiBearerAuth()
 @Controller('invitations')
 export class InvitationAcceptController {
-  constructor(
-    private readonly invitationService: InvitationService,
-    private readonly configService: ConfigService,
-  ) {}
+  constructor(private readonly invitationService: InvitationService) {}
 
   /** Preview an invitation (public — no auth required, safe fields only) */
   @Get(':token')
@@ -172,21 +168,10 @@ export class InvitationAcceptController {
   @Post(':token/accept')
   @UseGuards(ClerkGuard)
   @HttpCode(HttpStatus.OK)
-  async acceptInvitation(
+  acceptInvitation(
     @Param('token') token: string,
     @Req() req: any,
   ) {
-    // Fetch the user's verified primary email from Clerk server-side.
-    // We do NOT trust the client-sent email — it could be spoofed.
-    const secretKey = this.configService.get<string>('CLERK_SECRET_KEY');
-    if (!secretKey) throw new Error('CLERK_SECRET_KEY not configured');
-    const { createClerkClient } = await import('@clerk/backend');
-    const clerk = createClerkClient({ secretKey });
-    const clerkUser = await clerk.users.getUser(req.user.clerkUserId);
-    const primaryEmail = clerkUser.emailAddresses.find(
-      (e: { id: string; emailAddress: string }) => e.id === clerkUser.primaryEmailAddressId,
-    )?.emailAddress;
-    if (!primaryEmail) throw new Error('No primary email on Clerk user');
-    return this.invitationService.accept(token, req.user.clerkUserId, primaryEmail);
+    return this.invitationService.accept(token, req.user.clerkUserId);
   }
 }
