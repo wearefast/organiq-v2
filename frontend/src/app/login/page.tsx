@@ -2,16 +2,24 @@ import { SignIn } from '@clerk/nextjs';
 import { auth } from '@clerk/nextjs/server';
 import { redirect } from 'next/navigation';
 
-export default async function LoginPage() {
+interface Props {
+  searchParams: Promise<{ redirect_url?: string }>;
+}
+
+export default async function LoginPage({ searchParams }: Props) {
   const { userId } = await auth();
 
   if (userId) {
-    redirect('/workspaces');
+    const { redirect_url } = await searchParams;
+    redirect(redirect_url ?? '/workspaces');
   }
+
+  const { redirect_url } = await searchParams;
+  const afterSignIn = redirect_url ?? '/auth/callback';
 
   return (
     <div className="flex min-h-screen items-center justify-center bg-gradient-hero px-6 py-12">
-      <SignIn routing="hash" fallbackRedirectUrl="/auth/callback" forceRedirectUrl="/auth/callback" />
+      <SignIn fallbackRedirectUrl={afterSignIn} forceRedirectUrl={afterSignIn} />
     </div>
   );
 }
