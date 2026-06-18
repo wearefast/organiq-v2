@@ -87,15 +87,16 @@ export class OrgMembershipGuard implements CanActivate {
 
     const membership = await this.db.db.query.orgMembers.findFirst({
       where: and(eq(orgMembers.organizationId, org.id), eq(orgMembers.clerkUserId, clerkUserId)),
-      columns: { id: true },
+      columns: { id: true, role: true },
     });
 
     if (!membership) {
       throw new ForbiddenException('You do not have access to this organization');
     }
 
-    // Attach internal org to request
+    // Attach internal org and member to request (read by AdminOnlyGuard, AccessGuard)
     request.org = { id: org.id, clerkOrgId: org.clerkOrgId };
+    request.member = { id: membership.id, role: membership.role };
 
     if (request.params?.organizationId === org.clerkOrgId) {
       request.params.organizationId = org.id;

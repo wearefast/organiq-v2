@@ -10,7 +10,7 @@ on:
 
 env:
   AWS_REGION: ap-southeast-1
-  ECR_REPOSITORY: pulse-server
+  ECR_REPOSITORY: organiq-server-prod
 
 jobs:
   deploy:
@@ -51,11 +51,11 @@ jobs:
           script: |
             aws ecr get-login-password --region ${{ env.AWS_REGION }} | docker login --username AWS --password-stdin ${{ secrets.ECR_REGISTRY }}
             docker pull ${{ secrets.ECR_REGISTRY }}/${{ env.ECR_REPOSITORY }}:latest
-            docker stop pulse-server || true
-            docker rm pulse-server || true
+            docker stop organiq-server || true
+            docker rm organiq-server || true
             docker run -d \
-              --name pulse-server \
+              --name organiq-server \
               --restart unless-stopped \
-              --env-file /opt/pulse/.env \
+              --env-file /opt/organiq/.env \
               -p 3002:3002 \
               ${{ secrets.ECR_REGISTRY }}/${{ env.ECR_REPOSITORY }}:latest

@@ -43,7 +43,7 @@ export class OrganizationsService {
     clerkUserId: string;
     email: string;
     name?: string;
-    role?: 'owner' | 'admin' | 'member';
+    role?: 'admin' | 'user';
   }) {
     const [member] = await this.db.db
       .insert(orgMembers)
@@ -52,7 +52,7 @@ export class OrganizationsService {
         clerkUserId: data.clerkUserId,
         email: data.email,
         name: data.name || null,
-        role: data.role || 'member',
+        role: data.role || 'user',
       })
       .returning();
 
@@ -67,5 +67,17 @@ export class OrganizationsService {
 
     if (!deleted) throw new NotFoundException('Member not found');
     return deleted;
+  }
+
+  /**
+   * List all organizations — used by super-admin internal API only.
+   * Hard-capped at `limit` rows (default 200) to prevent full table scans.
+   */
+  async findAll(limit = 200) {
+    return this.db.db.query.organizations.findMany({
+      columns: { id: true, name: true, slug: true, creditsBalance: true, clerkOrgId: true, createdAt: true },
+      orderBy: (o, { desc }) => [desc(o.createdAt)],
+      limit,
+    });
   }
 }

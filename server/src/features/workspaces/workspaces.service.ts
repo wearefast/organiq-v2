@@ -1,5 +1,5 @@
 import { Injectable, NotFoundException } from '@nestjs/common';
-import { eq, and } from 'drizzle-orm';
+import { eq, and, inArray } from 'drizzle-orm';
 import { DatabaseService } from '../../shared/database/database.service';
 import { workspaces, projects } from '../../db/schema';
 
@@ -7,9 +7,14 @@ import { workspaces, projects } from '../../db/schema';
 export class WorkspacesService {
   constructor(private readonly db: DatabaseService) {}
 
-  async findAllByOrg(organizationId: string) {
+  async findAllByOrg(organizationId: string, allowedIds?: string[]) {
+    // Guard: empty array means the user has grants but none match any workspace.
+    if (allowedIds !== undefined && allowedIds.length === 0) return [];
+    const where = allowedIds !== undefined
+      ? and(eq(workspaces.organizationId, organizationId), inArray(workspaces.id, allowedIds))
+      : eq(workspaces.organizationId, organizationId);
     return this.db.db.query.workspaces.findMany({
-      where: eq(workspaces.organizationId, organizationId),
+      where,
       with: { projects: true },
       orderBy: (w, { desc }) => [desc(w.createdAt)],
     });

@@ -1,5 +1,5 @@
 import { Injectable, Logger, NotFoundException } from '@nestjs/common';
-import { eq, and } from 'drizzle-orm';
+import { eq, and, inArray } from 'drizzle-orm';
 import { DatabaseService } from '../../shared/database/database.service';
 import { WebCrawlerService } from '../../shared/web-crawler/web-crawler.service';
 import { projects } from '../../db/schema';
@@ -14,9 +14,14 @@ export class ProjectsService {
     private readonly webCrawler: WebCrawlerService,
   ) {}
 
-  async findAllByWorkspace(workspaceId: string) {
+  async findAllByWorkspace(workspaceId: string, allowedIds?: string[]) {
+    // Guard: empty array means the user has grants but none match any project.
+    if (allowedIds !== undefined && allowedIds.length === 0) return [];
+    const where = allowedIds !== undefined
+      ? and(eq(projects.workspaceId, workspaceId), inArray(projects.id, allowedIds))
+      : eq(projects.workspaceId, workspaceId);
     return this.db.db.query.projects.findMany({
-      where: eq(projects.workspaceId, workspaceId),
+      where,
       orderBy: (p, { desc }) => [desc(p.createdAt)],
     });
   }

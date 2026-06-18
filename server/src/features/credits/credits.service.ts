@@ -1,7 +1,7 @@
-import { Injectable, BadRequestException } from '@nestjs/common';
-import { eq, desc } from 'drizzle-orm';
+import { Injectable, BadRequestException, NotFoundException } from '@nestjs/common';
+import { eq, desc, and, sql } from 'drizzle-orm';
 import { DatabaseService } from '../../shared/database/database.service';
-import { organizations, creditLedger } from '../../db/schema';
+import { organizations, creditLedger, workspaceCreditLimits } from '../../db/schema';
 
 @Injectable()
 export class CreditsService {
@@ -34,6 +34,9 @@ export class CreditsService {
   /**
    * Debit credits (negative amount). Used by workflow step processor.
    * Pass an optional `tx` to run inside a caller-managed transaction.
+   *
+   * If `workspaceId` is provided and a credit limit exists for that workspace,
+   * the debit is also checked against the workspace monthly spending cap.
    */
   async debit(
     params: {
@@ -42,6 +45,8 @@ export class CreditsService {
       description: string;
       workflowRunId?: string;
       stepKey?: string;
+      /** Optional: enables workspace-level credit limit enforcement */
+      workspaceId?: string;
     },
     externalTx?: Parameters<Parameters<typeof this.db.db.transaction>[0]>[0],
   ) {
@@ -58,6 +63,54 @@ export class CreditsService {
       }
       const newBalance = currentBalance - params.amount;
 
+      // ── Workspace credit limit check ───────────────────────────────────────
+      if (params.workspaceId) {
+        // SELECT FOR UPDATE locks the row for the duration of this transaction,
+        // preventing concurrent debits from racing past the limit check.
+        const rows = await tx.execute(
+          sql`SELECT * FROM workspace_credit_limits WHERE workspace_id = ${params.workspaceId} FOR UPDATE`,
+        );
+        const limit = rows.rows[0] as {
+          id: string;
+          monthly_limit: number;
+          current_month_usage: number;
+          period_start: Date;
+        } | undefined;
+
+        if (limit) {
+          const now = new Date();
+          const periodStart = new Date(limit.period_start);
+          let currentUsage = limit.current_month_usage;
+
+          // Calendar-month period rollover check
+          const periodExpired =
+            periodStart.getMonth() !== now.getMonth() ||
+            periodStart.getFullYear() !== now.getFullYear();
+
+          if (periodExpired) {
+            currentUsage = 0;
+            const firstOfMonth = new Date(now.getFullYear(), now.getMonth(), 1);
+            await tx
+              .update(workspaceCreditLimits)
+              .set({ currentMonthUsage: 0, periodStart: firstOfMonth, updatedAt: now })
+              .where(eq(workspaceCreditLimits.workspaceId, params.workspaceId));
+          }
+
+          if (currentUsage + params.amount > limit.monthly_limit) {
+            throw new BadRequestException(
+              `Workspace monthly credit limit reached (${currentUsage}/${limit.monthly_limit} used)`,
+            );
+          }
+
+          // Increment workspace usage — safe because we hold a FOR UPDATE lock
+          await tx
+            .update(workspaceCreditLimits)
+            .set({ currentMonthUsage: currentUsage + params.amount, updatedAt: now })
+            .where(eq(workspaceCreditLimits.workspaceId, params.workspaceId));
+        }
+      }
+      // ─────────────────────────────────────────────────────────────────────
+
       await tx
         .update(organizations)
         .set({ creditsBalance: newBalance, updatedAt: new Date() })
@@ -71,6 +124,7 @@ export class CreditsService {
         description: params.description,
         workflowRunId: params.workflowRunId,
         stepKey: params.stepKey,
+        workspaceId: params.workspaceId,
       });
 
       return { balance: newBalance };
@@ -98,7 +152,12 @@ export class CreditsService {
   }) {
     if (params.amount <= 0) throw new BadRequestException('Credit amount must be positive');
 
-    const currentBalance = await this.getBalance(params.organizationId);
+    const org = await this.db.db.query.organizations.findFirst({
+      where: eq(organizations.id, params.organizationId),
+      columns: { creditsBalance: true },
+    });
+    if (!org) throw new NotFoundException(`Organization not found`);
+    const currentBalance = org.creditsBalance;
     const newBalance = currentBalance + params.amount;
 
     await this.db.db.transaction(async (tx) => {

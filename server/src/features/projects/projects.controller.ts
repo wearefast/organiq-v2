@@ -6,6 +6,8 @@ import { ProjectIntelligenceService } from './project-intelligence.service';
 import { CreateProjectDto, UpdateProjectDto } from './dto/project.dto';
 import { ClerkGuard } from '../auth/clerk.guard';
 import { OrgMembershipGuard } from '../auth/org-membership.guard';
+import { AdminOnlyGuard } from '../auth/admin-only.guard';
+import { AccessService } from '../auth/access.service';
 
 @ApiTags('projects')
 @ApiBearerAuth()
@@ -18,10 +20,26 @@ export class ProjectsController {
     private readonly projectsService: ProjectsService,
     private readonly businessProfileService: BusinessProfileService,
     private readonly intelligenceService: ProjectIntelligenceService,
+    private readonly accessService: AccessService,
   ) {}
 
   @Get('workspace/:workspaceId')
-  async findAll(@Param('workspaceId') workspaceId: string) {
+  async findAll(@Param('workspaceId') workspaceId: string, @Req() req: any) {
+    const role: string = req.member?.role ?? 'user';
+    const memberId: string | undefined = req.member?.id;
+    const isAdmin = role === 'admin' || role === 'owner';
+
+    if (!isAdmin && memberId) {
+      const allowedIds = await this.accessService.getAccessibleProjectIds(
+        memberId,
+        req.org.id,
+        workspaceId,
+      );
+      if (allowedIds !== null) {
+        return this.projectsService.findAllByWorkspace(workspaceId, allowedIds);
+      }
+    }
+
     return this.projectsService.findAllByWorkspace(workspaceId);
   }
 
@@ -31,6 +49,7 @@ export class ProjectsController {
   }
 
   @Post()
+  @UseGuards(AdminOnlyGuard)
   async create(@Body() body: CreateProjectDto) {
     const project = await this.projectsService.create(body);
     // Fire-and-forget: generate business profile immediately after project creation
@@ -41,6 +60,7 @@ export class ProjectsController {
   }
 
   @Patch(':id')
+  @UseGuards(AdminOnlyGuard)
   async update(
     @Param('id') id: string,
     @Body() body: UpdateProjectDto,
@@ -50,6 +70,7 @@ export class ProjectsController {
   }
 
   @Delete(':id')
+  @UseGuards(AdminOnlyGuard)
   async remove(@Param('id') id: string, @Req() req: any) {
     return this.projectsService.remove(id, req.org.id);
   }
