@@ -3,7 +3,7 @@
 import { useState } from 'react';
 import { useAuth, useOrganization } from '@clerk/nextjs';
 import { redirect } from 'next/navigation';
-import { Users, UserPlus, CreditCard } from 'lucide-react';
+import { Users, UserPlus, CreditCard, RefreshCw } from 'lucide-react';
 import { useMembers } from '@/features/user-management/hooks/use-members';
 import { MembersTable } from '@/features/user-management/components/members-table';
 import { InvitationsTable } from '@/features/user-management/components/invitations-table';
@@ -42,15 +42,26 @@ export default function MembersPage() {
             </p>
           </div>
         </div>
-        {isAdmin && (
+        <div className="flex items-center gap-2">
           <button
-            onClick={() => setShowInvite(true)}
-            className="flex items-center gap-2 rounded-lg bg-zinc-100 px-4 py-2 text-sm font-medium text-zinc-900 hover:bg-white"
+            onClick={refresh}
+            disabled={loading}
+            className="flex items-center gap-1.5 rounded-lg border border-zinc-700 px-3 py-2 text-sm font-medium text-zinc-400 hover:bg-zinc-800 hover:text-zinc-200 disabled:opacity-40"
+            title="Refresh members"
           >
-            <UserPlus className="h-4 w-4" />
-            Invite Member
+            <RefreshCw className={`h-3.5 w-3.5 ${loading ? 'animate-spin' : ''}`} />
+            Refresh
           </button>
-        )}
+          {isAdmin && (
+            <button
+              onClick={() => setShowInvite(true)}
+              className="flex items-center gap-2 rounded-lg bg-zinc-100 px-4 py-2 text-sm font-medium text-zinc-900 hover:bg-white"
+            >
+              <UserPlus className="h-4 w-4" />
+              Invite Member
+            </button>
+          )}
+        </div>
       </div>
 
       {/* Error banner */}
