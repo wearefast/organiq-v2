@@ -4,7 +4,7 @@ import { useState, useEffect } from 'react';
 import { useParams, useRouter } from 'next/navigation';
 import { useAuth, useUser } from '@clerk/nextjs';
 import { ShieldCheck, UserCheck, Mail, Building2, CheckCircle2, AlertCircle } from 'lucide-react';
-import { apiFetch, API_URL } from '@/shared/utils/api';
+import { API_URL } from '@/shared/utils/api';
 
 interface InvitePreview {
   id: string;
@@ -28,7 +28,7 @@ function RolePill({ role }: { role: 'admin' | 'user' }) {
 export default function InvitePage() {
   const params = useParams<{ token: string }>();
   const router = useRouter();
-  const { isLoaded: authLoaded, isSignedIn, signOut } = useAuth();
+  const { isLoaded: authLoaded, isSignedIn, signOut, getToken } = useAuth();
   const { user } = useUser();
 
   const [preview, setPreview] = useState<InvitePreview | null>(null);
@@ -64,10 +64,22 @@ export default function InvitePage() {
     setAccepting(true);
     setAcceptError(null);
     try {
-      await apiFetch(`/invitations/${params.token}/accept`, {
+      // Get token directly — AuthSync doesn't run outside the dashboard layout
+      const token = await getToken();
+      if (!token) throw new Error('Not authenticated');
+
+      const res = await fetch(`${API_URL}/invitations/${params.token}/accept`, {
         method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${token}`,
+        },
         body: JSON.stringify({ email }),
       });
+      if (!res.ok) {
+        const body = await res.json().catch(() => ({}));
+        throw new Error(body?.message ?? `Request failed (${res.status})`);
+      }
       setAccepted(true);
     } catch (err) {
       setAcceptError(err instanceof Error ? err.message : 'Failed to accept invitation');

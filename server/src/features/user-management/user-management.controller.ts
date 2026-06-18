@@ -105,13 +105,7 @@ export class UserManagementController {
   @UseGuards(AdminOnlyGuard)
   @Throttle({ default: { limit: 10, ttl: 60_000 } })
   createInvitation(@Body() dto: CreateInvitationDto, @Req() req: any) {
-    return this.invitationService.create(
-      req.org.id,
-      req.org.clerkOrgId,
-      req.member.id,
-      req.user.clerkUserId,
-      dto,
-    );
+    return this.invitationService.create(req.org.id, req.member.id, dto);
   }
 
   /** Revoke a pending invitation */
@@ -122,7 +116,7 @@ export class UserManagementController {
     @Param('invitationId') invitationId: string,
     @Req() req: any,
   ) {
-    await this.invitationService.revoke(invitationId, req.org.id, req.org.clerkOrgId, req.member.id, req.user.clerkUserId);
+    await this.invitationService.revoke(invitationId, req.org.id, req.member.id);
   }
 
   // ─── Workspace Credit Limits ──────────────────────────────────────────────
