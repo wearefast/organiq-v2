@@ -10,21 +10,22 @@ import { useEffect } from 'react';
  * This bypasses Clerk's built-in choose-organization task which renders blank.
  */
 export default function AuthCallbackPage() {
-  const { organizationList, setActive, isLoaded } = useOrganizationList();
+  const { userMemberships, setActive, isLoaded } = useOrganizationList({ userMemberships: { infinite: true } });
   const router = useRouter();
 
   useEffect(() => {
     if (!isLoaded) return;
 
     async function activate() {
-      if (organizationList && organizationList.length > 0 && setActive) {
-        await setActive({ organization: organizationList[0].organization.id });
+      const first = userMemberships.data?.[0];
+      if (first && setActive) {
+        await setActive({ organization: first.organization.id });
       }
       router.replace('/workspaces');
     }
 
     activate();
-  }, [isLoaded, organizationList, setActive, router]);
+  }, [isLoaded, userMemberships.data, setActive, router]);
 
   return (
     <div className="flex min-h-screen items-center justify-center bg-gradient-hero">
