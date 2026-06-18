@@ -41,23 +41,29 @@ export class InternalController {
         type: dto.type ?? 'bonus',
       }),
     );
-    return this.creditsService.credit({
+    await this.creditsService.credit({
       organizationId: orgId,
       amount: dto.amount,
       type: dto.type ?? 'bonus',
       description: `${dto.description ?? 'Platform admin credit grant'} [by ${performedBy}]`,
     });
+    const [balance, ledger] = await Promise.all([
+      this.creditsService.getBalance(orgId),
+      this.creditsService.getTransactions(orgId, 20),
+    ]);
+    return { balance, ledger };
   }
 
   /**
-   * Get an org's current credit balance.
+   * Get an org's current credit balance and recent ledger entries.
    */
   @Get('orgs/:orgId/credits')
-  getBalance(@Param('orgId') orgId: string) {
-    return this.creditsService.getBalance(orgId).then((balance) => ({
-      organizationId: orgId,
-      creditsBalance: balance,
-    }));
+  async getBalance(@Param('orgId') orgId: string) {
+    const [balance, ledger] = await Promise.all([
+      this.creditsService.getBalance(orgId),
+      this.creditsService.getTransactions(orgId, 20),
+    ]);
+    return { balance, ledger };
   }
 
   /**
