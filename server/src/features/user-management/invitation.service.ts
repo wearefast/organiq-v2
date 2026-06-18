@@ -345,17 +345,17 @@ export class InvitationService {
   }
 
   /**
-   * Send invitation email via SendGrid.
+   * Send invitation email via Resend.
    */
   private async sendInviteEmail(token: string, toEmail: string, orgId: string) {
-    const apiKey = this.config.get<string>('SENDGRID_API_KEY');
+    const apiKey = this.config.get<string>('RESEND_API_KEY');
     const fromEmail =
       this.config.get<string>('EMAIL_FROM') ?? 'invitations@rankorganiq.com';
     const frontendUrl =
       this.config.get<string>('FRONTEND_URL') ?? 'https://app.rankorganiq.com';
 
     if (!apiKey) {
-      this.logger.warn('SENDGRID_API_KEY not configured — invitation email skipped');
+      this.logger.warn('RESEND_API_KEY not configured — invitation email skipped');
       return;
     }
 
@@ -369,22 +369,19 @@ export class InvitationService {
 
     const html = this.buildInviteEmailHtml(orgName, inviteUrl);
 
-    const response = await fetch('https://api.sendgrid.com/v3/mail/send', {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-        Authorization: `Bearer ${apiKey}`,
-      },
-      body: JSON.stringify({
-        personalizations: [{ to: [{ email: toEmail }] }],
-        from: { email: fromEmail, name: 'Pulse OS' },
-        subject: `You've been invited to join ${orgName} on Pulse`,
-        content: [{ type: 'text/html', value: html }],
-      }),
+    // Dynamically import Resend to avoid issues if the package is tree-shaken
+    const { Resend } = await import('resend');
+    const resend = new Resend(apiKey);
+
+    const { error } = await resend.emails.send({
+      from: `Pulse OS <${fromEmail}>`,
+      to: [toEmail],
+      subject: `You've been invited to join ${orgName} on Pulse`,
+      html,
     });
 
-    if (!response.ok) {
-      throw new Error(`SendGrid error: ${response.status} ${response.statusText}`);
+    if (error) {
+      throw new Error(`Resend error: ${error.message}`);
     }
 
     this.logger.log(`Invitation email sent to ${toEmail}`);
