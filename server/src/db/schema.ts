@@ -164,6 +164,8 @@ export const invitations = pgTable(
     status: invitationStatusEnum('status').notNull().default('pending'),
     /** Secure token included in the invite link */
     token: text('token').notNull(),
+    /** Clerk organization invitation ID — used to revoke via Clerk API on cancel */
+    clerkInvitationId: text('clerk_invitation_id'),
     /** [{type:'org'} | {type:'workspace',workspaceId:string} | {type:'project',workspaceId:string,projectId:string}] */
     accessGrants: jsonb('access_grants').$type<Array<
       | { type: 'org' }

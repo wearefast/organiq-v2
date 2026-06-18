@@ -110,14 +110,21 @@ export class InvitationService {
       })
       .returning();
 
-    // Send invitation email via Clerk (fire-and-forget — failure logged, not thrown)
+    // Send invitation email via Clerk and store the Clerk invitation ID for future revocation
     this.sendClerkInviteEmail(
       invitation.token,
       dto.email,
       dto.role,
       clerkOrgId,
       inviterClerkUserId,
-    ).catch((err: Error) => {
+    ).then(async (clerkInvitationId) => {
+      if (clerkInvitationId) {
+        await this.db.db
+          .update(invitations)
+          .set({ clerkInvitationId })
+          .where(eq(invitations.id, invitation.id));
+      }
+    }).catch((err: Error) => {
       this.logger.error(`Failed to send invitation email to ${dto.email}: ${err.message}`);
     });
 
@@ -240,7 +247,7 @@ export class InvitationService {
   /**
    * Revoke a pending invitation. Only callable by an admin of the org.
    */
-  async revoke(invitationId: string, orgId: string, revokingMemberId: string) {
+  async revoke(invitationId: string, orgId: string, clerkOrgId: string, revokingMemberId: string, revokingClerkUserId: string) {
     const invitation = await this.db.db.query.invitations.findFirst({
       where: and(eq(invitations.id, invitationId), eq(invitations.organizationId, orgId)),
     });
@@ -259,6 +266,17 @@ export class InvitationService {
       })
       .where(eq(invitations.id, invitationId))
       .returning();
+
+    // Also revoke the Clerk-side invitation so it no longer shows as pending there
+    if (invitation.clerkInvitationId) {
+      this.revokeClerkInvitation(
+        invitation.clerkInvitationId,
+        clerkOrgId,
+        revokingClerkUserId,
+      ).catch((err: Error) => {
+        this.logger.warn(`Failed to revoke Clerk invitation ${invitation.clerkInvitationId}: ${err.message}`);
+      });
+    }
 
     return updated;
   }
@@ -379,7 +397,7 @@ export class InvitationService {
     const clerkRole = role === 'admin' ? 'org:admin' : 'org:member';
     const redirectUrl = `${frontendUrl}/invite/${token}`;
 
-    await clerk.organizations.createOrganizationInvitation({
+    const result = await clerk.organizations.createOrganizationInvitation({
       organizationId: clerkOrgId,
       emailAddress: toEmail,
       inviterUserId: inviterClerkUserId,
@@ -387,6 +405,30 @@ export class InvitationService {
       redirectUrl,
     });
 
-    this.logger.log(`Clerk invitation email sent to ${toEmail}`);
+    this.logger.log(`Clerk invitation email sent to ${toEmail} (clerkInvitationId=${result.id})`);
+    return result.id;
+  }
+
+  /**
+   * Revoke the Clerk-side organization invitation so it no longer appears as pending in Clerk dashboard.
+   */
+  private async revokeClerkInvitation(
+    clerkInvitationId: string,
+    clerkOrgId: string,
+    revokingClerkUserId: string,
+  ) {
+    const secretKey = this.config.get<string>('CLERK_SECRET_KEY');
+    if (!secretKey) return;
+
+    const { createClerkClient } = await import('@clerk/backend');
+    const clerk = createClerkClient({ secretKey });
+
+    await clerk.organizations.revokeOrganizationInvitation({
+      organizationId: clerkOrgId,
+      invitationId: clerkInvitationId,
+      requestingUserId: revokingClerkUserId,
+    });
+
+    this.logger.log(`Clerk invitation ${clerkInvitationId} revoked`);
   }
 }
