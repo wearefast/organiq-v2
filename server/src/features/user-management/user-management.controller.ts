@@ -122,7 +122,7 @@ export class UserManagementController {
     @Param('invitationId') invitationId: string,
     @Req() req: any,
   ) {
-    await this.invitationService.revoke(invitationId, req.org.id, req.member.id);
+    await this.invitationService.revoke(invitationId, req.org.id, req.org.clerkOrgId, req.member.id, req.user.clerkUserId);
   }
 
   // ─── Workspace Credit Limits ──────────────────────────────────────────────
