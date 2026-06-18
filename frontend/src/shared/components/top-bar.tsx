@@ -1,5 +1,6 @@
 'use client';
 
+import Image from 'next/image';
 import { UserButton, useOrganization } from '@clerk/nextjs';
 import { Command, Sun, Moon } from 'lucide-react';
 import { useTheme } from '@/shared/hooks/use-theme';
@@ -16,11 +17,8 @@ export function TopBar({ onCommandPalette }: TopBarProps) {
   return (
     <header className="fixed top-0 z-50 flex h-topbar w-full items-center border-b border-zinc-800 bg-shell px-4">
       {/* Logo */}
-      <div className="flex items-center gap-2">
-        <span className="flex h-7 w-7 items-center justify-center rounded-lg bg-rose-600 text-xs font-bold text-white">
-          O
-        </span>
-        <span className="text-sm font-semibold text-zinc-100">ORGANIQ</span>
+      <div className="flex items-center">
+        <Image src="/logo.png" alt="ORGANIQ" width={28} height={28} className="rounded-lg" />
       </div>
 
       {/* Spacer */}

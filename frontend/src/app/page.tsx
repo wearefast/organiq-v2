@@ -1,3 +1,4 @@
+import Image from 'next/image';
 import Link from 'next/link';
 import { Search, Key, FileText, Users, ArrowRight } from 'lucide-react';
 
@@ -26,10 +27,7 @@ export default function HomePage() {
       {/* Nav */}
       <nav className="fixed top-0 z-50 w-full border-b border-white/10 bg-zinc-950/90 backdrop-blur-md">
         <div className="mx-auto flex h-14 max-w-6xl items-center justify-between px-6">
-          <Link href="/" className="flex items-center gap-2">
-            <span className="flex h-7 w-7 items-center justify-center rounded-lg bg-white/10 text-xs font-bold text-white">O</span>
-            <span className="text-sm font-semibold text-white">ORGANIQ</span>
-          </Link>
+          <Link href="/" />
           <div className="flex items-center gap-6">
             <Link href="/#features" className="hidden text-sm text-white/60 transition-colors hover:text-white sm:block">Features</Link>
             <Link href="/#how" className="hidden text-sm text-white/60 transition-colors hover:text-white sm:block">How it works</Link>
@@ -40,9 +38,9 @@ export default function HomePage() {
 
       {/* Hero */}
       <section className="flex flex-col items-center justify-center bg-gradient-hero px-6 pb-24 pt-32 text-center">
-        <p className="mb-6 inline-flex items-center rounded-pill border border-white/15 bg-white/5 px-4 py-1.5 text-xs font-medium tracking-wide text-white/70">
-          ORGANIQ · THE ORGANIC VISIBILITY ENGINE
-        </p>
+        <div className="mb-6">
+          <Image src="/logo-with-text.png" alt="ORGANIQ" width={220} height={48} className="mx-auto" />
+        </div>
         <h1 className="max-w-3xl text-[40px] font-extrabold leading-[1.08] text-white sm:text-[56px]">
           Your organic visibility,<br />
           <span className="bg-gradient-to-r from-[#E98395] to-[#DA304F] bg-clip-text text-transparent">engineered</span>
