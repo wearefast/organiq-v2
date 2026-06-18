@@ -1,23 +1,41 @@
+'use client';
+
 import { SignUp } from '@clerk/nextjs';
-import { auth } from '@clerk/nextjs/server';
-import { redirect } from 'next/navigation';
+import { useEffect, useState } from 'react';
 
 /**
- * Clerk routes to [signUpUrl]/continue when a multi-step sign-up needs
- * additional fields (e.g. first/last name after org invitation).
- * Must render <SignUp> so Clerk can complete the flow and honour the
- * redirectUrl embedded in the __clerk_ticket.
+ * Clerk routes to [signUpUrl]/continue during multi-step sign-up
+ * (e.g. org invitation flow that collects first/last name first).
+ * We read the pending invite token from sessionStorage so Clerk
+ * redirects back to the invite page once sign-up completes.
  */
-export default async function SignUpContinuePage() {
-  const { userId } = await auth();
+export default function SignUpContinuePage() {
+  const [redirectUrl, setRedirectUrl] = useState<string | null>(null);
+  const [ready, setReady] = useState(false);
 
-  if (userId) {
-    redirect('/workspaces');
+  useEffect(() => {
+    const token = sessionStorage.getItem('pendingInviteToken');
+    setRedirectUrl(token ? `/invite/${token}` : null);
+    setReady(true);
+  }, []);
+
+  // Don't render until we've checked sessionStorage to avoid a redirect flash
+  if (!ready) {
+    return (
+      <div className="flex min-h-screen items-center justify-center bg-gradient-hero">
+        <p className="text-sm text-zinc-400">Loading…</p>
+      </div>
+    );
   }
+
+  const destination = redirectUrl ?? '/workspaces';
 
   return (
     <div className="flex min-h-screen items-center justify-center bg-gradient-hero px-6 py-12">
-      <SignUp />
+      <SignUp
+        forceRedirectUrl={destination}
+        fallbackRedirectUrl={destination}
+      />
     </div>
   );
 }

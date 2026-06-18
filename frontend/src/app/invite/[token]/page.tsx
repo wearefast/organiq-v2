@@ -40,6 +40,14 @@ export default function InvitePage() {
   const [acceptError, setAcceptError] = useState<string | null>(null);
   const [accepted, setAccepted] = useState(false);
 
+  // Store token in sessionStorage whenever a Clerk ticket is present so that
+  // /sign-up/continue (and /onboarding as a fallback) can redirect back here.
+  useEffect(() => {
+    if (clerkTicket && params.token) {
+      sessionStorage.setItem('pendingInviteToken', params.token);
+    }
+  }, [clerkTicket, params.token]);
+
   // Fetch invitation preview (public — no auth required)
   useEffect(() => {
     if (!params.token) return;
