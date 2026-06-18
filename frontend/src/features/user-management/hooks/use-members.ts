@@ -58,6 +58,15 @@ export function useMembers(orgId: string | undefined) {
     refresh();
   }, [refresh]);
 
+  // Refresh when admin tabs back to the window — picks up acceptances in other browsers
+  useEffect(() => {
+    function handleVisibility() {
+      if (document.visibilityState === 'visible') refresh();
+    }
+    document.addEventListener('visibilitychange', handleVisibility);
+    return () => document.removeEventListener('visibilitychange', handleVisibility);
+  }, [refresh]);
+
   const members: EnrichedMember[] = useMemo(() => {
     const clerkMap = new Map<string, { name: string; email: string; imageUrl: string | null }>();
     for (const m of memberships?.data ?? []) {
