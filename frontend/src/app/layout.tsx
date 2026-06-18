@@ -22,7 +22,12 @@ export const metadata: Metadata = {
 
 export default function RootLayout({ children }: { children: React.ReactNode }) {
   return (
-    <ClerkProvider>
+    <ClerkProvider
+      signInUrl="/login"
+      signUpUrl="/sign-up"
+      signInFallbackRedirectUrl="/auth/callback"
+      signUpFallbackRedirectUrl="/onboarding"
+    >
       <html lang="en" className={`${inter.variable} ${jetbrainsMono.variable} dark`}>
         <body className="min-h-screen bg-shell text-zinc-100 antialiased">
           {children}
