@@ -95,6 +95,7 @@ export async function apiFetch<T>(path: string, init?: RequestInit): Promise<T> 
         const body = await retry.text();
         throw new Error(`API ${retry.status}: ${body}`);
       }
+      if (retry.status === 204) return undefined as T;
       return retry.json() as Promise<T>;
     }
   }
@@ -104,5 +105,6 @@ export async function apiFetch<T>(path: string, init?: RequestInit): Promise<T> 
     throw new Error(`API ${res.status}: ${body}`);
   }
 
+  if (res.status === 204) return undefined as T;
   return res.json() as Promise<T>;
 }
