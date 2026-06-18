@@ -1,8 +1,8 @@
 'use client';
 
 import { useState, useEffect } from 'react';
-import { useParams, useRouter } from 'next/navigation';
-import { useAuth, useUser, useOrganizationList } from '@clerk/nextjs';
+import { useParams, useRouter, useSearchParams } from 'next/navigation';
+import { useAuth, useUser, useOrganizationList, SignIn } from '@clerk/nextjs';
 import { ShieldCheck, UserCheck, Mail, Building2, CheckCircle2, AlertCircle } from 'lucide-react';
 import { API_URL } from '@/shared/utils/api';
 
@@ -31,6 +31,8 @@ export default function InvitePage() {
   const { isLoaded: authLoaded, isSignedIn, signOut, getToken } = useAuth();
   const { user } = useUser();
   const { setActive } = useOrganizationList();
+  const searchParams = useSearchParams();
+  const clerkTicket = searchParams.get('__clerk_ticket');
 
   const [preview, setPreview] = useState<InvitePreview | null>(null);
   const [loadError, setLoadError] = useState<string | null>(null);
@@ -199,29 +201,54 @@ export default function InvitePage() {
             {!authLoaded ? (
               <p className="text-center text-sm text-zinc-500">Loading…</p>
             ) : !isSignedIn ? (
-              <div className="space-y-3">
-                <p className="text-center text-sm text-zinc-400">
-                  Sign in to accept this invitation
-                </p>
-                <button
-                  onClick={() => {
-                    sessionStorage.setItem('pendingInviteToken', params.token);
-                    router.push(`/login?redirect_url=/invite/${params.token}`);
+              clerkTicket ? (
+                // User arrived from invitation email — Clerk ticket present.
+                // Render SignIn inline: Clerk reads the ticket and handles sign-in OR
+                // account creation automatically for new users.
+                <SignIn
+                  routing="hash"
+                  forceRedirectUrl={`/invite/${params.token}`}
+                  appearance={{
+                    elements: {
+                      rootBox: 'w-full',
+                      card: '!bg-transparent !shadow-none !border-0 !p-0',
+                      headerTitle: '!text-zinc-100',
+                      headerSubtitle: '!text-zinc-400',
+                      formFieldLabel: '!text-zinc-300',
+                      formFieldInput: '!bg-zinc-800 !border-zinc-700 !text-zinc-100',
+                      formButtonPrimary: '!bg-zinc-100 !text-zinc-900 hover:!bg-white',
+                      footerActionLink: '!text-violet-400',
+                      identityPreviewText: '!text-zinc-300',
+                      identityPreviewEditButton: '!text-violet-400',
+                    },
                   }}
-                  className="w-full rounded-lg bg-zinc-100 py-2.5 text-sm font-semibold text-zinc-900 hover:bg-white"
-                >
-                  Sign In
-                </button>
-                <button
-                  onClick={() => {
-                    sessionStorage.setItem('pendingInviteToken', params.token);
-                    router.push(`/sign-up?redirect_url=/invite/${params.token}`);
-                  }}
-                  className="w-full rounded-lg border border-zinc-700 py-2.5 text-sm font-medium text-zinc-300 hover:bg-zinc-800"
-                >
-                  Create Account
-                </button>
-              </div>
+                />
+              ) : (
+                // Direct URL access — no ticket. Show manual buttons.
+                <div className="space-y-3">
+                  <p className="text-center text-sm text-zinc-400">
+                    Sign in to accept this invitation
+                  </p>
+                  <button
+                    onClick={() => {
+                      sessionStorage.setItem('pendingInviteToken', params.token);
+                      router.push(`/login?redirect_url=/invite/${params.token}`);
+                    }}
+                    className="w-full rounded-lg bg-zinc-100 py-2.5 text-sm font-semibold text-zinc-900 hover:bg-white"
+                  >
+                    Sign In
+                  </button>
+                  <button
+                    onClick={() => {
+                      sessionStorage.setItem('pendingInviteToken', params.token);
+                      router.push(`/sign-up?redirect_url=/invite/${params.token}`);
+                    }}
+                    className="w-full rounded-lg border border-zinc-700 py-2.5 text-sm font-medium text-zinc-300 hover:bg-zinc-800"
+                  >
+                    Create Account
+                  </button>
+                </div>
+              )
             ) : (() => {
               // Check if signed-in user has the invited email
               const userEmails = user?.emailAddresses?.map((e) => e.emailAddress.toLowerCase()) ?? [];
