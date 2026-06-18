@@ -2,7 +2,6 @@ import {
   Injectable,
   BadRequestException,
   NotFoundException,
-  ForbiddenException,
   Logger,
 } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
@@ -137,7 +136,7 @@ export class InvitationService {
    *
    * Returns the org record for frontend redirect.
    */
-  async accept(token: string, clerkUserId: string, email: string) {
+  async accept(token: string, clerkUserId: string) {
     const invitation = await this.db.db.query.invitations.findFirst({
       where: eq(invitations.token, token),
     });
@@ -155,11 +154,6 @@ export class InvitationService {
         .set({ status: 'expired' })
         .where(eq(invitations.id, invitation.id));
       throw new BadRequestException('This invitation has expired');
-    }
-
-    // Verify the accepting user's email matches the invited email (IDOR prevention)
-    if (invitation.email.toLowerCase() !== email.toLowerCase()) {
-      throw new ForbiddenException('This invitation was issued to a different email address');
     }
 
     // Run atomically
@@ -184,7 +178,7 @@ export class InvitationService {
         .values({
           organizationId: invitation.organizationId,
           clerkUserId,
-          email,
+          email: invitation.email,
           role: invitation.role as 'admin' | 'user',
         })
         .onConflictDoNothing()
