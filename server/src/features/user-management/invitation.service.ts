@@ -233,8 +233,17 @@ export class InvitationService {
     // Return org info for frontend redirect
     const org = await this.db.db.query.organizations.findFirst({
       where: eq(organizations.id, invitation.organizationId),
-      columns: { id: true, name: true, slug: true },
+      columns: { id: true, name: true, slug: true, clerkOrgId: true },
     });
+
+    // Add the user to the Clerk organization so their session gets org context
+    if (org?.clerkOrgId) {
+      this.addUserToClerkOrg(clerkUserId, org.clerkOrgId, invitation.role).catch((err: Error) => {
+        this.logger.error(
+          `Failed to add user ${clerkUserId} to Clerk org ${org.clerkOrgId}: ${err.message}`,
+        );
+      });
+    }
 
     return { member, org };
   }
@@ -416,5 +425,32 @@ export class InvitationService {
 
     const user = await clerk.users.getUser(clerkUserId);
     return user.emailAddresses.map((e) => e.emailAddress);
+  }
+
+  /**
+   * Add a user to a Clerk organization so their session JWT includes org context.
+   * Called after invitation acceptance so the user can access org-scoped routes.
+   */
+  private async addUserToClerkOrg(
+    clerkUserId: string,
+    clerkOrgId: string,
+    role: string,
+  ) {
+    const secretKey = this.config.get<string>('CLERK_SECRET_KEY');
+    if (!secretKey) return;
+
+    const { createClerkClient } = await import('@clerk/backend');
+    const clerk = createClerkClient({ secretKey });
+
+    const clerkRole = role === 'admin' ? 'org:admin' : 'org:member';
+
+    await clerk.organizations.createOrganizationMembership({
+      organizationId: clerkOrgId,
+      userId: clerkUserId,
+      role: clerkRole,
+    });
+    this.logger.log(
+      `Added user ${clerkUserId} to Clerk org ${clerkOrgId} as ${clerkRole}`,
+    );
   }
 }

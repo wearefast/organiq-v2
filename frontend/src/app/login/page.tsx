@@ -16,10 +16,13 @@ export default async function LoginPage({ searchParams }: Props) {
 
   const { redirect_url } = await searchParams;
   const afterSignIn = redirect_url ?? '/auth/callback';
+  const signUpUrl = redirect_url
+    ? `/sign-up?redirect_url=${encodeURIComponent(redirect_url)}`
+    : '/sign-up';
 
   return (
     <div className="flex min-h-screen items-center justify-center bg-gradient-hero px-6 py-12">
-      <SignIn fallbackRedirectUrl={afterSignIn} forceRedirectUrl={afterSignIn} />
+      <SignIn fallbackRedirectUrl={afterSignIn} forceRedirectUrl={afterSignIn} signUpUrl={signUpUrl} />
     </div>
   );
 }
