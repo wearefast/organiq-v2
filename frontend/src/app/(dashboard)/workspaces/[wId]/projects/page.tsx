@@ -2,7 +2,7 @@
 
 import Link from 'next/link';
 import { useParams, useRouter } from 'next/navigation';
-import { useAuth, useOrganization } from '@clerk/nextjs';
+import { useAuth } from '@clerk/nextjs';
 import { FormEvent, useEffect, useState } from 'react';
 import { apiFetch, setAuthToken } from '@/shared/utils/api';
 import { CountrySelect } from '@/shared/components/country-select';
@@ -33,8 +33,6 @@ export default function ProjectsPage() {
   const params = useParams<{ wId: string }>();
   const router = useRouter();
   const { getToken, isLoaded, isSignedIn, orgId } = useAuth();
-  const { membership } = useOrganization();
-  const isAdmin = membership?.role === 'org:admin' || membership?.role === 'org:owner';
 
   const [workspace, setWorkspace] = useState<Workspace | null>(null);
   const [projects, setProjects] = useState<Project[]>([]);
@@ -151,14 +149,12 @@ export default function ProjectsPage() {
             {workspace ? `SEO projects within ${workspace.name}.` : 'SEO projects within this workspace.'}
           </p>
         </div>
-        {isAdmin && (
-          <button className="btn-primary disabled:cursor-not-allowed disabled:opacity-50" onClick={() => setShowForm((open) => !open)} disabled={loading || submitting || !workspace}>
+        <button className="btn-primary disabled:cursor-not-allowed disabled:opacity-50" onClick={() => setShowForm((open) => !open)} disabled={loading || submitting || !workspace}>
             {showForm ? 'Cancel' : 'New Project'}
           </button>
-        )}
       </div>
 
-      {isAdmin && showForm && (
+      {showForm && (
         <form onSubmit={handleCreateProject} className="card mb-6 space-y-4 p-5">
           <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-4">
             <label className="space-y-2 text-sm text-zinc-300">
