@@ -2,7 +2,7 @@
 
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
-import { useAuth, useClerk, useOrganizationList, useOrganization } from '@clerk/nextjs';
+import { useAuth, useClerk, useOrganizationList } from '@clerk/nextjs';
 import { useEffect, useState } from 'react';
 import { apiFetch, setAuthToken } from '@/shared/utils/api';
 
@@ -28,8 +28,6 @@ export default function WorkspacesPage() {
   const router = useRouter();
   const clerk = useClerk();
   const { getToken, isLoaded, isSignedIn, orgId } = useAuth();
-  const { membership } = useOrganization();
-  const isAdmin = membership?.role === 'org:admin' || membership?.role === 'org:owner';
   const { isLoaded: organizationsLoaded, setActive, userMemberships } = useOrganizationList({
     userMemberships: { infinite: true },
   });
@@ -136,14 +134,12 @@ export default function WorkspacesPage() {
           <h1 className="text-page-title text-zinc-100">Workspaces</h1>
           <p className="mt-1 text-sm text-zinc-500">Manage your client workspaces and their projects.</p>
         </div>
-        {isAdmin && (
-          <button className="btn-primary disabled:cursor-not-allowed disabled:opacity-50" onClick={() => { void handlePrimaryAction(); }} disabled={submitting}>
-            {orgId ? (showForm ? 'Cancel' : 'New Workspace') : 'Set Up Organization'}
-          </button>
-        )}
+        <button className="btn-primary disabled:cursor-not-allowed disabled:opacity-50" onClick={() => { void handlePrimaryAction(); }} disabled={submitting}>
+          {orgId ? (showForm ? 'Cancel' : 'New Workspace') : 'Set Up Organization'}
+        </button>
       </div>
 
-      {isAdmin && showForm && (
+      {showForm && (
         <form onSubmit={handleCreateWorkspace} className="card space-y-4 p-5">
           <div className="grid gap-4 md:grid-cols-2">
             <label className="space-y-2 text-sm text-zinc-300">
