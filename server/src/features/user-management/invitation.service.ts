@@ -2,6 +2,7 @@ import {
   Injectable,
   BadRequestException,
   NotFoundException,
+  ForbiddenException,
   Logger,
 } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
@@ -156,7 +157,15 @@ export class InvitationService {
       throw new BadRequestException('This invitation has expired');
     }
 
-    // Run atomically
+    // Verify the signed-in user owns the invited email address.
+    // Check ALL emails on their Clerk profile (primary + secondary).
+    const userEmails = await this.getClerkUserEmails(clerkUserId);
+    const invitedEmailLower = invitation.email.toLowerCase();
+    if (!userEmails.some((e) => e.toLowerCase() === invitedEmailLower)) {
+      throw new ForbiddenException(
+        `This invitation was sent to ${invitation.email}. Please sign in with that email address.`,
+      );
+    }
     const member = await this.db.db.transaction(async (tx) => {
       // 1. Mark invitation accepted — conditional on status still being 'pending'
       //    to handle concurrent accept attempts (race condition guard).
@@ -392,5 +401,20 @@ export class InvitationService {
 
     await clerk.invitations.revokeInvitation(clerkInvitationId);
     this.logger.log(`Clerk invitation ${clerkInvitationId} revoked`);
+  }
+
+  /**
+   * Fetch all verified email addresses for a Clerk user.
+   * Used to check if the signed-in user owns the invited email.
+   */
+  private async getClerkUserEmails(clerkUserId: string): Promise<string[]> {
+    const secretKey = this.config.get<string>('CLERK_SECRET_KEY');
+    if (!secretKey) return [];
+
+    const { createClerkClient } = await import('@clerk/backend');
+    const clerk = createClerkClient({ secretKey });
+
+    const user = await clerk.users.getUser(clerkUserId);
+    return user.emailAddresses.map((e) => e.emailAddress);
   }
 }

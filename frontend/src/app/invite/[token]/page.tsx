@@ -213,15 +213,44 @@ export default function InvitePage() {
                   Create Account
                 </button>
               </div>
-            ) : (
-              <button
-                onClick={handleAccept}
-                disabled={accepting}
-                className="w-full rounded-lg bg-zinc-100 py-2.5 text-sm font-semibold text-zinc-900 hover:bg-white disabled:opacity-50"
-              >
-                {accepting ? 'Accepting…' : 'Accept Invitation'}
-              </button>
-            )}
+            ) : (() => {
+              // Check if signed-in user has the invited email
+              const userEmails = user?.emailAddresses?.map((e) => e.emailAddress.toLowerCase()) ?? [];
+              const invitedEmail = preview.email.toLowerCase();
+              const emailMatch = userEmails.includes(invitedEmail);
+
+              if (!emailMatch) {
+                return (
+                  <div className="space-y-3">
+                    <div className="rounded-lg border border-yellow-800 bg-yellow-900/20 px-3 py-3">
+                      <p className="text-sm text-yellow-300">
+                        This invitation was sent to <strong>{preview.email}</strong>.
+                        You&apos;re signed in as <strong>{user?.primaryEmailAddress?.emailAddress}</strong>.
+                      </p>
+                      <p className="mt-2 text-xs text-zinc-400">
+                        Please sign out and sign in with the invited email address.
+                      </p>
+                    </div>
+                    <button
+                      onClick={() => signOut({ redirectUrl: `/invite/${params.token}` })}
+                      className="w-full rounded-lg bg-zinc-100 py-2.5 text-sm font-semibold text-zinc-900 hover:bg-white"
+                    >
+                      Sign Out &amp; Use Correct Email
+                    </button>
+                  </div>
+                );
+              }
+
+              return (
+                <button
+                  onClick={handleAccept}
+                  disabled={accepting}
+                  className="w-full rounded-lg bg-zinc-100 py-2.5 text-sm font-semibold text-zinc-900 hover:bg-white disabled:opacity-50"
+                >
+                  {accepting ? 'Accepting…' : 'Accept Invitation'}
+                </button>
+              );
+            })()}
           </>
         )}
       </div>
