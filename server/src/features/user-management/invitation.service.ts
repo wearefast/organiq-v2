@@ -108,8 +108,8 @@ export class InvitationService {
       })
       .returning();
 
-    // Send invitation email via Clerk (instance-level — no org-join UI, just email + redirect)
-    this.sendClerkInviteEmail(invitation.token, dto.email)
+    // Send invitation email via Clerk (org-level — invitation appears under the org in Clerk dashboard)
+    this.sendClerkOrgInviteEmail(invitation.token, dto.email, invitation.role, orgId, invitingMemberId)
       .then(async (clerkInvitationId) => {
         if (clerkInvitationId) {
           await this.db.db
@@ -119,7 +119,7 @@ export class InvitationService {
         }
       })
       .catch((err: Error) => {
-        this.logger.error(`Failed to send invitation email to ${dto.email}: ${err.message}`);
+        this.logger.error(`Failed to send org invitation email to ${dto.email}: ${err.message}`);
       });
 
     return invitation;
@@ -275,8 +275,8 @@ export class InvitationService {
 
     // Also revoke the Clerk-side invitation so it no longer shows as pending in Clerk dashboard
     if (invitation.clerkInvitationId) {
-      this.revokeClerkInvitation(invitation.clerkInvitationId).catch((err: Error) => {
-        this.logger.warn(`Failed to revoke Clerk invitation ${invitation.clerkInvitationId}: ${err.message}`);
+      this.revokeClerkOrgInvitation(invitation.clerkInvitationId, orgId, revokingMemberId).catch((err: Error) => {
+        this.logger.warn(`Failed to revoke Clerk org invitation ${invitation.clerkInvitationId}: ${err.message}`);
       });
     }
 
@@ -373,10 +373,17 @@ export class InvitationService {
   }
 
   /**
-   * Send invitation email via Clerk instance-level invitation.
-   * Uses clerk.invitations.createInvitation — no org-join UI, just email + redirect to our accept page.
+   * Send invitation email via Clerk org-level invitation.
+   * Invitation appears under the org in the Clerk dashboard.
+   * Looks up clerkOrgId and inviter's clerkUserId internally.
    */
-  private async sendClerkInviteEmail(token: string, toEmail: string): Promise<string | undefined> {
+  private async sendClerkOrgInviteEmail(
+    token: string,
+    toEmail: string,
+    role: string,
+    orgId: string,
+    invitingMemberId: string,
+  ): Promise<string | undefined> {
     const secretKey = this.config.get<string>('CLERK_SECRET_KEY');
     const frontendUrl = this.config.get<string>('FRONTEND_URL') ?? 'https://app.rankorganiq.com';
 
@@ -385,31 +392,76 @@ export class InvitationService {
       return;
     }
 
+    // Look up Clerk IDs needed for org-level invitation
+    const [org, invitingMember] = await Promise.all([
+      this.db.db.query.organizations.findFirst({
+        where: eq(organizations.id, orgId),
+        columns: { clerkOrgId: true },
+      }),
+      this.db.db.query.orgMembers.findFirst({
+        where: eq(orgMembers.id, invitingMemberId),
+        columns: { clerkUserId: true },
+      }),
+    ]);
+
+    if (!org?.clerkOrgId || !invitingMember?.clerkUserId) {
+      this.logger.warn(`Cannot send org invite to ${toEmail}: missing clerkOrgId or inviter clerkUserId`);
+      return;
+    }
+
     const { createClerkClient } = await import('@clerk/backend');
     const clerk = createClerkClient({ secretKey });
 
-    const result = await clerk.invitations.createInvitation({
+    const clerkRole = role === 'admin' ? 'org:admin' : 'org:member';
+
+    const result = await clerk.organizations.createOrganizationInvitation({
+      organizationId: org.clerkOrgId,
       emailAddress: toEmail,
+      inviterUserId: invitingMember.clerkUserId,
+      role: clerkRole,
       redirectUrl: `${frontendUrl}/invite/${token}`,
-      ignoreExisting: true,
     });
 
-    this.logger.log(`Clerk invitation email sent to ${toEmail} (clerkInvitationId=${result.id})`);
+    this.logger.log(`Clerk org invitation email sent to ${toEmail} (clerkInvitationId=${result.id})`);
     return result.id;
   }
 
   /**
-   * Revoke a Clerk instance-level invitation.
+   * Revoke a Clerk org-level invitation.
    */
-  private async revokeClerkInvitation(clerkInvitationId: string) {
+  private async revokeClerkOrgInvitation(
+    clerkInvitationId: string,
+    orgId: string,
+    revokingMemberId: string,
+  ) {
     const secretKey = this.config.get<string>('CLERK_SECRET_KEY');
     if (!secretKey) return;
+
+    const [org, member] = await Promise.all([
+      this.db.db.query.organizations.findFirst({
+        where: eq(organizations.id, orgId),
+        columns: { clerkOrgId: true },
+      }),
+      this.db.db.query.orgMembers.findFirst({
+        where: eq(orgMembers.id, revokingMemberId),
+        columns: { clerkUserId: true },
+      }),
+    ]);
+
+    if (!org?.clerkOrgId || !member?.clerkUserId) {
+      this.logger.warn(`Cannot revoke Clerk org invitation ${clerkInvitationId}: missing IDs`);
+      return;
+    }
 
     const { createClerkClient } = await import('@clerk/backend');
     const clerk = createClerkClient({ secretKey });
 
-    await clerk.invitations.revokeInvitation(clerkInvitationId);
-    this.logger.log(`Clerk invitation ${clerkInvitationId} revoked`);
+    await clerk.organizations.revokeOrganizationInvitation({
+      organizationId: org.clerkOrgId,
+      invitationId: clerkInvitationId,
+      requestingUserId: member.clerkUserId,
+    });
+    this.logger.log(`Clerk org invitation ${clerkInvitationId} revoked`);
   }
 
   /**
@@ -430,6 +482,7 @@ export class InvitationService {
   /**
    * Add a user to a Clerk organization so their session JWT includes org context.
    * Called after invitation acceptance so the user can access org-scoped routes.
+   * Handles the case where the user was already added via the Clerk org invitation ticket.
    */
   private async addUserToClerkOrg(
     clerkUserId: string,
@@ -444,13 +497,25 @@ export class InvitationService {
 
     const clerkRole = role === 'admin' ? 'org:admin' : 'org:member';
 
-    await clerk.organizations.createOrganizationMembership({
-      organizationId: clerkOrgId,
-      userId: clerkUserId,
-      role: clerkRole,
-    });
-    this.logger.log(
-      `Added user ${clerkUserId} to Clerk org ${clerkOrgId} as ${clerkRole}`,
-    );
+    try {
+      await clerk.organizations.createOrganizationMembership({
+        organizationId: clerkOrgId,
+        userId: clerkUserId,
+        role: clerkRole,
+      });
+      this.logger.log(
+        `Added user ${clerkUserId} to Clerk org ${clerkOrgId} as ${clerkRole}`,
+      );
+    } catch (err: any) {
+      // Org invitation ticket may have already added the user — not an error
+      const code = err?.errors?.[0]?.code ?? err?.clerkError?.errors?.[0]?.code ?? '';
+      if (code === 'already_a_member_in_organization' || err?.status === 422) {
+        this.logger.log(
+          `User ${clerkUserId} already a Clerk org member — skipping addUserToClerkOrg`,
+        );
+        return;
+      }
+      throw err;
+    }
   }
 }
