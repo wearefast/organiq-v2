@@ -59,3 +59,7 @@ jobs:
               --env-file /opt/organiq/.env \
               -p 3002:3002 \
               ${{ secrets.ECR_REGISTRY }}/${{ env.ECR_REPOSITORY }}:latest
+            echo "Waiting for container to be ready..."
+            sleep 10
+            docker exec organiq-server npx drizzle-kit migrate
+            echo "Migrations complete"
