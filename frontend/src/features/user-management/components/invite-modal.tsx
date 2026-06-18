@@ -26,6 +26,8 @@ export function InviteModal({ orgId, onClose, onSubmit }: InviteModalProps) {
   // Access selector state (only used when role = 'user')
   const [workspaces, setWorkspaces] = useState<WorkspaceBasic[]>([]);
   const [projectsByWs, setProjectsByWs] = useState<Record<string, ProjectBasic[]>>({});
+  // Maps projectId -> workspaceId so project grants can include both IDs
+  const [projectWsMap, setProjectWsMap] = useState<Record<string, string>>({});
   const [expanded, setExpanded] = useState<Set<string>>(new Set());
   const [orgWide, setOrgWide] = useState(false);
   const [selectedWs, setSelectedWs] = useState<Set<string>>(new Set());
@@ -60,6 +62,12 @@ export function InviteModal({ orgId, onClose, onSubmit }: InviteModalProps) {
       try {
         const ps = await getProjectsForWorkspace(wsId);
         setProjectsByWs((prev) => ({ ...prev, [wsId]: ps }));
+        // Record wsId for every project so grants can include workspaceId
+        setProjectWsMap((prev) => {
+          const next = { ...prev };
+          for (const p of ps) next[p.id] = wsId;
+          return next;
+        });
       } catch {
         setProjectsByWs((prev) => ({ ...prev, [wsId]: [] }));
       }
@@ -81,7 +89,8 @@ export function InviteModal({ orgId, onClose, onSubmit }: InviteModalProps) {
             accessGrants.push({ type: 'workspace', workspaceId: wsId });
           }
           for (const pId of selectedProjects) {
-            accessGrants.push({ type: 'project', projectId: pId });
+            const wsId = projectWsMap[pId];
+            if (wsId) accessGrants.push({ type: 'project', workspaceId: wsId, projectId: pId });
           }
         }
       }
