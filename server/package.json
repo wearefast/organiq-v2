@@ -23,6 +23,7 @@
   },
   "dependencies": {
     "@anthropic-ai/sdk": "^0.96.0",
+    "@clerk/backend": "^3.8.0",
     "@nestjs/bullmq": "^10.1.0",
     "@nestjs/common": "^10.3.0",
     "@nestjs/config": "^3.2.0",

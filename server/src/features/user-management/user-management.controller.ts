@@ -105,7 +105,13 @@ export class UserManagementController {
   @UseGuards(AdminOnlyGuard)
   @Throttle({ default: { limit: 10, ttl: 60_000 } })
   createInvitation(@Body() dto: CreateInvitationDto, @Req() req: any) {
-    return this.invitationService.create(req.org.id, req.member.id, dto);
+    return this.invitationService.create(
+      req.org.id,
+      req.org.clerkOrgId,
+      req.member.id,
+      req.user.clerkUserId,
+      dto,
+    );
   }
 
   /** Revoke a pending invitation */
