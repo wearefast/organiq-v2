@@ -33,6 +33,8 @@ export function AccessEditorModal({
   const [workspaces, setWorkspaces] = useState<WorkspaceBasic[]>([]);
   const [projectsByWs, setProjectsByWs] = useState<Record<string, ProjectBasic[]>>({});
   const [expanded, setExpanded] = useState<Set<string>>(new Set());
+  // Maps projectId -> workspaceId so project grants can include both IDs
+  const [projectWsMap, setProjectWsMap] = useState<Record<string, string>>({});
   const [loadingData, setLoadingData] = useState(true);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -79,6 +81,10 @@ export function AccessEditorModal({
         );
         if (!active) return;
         setProjectsByWs(Object.fromEntries(entries));
+        // Build projectId -> workspaceId map from pre-loaded projects
+        const pwMap: Record<string, string> = {};
+        for (const [wsId, ps] of entries) for (const p of ps) pwMap[p.id] = wsId;
+        setProjectWsMap(pwMap);
         setExpanded(new Set(toLoad.map((ws) => ws.id)));
       } catch (err) {
         if (active) setError(err instanceof Error ? err.message : 'Failed to load workspaces');
@@ -108,6 +114,12 @@ export function AccessEditorModal({
       try {
         const ps = await getProjectsForWorkspace(wsId);
         setProjectsByWs((prev) => ({ ...prev, [wsId]: ps }));
+        // Record wsId for every newly loaded project
+        setProjectWsMap((prev) => {
+          const next = { ...prev };
+          for (const p of ps) next[p.id] = wsId;
+          return next;
+        });
       } catch {
         setProjectsByWs((prev) => ({ ...prev, [wsId]: [] }));
       }
@@ -126,7 +138,8 @@ export function AccessEditorModal({
           grants.push({ type: 'workspace', workspaceId: wsId });
         }
         for (const pId of selectedProjects) {
-          grants.push({ type: 'project', projectId: pId });
+          const wsId = projectWsMap[pId];
+          if (wsId) grants.push({ type: 'project', workspaceId: wsId, projectId: pId });
         }
       }
       await updateMemberAccess(orgId, memberId, grants);
