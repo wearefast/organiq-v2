@@ -204,17 +204,19 @@ export default function InvitePage() {
                   Sign in to accept this invitation
                 </p>
                 <button
-                  onClick={() =>
-                    router.push(`/login?redirect_url=/invite/${params.token}`)
-                  }
+                  onClick={() => {
+                    sessionStorage.setItem('pendingInviteToken', params.token);
+                    router.push(`/login?redirect_url=/invite/${params.token}`);
+                  }}
                   className="w-full rounded-lg bg-zinc-100 py-2.5 text-sm font-semibold text-zinc-900 hover:bg-white"
                 >
                   Sign In
                 </button>
                 <button
-                  onClick={() =>
-                    router.push(`/sign-up?redirect_url=/invite/${params.token}`)
-                  }
+                  onClick={() => {
+                    sessionStorage.setItem('pendingInviteToken', params.token);
+                    router.push(`/sign-up?redirect_url=/invite/${params.token}`);
+                  }}
                   className="w-full rounded-lg border border-zinc-700 py-2.5 text-sm font-medium text-zinc-300 hover:bg-zinc-800"
                 >
                   Create Account
