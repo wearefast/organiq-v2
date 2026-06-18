@@ -55,11 +55,6 @@ export default function InvitePage() {
 
   async function handleAccept() {
     if (!user) return;
-    const email = user.primaryEmailAddress?.emailAddress;
-    if (!email) {
-      setAcceptError('Your account has no verified email address.');
-      return;
-    }
 
     setAccepting(true);
     setAcceptError(null);
@@ -74,7 +69,7 @@ export default function InvitePage() {
           'Content-Type': 'application/json',
           'Authorization': `Bearer ${token}`,
         },
-        body: JSON.stringify({ email }),
+        body: JSON.stringify({}),
       });
       if (!res.ok) {
         const body = await res.json().catch(() => ({}));
