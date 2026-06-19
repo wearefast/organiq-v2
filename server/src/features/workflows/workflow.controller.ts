@@ -1,4 +1,4 @@
-import { Controller, Get, Post, Patch, Query, Param, Body, UseGuards, Req } from '@nestjs/common';
+import { Controller, Get, Post, Patch, Delete, Query, Param, Body, UseGuards, Req } from '@nestjs/common';
 import { ApiTags, ApiBearerAuth } from '@nestjs/swagger';
 import { Throttle } from '@nestjs/throttler';
 import { WorkflowService } from './workflow.service';
@@ -164,5 +164,10 @@ export class WorkflowController {
     @Body() body: { data: Record<string, unknown> },
   ) {
     return this.workflowService.updateArtifact(runId, stepKey, body.data);
+  }
+
+  @Delete(':id')
+  async deleteRun(@Param('id') id: string) {
+    return this.workflowService.deleteRun(id);
   }
 }

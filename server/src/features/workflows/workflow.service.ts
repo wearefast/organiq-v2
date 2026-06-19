@@ -757,4 +757,21 @@ export class WorkflowService implements OnModuleInit, OnApplicationBootstrap {
     this.logger.log(`Updated artifact for step "${stepKey}" (v${newVersion})`);
     return { id: inserted.id, version: newVersion };
   }
+
+  /**
+   * Delete a workflow run and all its cascaded records (steps, artifacts,
+   * tool-calls, approvals, context). Keywords / topical maps / content /
+   * reports that reference this run have their workflowRunId set to NULL
+   * (SET NULL FK) — they are not deleted.
+   */
+  async deleteRun(runId: string) {
+    const run = await this.db.db.query.workflowRuns.findFirst({
+      where: eq(workflowRuns.id, runId),
+    });
+    if (!run) throw new NotFoundException('Workflow run not found');
+
+    await this.db.db.delete(workflowRuns).where(eq(workflowRuns.id, runId));
+    this.logger.log(`Deleted workflow run ${runId}`);
+    return { deleted: runId };
+  }
 }
