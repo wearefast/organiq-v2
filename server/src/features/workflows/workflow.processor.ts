@@ -494,16 +494,21 @@ export class WorkflowProcessor extends WorkerHost {
         });
       }
 
-      // Mark step as failed
-      await this.db.db
-        .update(workflowSteps)
-        .set({ status: 'failed', error: message, updatedAt: new Date() })
-        .where(
-          and(
-            eq(workflowSteps.workflowRunId, workflowRunId),
-            eq(workflowSteps.stepKey, stepKey),
-          ),
-        );
+      // Only mark the step as 'failed' on the FINAL BullMQ retry attempt.
+      // During earlier retries the step remains 'running' in the DB, which prevents
+      // the frontend from showing a false-positive "stuck" banner while BullMQ is
+      // still actively retrying the job.
+      if (isFinalAttempt) {
+        await this.db.db
+          .update(workflowSteps)
+          .set({ status: 'failed', error: message, updatedAt: new Date() })
+          .where(
+            and(
+              eq(workflowSteps.workflowRunId, workflowRunId),
+              eq(workflowSteps.stepKey, stepKey),
+            ),
+          );
+      }
 
       // On final attempt: check if the run is now unrecoverable (no pending steps
       // can ever become runnable because they all transitively depend on this failed step).
