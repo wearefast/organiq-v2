@@ -259,6 +259,21 @@ server {
         proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
         proxy_set_header X-Forwarded-Proto $scheme;
         proxy_cache_bypass $http_upgrade;
+
+        # Intercept 502/503/504 so we can inject CORS headers.
+        # Without this, nginx's own error responses have no CORS headers and the
+        # browser throws "Failed to fetch" instead of showing a real error message.
+        proxy_intercept_errors on;
+        error_page 502 503 504 = @gateway_error;
+    }
+
+    # Named location returns a JSON 503 with CORS headers during deploys / restarts.
+    location @gateway_error {
+        add_header 'Access-Control-Allow-Origin' 'https://app.rankorganiq.com' always;
+        add_header 'Access-Control-Allow-Methods' 'GET, POST, PUT, PATCH, DELETE, OPTIONS' always;
+        add_header 'Access-Control-Allow-Headers' 'Authorization, Content-Type' always;
+        add_header 'Content-Type' 'application/json' always;
+        return 503 '{"message":"Service temporarily unavailable — please try again in a moment","statusCode":503}';
     }
 }
 ```

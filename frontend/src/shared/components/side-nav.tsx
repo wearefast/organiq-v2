@@ -21,6 +21,7 @@ import { cn } from '@/shared/utils/cn';
 import { useBusinessProfileReady } from '@/features/projects/hooks/use-business-profile-ready';
 import { useOrganization } from '@clerk/nextjs';
 import { useUser } from '@clerk/nextjs';
+import { WorkspaceDropdown } from './workspace-dropdown';
 
 function isSuperAdmin(clerkUserId: string | undefined | null): boolean {
   if (!clerkUserId) return false;
@@ -49,9 +50,7 @@ interface NavItem {
 
 // ─── Top-level nav ────────────────────────────────────────────
 
-const NAV_ITEMS: NavItem[] = [
-  { href: '/workspaces', icon: LayoutGrid, label: 'Workspaces' },
-];
+const NAV_ITEMS: NavItem[] = [];
 
 // BOTTOM_ITEMS is now computed inside SideNav to support role-based visibility
 const BOTTOM_ITEMS_BASE: NavItem[] = [
@@ -226,6 +225,7 @@ export function SideNav() {
   return (
     <aside className="group fixed left-0 top-topbar z-40 flex h-[calc(100vh-48px)] w-sidenav flex-col border-r border-zinc-800 bg-sidebar transition-[width] duration-200 hover:w-sidenav-expanded">
       <nav className="flex flex-1 flex-col gap-1 overflow-y-auto px-2 pt-3">
+        <WorkspaceDropdown />
         {NAV_ITEMS.map((item) => (
           <NavLink key={item.href} item={item} pathname={pathname} />
         ))}

@@ -1,4 +1,4 @@
-import { Injectable, Logger, NotFoundException, BadRequestException, OnModuleInit, OnApplicationBootstrap } from '@nestjs/common';
+import { Injectable, Logger, NotFoundException, BadRequestException, InternalServerErrorException, OnModuleInit, OnApplicationBootstrap } from '@nestjs/common';
 import { InjectQueue } from '@nestjs/bullmq';
 import { Queue } from 'bullmq';
 import { eq, and, inArray, asc, or } from 'drizzle-orm';
@@ -345,7 +345,20 @@ export class WorkflowService implements OnModuleInit, OnApplicationBootstrap {
     await this.setContext(runId, 'business-profile', project.businessProfile);
 
     // Enqueue the first step(s) — those with no dependencies
-    await this.enqueuePendingSteps(runId);
+    const enqueued = await this.enqueuePendingSteps(runId);
+
+    // If nothing was enqueued (e.g. Redis/BullMQ temporarily unavailable), roll the
+    // run back to 'draft' so the user can retry cleanly without ending up with a
+    // run that is forever stuck in 'running' with all steps 'pending'.
+    if (enqueued.length === 0) {
+      await this.db.db
+        .update(workflowRuns)
+        .set({ status: 'draft', startedAt: null, updatedAt: new Date() })
+        .where(eq(workflowRuns.id, runId));
+      throw new InternalServerErrorException(
+        'Failed to start workflow: job queue is temporarily unavailable. Please try again in a moment.',
+      );
+    }
 
     return updated;
   }
