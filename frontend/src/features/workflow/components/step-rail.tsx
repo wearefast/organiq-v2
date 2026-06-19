@@ -31,9 +31,10 @@ interface StepRailProps {
   steps: WorkflowStep[];
   activeStepKey: string | null;
   onStepClick: (stepKey: string) => void;
+  stepPhases?: Record<string, 'pipeline' | 'agent'>;
 }
 
-export function StepRail({ steps, activeStepKey, onStepClick }: StepRailProps) {
+export function StepRail({ steps, activeStepKey, onStepClick, stepPhases = {} }: StepRailProps) {
   const stepsByKey = new Map(steps.map((s) => [s.stepKey, s]));
 
   // Group definitions by phase
@@ -129,6 +130,11 @@ export function StepRail({ steps, activeStepKey, onStepClick }: StepRailProps) {
                         {def.label}
                       </span>
                     </div>
+                    {status === 'running' && stepPhases[def.key] && (
+                      <p className="mt-0.5 text-[10px] text-blue-400/80">
+                        {stepPhases[def.key] === 'pipeline' ? 'Fetching data…' : 'AI analyzing…'}
+                      </p>
+                    )}
                   </div>
                 </button>
               );

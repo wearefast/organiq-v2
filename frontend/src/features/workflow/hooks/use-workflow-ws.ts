@@ -14,6 +14,7 @@ export type StepEvent =
   | { type: 'step:rejected'; stepKey: string }
   | { type: 'step:rerun'; stepKey: string; cascadeReset: string[] }
   | { type: 'step:error'; stepKey: string; error: string }
+  | { type: 'step:phase'; stepKey: string; phase: 'pipeline' | 'agent' }
   | { type: 'workflow:completed'; workflowRunId: string };
 
 interface UseWorkflowWsOptions {
@@ -70,6 +71,7 @@ export function useWorkflowWs({ workflowRunId, token, onEvent }: UseWorkflowWsOp
       'step:rejected',
       'step:rerun',
       'step:error',
+      'step:phase',
       'workflow:completed',
     ] as const;
 
