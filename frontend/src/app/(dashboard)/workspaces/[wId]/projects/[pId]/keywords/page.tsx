@@ -168,7 +168,7 @@ export default function KeywordsPage() {
           <p className="text-sm text-zinc-500">No keywords yet. Run the workflow to discover keywords.</p>
         </div>
       ) : (
-        <div className="overflow-hidden rounded-lg border border-zinc-800">
+        <div data-tour="keywords-table" className="overflow-hidden rounded-lg border border-zinc-800">
           <table className="w-full text-sm">
             <thead>
               <tr className="border-b border-zinc-800 bg-zinc-900/80">

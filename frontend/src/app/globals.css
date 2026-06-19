@@ -1,3 +1,6 @@
+/* Driver.js tour — import here so Next.js bundles it reliably at build time */
+@import 'driver.js/dist/driver.css';
+
 @tailwind base;
 @tailwind components;
 @tailwind utilities;
@@ -187,6 +190,12 @@
 [data-theme="light"] .text-blue-400   { color: #2563eb; }
 [data-theme="light"] .text-green-300  { color: #15803d; }
 [data-theme="light"] .text-green-400  { color: #16a34a; }
+
+/* ── Driver.js tour — z-index above all app chrome ───────────────────────────
+   Sidebar is z-40 (40), Topbar is z-50 (50), TourProgress badge is z-[9999].
+   Override Driver.js defaults here so they're always on top.                  */
+.driver-overlay { z-index: 10000 !important; }
+.driver-popover { z-index: 10001 !important; }
 [data-theme="light"] .text-emerald-400 { color: #059669; }
 [data-theme="light"] .text-amber-400  { color: #b45309; }
 [data-theme="light"] .text-violet-400 { color: #7c3aed; }

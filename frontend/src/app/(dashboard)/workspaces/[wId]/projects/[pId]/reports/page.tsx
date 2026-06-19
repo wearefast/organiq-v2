@@ -224,7 +224,7 @@ export default function ReportsPage() {
           <p className="text-xs text-zinc-500">Generate your first report from a completed workflow run</p>
         </div>
       ) : (
-        <div className="space-y-3">
+        <div data-tour="reports-list" className="space-y-3">
           {reports.map((report) => {
             const meta = REPORT_TYPE_META[report.type];
             const Icon = meta.icon;

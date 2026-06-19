@@ -6,6 +6,7 @@ import { SideNav } from '@/shared/components/side-nav';
 import { CommandPalette } from '@/shared/components/command-palette';
 import { AuthSync } from '@/shared/components/auth-sync';
 import { ThemeProvider } from '@/shared/hooks/use-theme';
+import { TourProvider, TourProgress } from '@/features/tour';
 
 export default function DashboardLayout({ children }: { children: React.ReactNode }) {
   const [commandPaletteOpen, setCommandPaletteOpen] = useState(false);
@@ -26,13 +27,16 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
 
   return (
     <ThemeProvider>
-      <AuthSync />
-      <TopBar onCommandPalette={openPalette} />
-      <SideNav />
-      <main className="ml-sidenav mt-topbar min-h-[calc(100vh-48px)] bg-content p-6">
-        {children}
-      </main>
-      <CommandPalette open={commandPaletteOpen} onClose={closePalette} />
+      <TourProvider>
+        <AuthSync />
+        <TopBar onCommandPalette={openPalette} />
+        <SideNav />
+        <main className="ml-sidenav mt-topbar min-h-[calc(100vh-48px)] bg-content p-6">
+          {children}
+        </main>
+        <CommandPalette open={commandPaletteOpen} onClose={closePalette} />
+        <TourProgress />
+      </TourProvider>
     </ThemeProvider>
   );
 }

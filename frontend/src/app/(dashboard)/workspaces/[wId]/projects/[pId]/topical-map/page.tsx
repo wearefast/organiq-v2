@@ -188,7 +188,7 @@ export default function TopicalMapPage() {
 
       {/* Tree View */}
       {view === 'tree' && (
-        <div className="space-y-2">
+        <div data-tour="topical-map" className="space-y-2">
           {pillars.map((pillar) => {
             const isExpanded = expandedPillar === pillar.id;
             const clusterCount = pillar.clusters?.length ?? 0;

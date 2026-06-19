@@ -398,8 +398,7 @@ export default function LlmAuditPage() {
           </p>
         </div>
       ) : (
-        <div className="space-y-4">
-          {/* Score banner */}
+        <div data-tour="audit-results" className="space-y-4">
           <div className="rounded-lg border border-zinc-800 bg-zinc-900 p-5 flex items-center gap-6">
             <div className="text-center shrink-0">
               <div className={`text-5xl font-bold tabular-nums ${getScoreColor(audit.overallScore)}`}>

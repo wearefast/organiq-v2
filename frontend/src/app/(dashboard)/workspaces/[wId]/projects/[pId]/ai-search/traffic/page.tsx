@@ -18,6 +18,7 @@ import {
 } from 'recharts';
 import { Bot, TrendingUp, Globe, Code } from 'lucide-react';
 import { API_URL } from '@/shared/utils/api';
+import { ComingSoonOverlay } from '@/shared/components/ComingSoonOverlay';
 import {
   TrafficOverview,
   EngineInfo,
@@ -82,7 +83,8 @@ export default function TrafficDashboardPage() {
   }
 
   return (
-    <div className="space-y-6">
+    <ComingSoonOverlay>
+      <div className="space-y-6">
       {/* Header */}
       <div className="flex items-center justify-between">
         <div>
@@ -132,7 +134,7 @@ export default function TrafficDashboardPage() {
       </div>
 
       {/* Charts row */}
-      <div className="grid grid-cols-2 gap-4">
+      <div data-tour="traffic-chart" className="grid grid-cols-2 gap-4">
         {/* Daily trend (area chart) */}
         <div className="rounded-lg border border-zinc-800 bg-zinc-900 p-4">
           <h3 className="mb-3 text-xs font-medium text-zinc-400">Daily Sessions</h3>
@@ -202,6 +204,7 @@ export default function TrafficDashboardPage() {
         </ResponsiveContainer>
       </div>
     </div>
+    </ComingSoonOverlay>
   );
 }
 

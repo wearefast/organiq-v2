@@ -1,18 +1,19 @@
 'use client';
 
 import Image from 'next/image';
+import Link from 'next/link';
 import { UserButton, useOrganization } from '@clerk/nextjs';
-import { Command, Sun, Moon } from 'lucide-react';
-import { useTheme } from '@/shared/hooks/use-theme';
+import { Command, HelpCircle, MapPin } from 'lucide-react';
 import { NotificationBell } from '@/shared/components/notification-bell';
+import { useTour } from '@/features/tour';
 
 interface TopBarProps {
   onCommandPalette?: () => void;
 }
 
 export function TopBar({ onCommandPalette }: TopBarProps) {
-  const { theme, toggleTheme } = useTheme();
   const { organization } = useOrganization();
+  const { startTour } = useTour();
 
   return (
     <header className="fixed top-0 z-50 flex h-topbar w-full items-center border-b border-zinc-800 bg-shell px-4">
@@ -39,13 +40,22 @@ export function TopBar({ onCommandPalette }: TopBarProps) {
       {/* Notifications */}
       <NotificationBell organizationId={organization?.id} />
 
-      {/* Theme toggle */}
-      <button
-        onClick={toggleTheme}
+      {/* Help */}
+      <Link
+        href="/help"
         className="mr-3 flex h-8 w-8 items-center justify-center rounded-md text-zinc-400 transition-colors hover:bg-zinc-800 hover:text-zinc-200"
-        title={theme === 'dark' ? 'Switch to light mode' : 'Switch to dark mode'}
+        title="Help Center"
       >
-        {theme === 'dark' ? <Sun className="h-4 w-4" /> : <Moon className="h-4 w-4" />}
+        <HelpCircle className="h-4 w-4" />
+      </Link>
+
+      {/* Take a product tour */}
+      <button
+        onClick={startTour}
+        className="mr-3 flex h-8 w-8 items-center justify-center rounded-md text-zinc-400 transition-colors hover:bg-zinc-800 hover:text-zinc-200"
+        title="Take a product tour"
+      >
+        <MapPin className="h-4 w-4" />
       </button>
 
       {/* User menu */}

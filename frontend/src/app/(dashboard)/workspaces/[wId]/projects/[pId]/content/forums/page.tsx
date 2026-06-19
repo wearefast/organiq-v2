@@ -282,7 +282,7 @@ export default function ForumsPage() {
           </p>
         </div>
       ) : (
-        <div className="space-y-3">
+        <div data-tour="forum-opportunities" className="space-y-3">
           {opportunities.map((opp) => (
             <div
               key={opp.id}

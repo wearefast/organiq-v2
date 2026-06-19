@@ -150,9 +150,11 @@ export default function OverviewPage() {
         </div>
       )}
 
-      <RefreshSuggestionsCard projectId={params.pId} />
+      <div data-tour="refresh-card">
+        <RefreshSuggestionsCard projectId={params.pId} />
+      </div>
 
-      <div className="rounded-[24px] border border-zinc-800 bg-zinc-900/50">
+      <div data-tour="business-profile" className="rounded-[24px] border border-zinc-800 bg-zinc-900/50">
         <div className="flex items-center justify-between border-b border-zinc-800 px-6 py-4">
           <div>
             <h2 className="text-sm font-semibold text-zinc-100">Business Profile</h2>

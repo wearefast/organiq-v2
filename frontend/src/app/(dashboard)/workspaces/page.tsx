@@ -3,6 +3,7 @@
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
 import { useAuth, useClerk, useOrganizationList } from '@clerk/nextjs';
+import { TourAutoStarter } from '@/features/tour';
 import { useEffect, useState } from 'react';
 import { apiFetch, setAuthToken } from '@/shared/utils/api';
 
@@ -129,12 +130,13 @@ export default function WorkspacesPage() {
 
   return (
     <div className="space-y-6">
+      <TourAutoStarter workspaceCount={loading || error !== null ? null : workspaces.length} />
         <div className="flex items-center justify-between">
         <div>
           <h1 className="text-page-title text-zinc-100">Workspaces</h1>
           <p className="mt-1 text-sm text-zinc-500">Manage your client workspaces and their projects.</p>
         </div>
-        <button className="btn-primary disabled:cursor-not-allowed disabled:opacity-50" onClick={() => { void handlePrimaryAction(); }} disabled={submitting}>
+        <button data-tour="new-workspace-btn" className="btn-primary disabled:cursor-not-allowed disabled:opacity-50" onClick={() => { void handlePrimaryAction(); }} disabled={submitting}>
           {orgId ? (showForm ? 'Cancel' : 'New Workspace') : 'Set Up Organization'}
         </button>
       </div>

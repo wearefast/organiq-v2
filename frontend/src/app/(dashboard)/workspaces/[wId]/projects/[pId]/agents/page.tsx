@@ -1,6 +1,7 @@
 'use client';
 
 import { useParams } from 'next/navigation';
+import { ComingSoonOverlay } from '@/shared/components/ComingSoonOverlay';
 import { AgentChat } from '@/features/agents/components/AgentChat';
 
 export default function AgentsPage() {
@@ -8,8 +9,10 @@ export default function AgentsPage() {
   const projectId = params.pId as string;
 
   return (
-    <div className="h-[calc(100vh-64px)]">
-      <AgentChat projectId={projectId} />
-    </div>
+    <ComingSoonOverlay>
+      <div data-tour="agent-chat" className="h-[calc(100vh-64px)]">
+        <AgentChat projectId={projectId} />
+      </div>
+    </ComingSoonOverlay>
   );
 }

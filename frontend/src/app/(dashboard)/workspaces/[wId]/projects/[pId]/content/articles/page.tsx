@@ -154,7 +154,7 @@ export default function ArticlesPage() {
 
       {/* Content List + Detail Split */}
       <div className="grid grid-cols-1 gap-6 lg:grid-cols-5">
-        <div className={`space-y-2 ${selected ? 'lg:col-span-2' : 'lg:col-span-5'}`}>
+        <div data-tour="articles-list" className={`space-y-2 ${selected ? 'lg:col-span-2' : 'lg:col-span-5'}`}>
           {filtered.length === 0 ? (
             <div className="rounded-lg border border-zinc-700 bg-zinc-800/30 p-8 text-center">
               <p className="text-zinc-400">No content pieces yet.</p>
