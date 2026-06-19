@@ -356,11 +356,16 @@ export class AgentRuntime {
 
     // Main system prompt — cacheable (same prompt reused across agentic loop iterations,
     // and Anthropic's 5-min cache means sequential steps in a workflow run share the cache).
-    blocks.push({
-      type: 'text',
-      text: config.systemPrompt,
-      cache_control: { type: 'ephemeral' },
-    });
+    // Guard: Anthropic rejects cache_control on empty text blocks, so skip if no system prompt.
+    if (config.systemPrompt) {
+      blocks.push({
+        type: 'text',
+        text: config.systemPrompt,
+        cache_control: { type: 'ephemeral' },
+      });
+    } else {
+      this.logger.warn(`[run:${config.workflowRunId} step:${config.stepKey}] systemPrompt is empty — skipping cacheable system block`);
+    }
 
     // Project intelligence context — cacheable (identical across all steps in a run;
     // changes only when a new step writes to PIS, which is rare mid-run).
