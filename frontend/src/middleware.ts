@@ -1,32 +1,26 @@
-import { clerkMiddleware, createRouteMatcher } from '@clerk/nextjs/server';
-import { NextResponse } from 'next/server';
+// MAINTENANCE MODE — all traffic is redirected to /maintenance.
+// This file lives on the `maintenance` branch only.
+// DO NOT merge into main or master.
+import { NextRequest, NextResponse } from 'next/server';
 
-const isPublicRoute = createRouteMatcher([
-  '/',
-  '/audit(.*)',
-  '/login(.*)',
-  '/sign-in(.*)',
-  '/sign-up(.*)',
-  '/onboarding(.*)',
-  '/auth/(.*)',
-  '/invite/(.*)',
-  '/api/webhooks(.*)',
-]);
+const MAINTENANCE_PATH = '/maintenance';
 
-export default clerkMiddleware(async (auth, req) => {
-  if (req.nextUrl.pathname === '/audit') {
-    return NextResponse.redirect(new URL('/workspaces', req.url));
+export function middleware(req: NextRequest) {
+  const { pathname } = req.nextUrl;
+
+  // Allow the maintenance page itself and its static assets through.
+  if (
+    pathname === MAINTENANCE_PATH ||
+    pathname.startsWith('/_next/') ||
+    pathname.startsWith('/favicon')
+  ) {
+    return NextResponse.next();
   }
 
-  const { userId } = await auth();
-
-  if (!userId && !isPublicRoute(req)) {
-    const loginUrl = new URL('/login', req.url);
-    loginUrl.searchParams.set('redirect_url', `${req.nextUrl.pathname}${req.nextUrl.search}`);
-    return NextResponse.redirect(loginUrl);
-  }
-});
+  // Redirect everything else — authenticated or not — to the maintenance page.
+  return NextResponse.redirect(new URL(MAINTENANCE_PATH, req.url));
+}
 
 export const config = {
-  matcher: ['/((?!.*\\..*|_next).*)', '/', '/(api|trpc)(.*)', '/__clerk/(.*)'],
+  matcher: ['/((?!_next/static|_next/image|favicon\\.ico).*)'],
 };
