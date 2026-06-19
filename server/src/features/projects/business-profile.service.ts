@@ -122,13 +122,17 @@ export class BusinessProfileService {
               this.ahrefs.getDomainRating(domain),
               this.ahrefs.getBacklinksStats(domain),
             ]);
-            const dr = drData as Record<string, unknown>;
-            const bl = backlinkData as Record<string, unknown>;
+            // Ahrefs v3 domain-rating: { domain_rating: { domain_rating: float, ahrefs_rank: int } }
+            const drObj = ((drData as Record<string, unknown>)?.domain_rating) as Record<string, unknown> | undefined;
+            // Ahrefs v3 backlinks-stats: { metrics: { live: int, live_refdomains: int, all_time: int, all_time_refdomains: int } }
+            const blMetrics = ((backlinkData as Record<string, unknown>)?.metrics) as Record<string, unknown> | undefined;
             return {
               domainAuthority: {
-                domain_rating: dr?.domainRating ?? null,
-                referring_domains: bl?.liveRefDomains ?? null,
-                backlinks: bl?.live ?? null,
+                domain_rating: drObj?.domain_rating != null ? Math.round(Number(drObj.domain_rating)) : null,
+                ahrefs_rank: drObj?.ahrefs_rank != null ? Number(drObj.ahrefs_rank) : null,
+                referring_domains: blMetrics?.live_refdomains != null ? Number(blMetrics.live_refdomains) : null,
+                backlinks: blMetrics?.live != null ? Number(blMetrics.live) : null,
+                backlinks_all_time: blMetrics?.all_time != null ? Number(blMetrics.all_time) : null,
                 data_source: 'ahrefs',
               },
             };
