@@ -83,8 +83,9 @@ export class PromptVisibilityService {
       })
       .returning();
 
-    // Run the first check immediately so "Last Checked" is not stuck on "Never"
-    await this.queue.add('check-single', { promptId: row.id }, { delay: 0 });
+    // Run the first check immediately so "Last Checked" is not stuck on "Never".
+    // force=true so the check always runs regardless of isActive edge cases.
+    await this.queue.add('check-single', { promptId: row.id, force: true }, { delay: 0 });
     this.logger.log(`Queued initial visibility check for prompt ${row.id}`);
 
     return row;
