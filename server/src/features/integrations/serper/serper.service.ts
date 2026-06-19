@@ -44,7 +44,8 @@ export class SerperService {
   private async post(endpoint: string, body: Record<string, unknown>): Promise<unknown> {
     if (!this.apiKey) throw new Error('SERPER_API_KEY is not configured');
 
-    this.logger.debug(`Serper API: POST ${endpoint} (q=${body.q})`);
+    this.logger.log(`Serper → POST ${endpoint} q="${String(body.q ?? '').slice(0, 80)}" gl=${body.gl}`);
+    const reqStart = Date.now();
 
     return withRetry(
       async () => {
@@ -58,12 +59,15 @@ export class SerperService {
           signal: AbortSignal.timeout(30_000),
         });
 
+        const durationMs = Date.now() - reqStart;
+
         if (!response.ok) {
           const text = await response.text();
-          this.logger.error(`Serper API error: ${response.status} - ${text}`);
+          this.logger.error(`Serper ✗ POST ${endpoint} q="${body.q}" status=${response.status} duration=${durationMs}ms body=${text.slice(0, 300)}`);
           throw new Error(`Serper API error: ${response.status} - ${text}`);
         }
 
+        this.logger.log(`Serper ✓ POST ${endpoint} duration=${durationMs}ms`);
         return response.json();
       },
       { label: `Serper POST ${endpoint}` },

@@ -3,6 +3,7 @@ import { AnthropicService, AnthropicToolDef } from '../features/integrations/ant
 import { ToolSandbox } from './tool.sandbox';
 import { ToolRegistry } from './tool.registry';
 import { ProjectIntelligenceService } from '../features/projects/project-intelligence.service';
+import { WorkflowLogger, summarizeToolInput } from '../shared/utils/workflow-logger';
 
 // ─── Public Interfaces ───────────────────────────────────────
 
@@ -144,13 +145,25 @@ export class AgentRuntime {
       { role: 'user', content: this.buildUserMessage(config) },
     ];
 
-    this.logger.log(`AgentRuntime: starting ${config.stepKey} (model=${model}, tools=${tools.length}, maxIter=${maxIterations})`);
+    // Estimate context size in tokens (~4 chars/token) for observability
+    const ctxTokenEst = Math.round(this.buildUserMessage(config).length / 4);
+
+    // Use WorkflowLogger if we have a run context; fall back to plain logger otherwise
+    const wl = config.workflowRunId
+      ? new WorkflowLogger(this.logger, config.workflowRunId, config.stepKey)
+      : null;
+
+    wl?.agentStart(model, tools.length, maxIterations, ctxTokenEst);
+    if (!wl) this.logger.log(`AgentRuntime: starting ${config.stepKey} (model=${model}, tools=${tools.length}, maxIter=${maxIterations})`);
+
+    const agentStartMs = Date.now();
 
     // ─── Agentic Loop ──────────────────────────────────────────
 
     try {
       while (iterations < maxIterations) {
         iterations++;
+        const iterStartMs = Date.now();
 
         const response = await this.anthropic.chat({
           model,
@@ -164,14 +177,28 @@ export class AgentRuntime {
           signal: config.signal,
         });
 
+        const iterDurationMs = Date.now() - iterStartMs;
         totalInput += response.usage.inputTokens;
         totalOutput += response.usage.outputTokens;
 
-        // Log cache utilization on first iteration for cost visibility
-        if (iterations === 1 && (response.usage.cacheReadTokens || response.usage.cacheCreationTokens)) {
-          this.logger.log(
-            `AgentRuntime: [${config.stepKey}] cache: ${response.usage.cacheReadTokens ?? 0} read, ${response.usage.cacheCreationTokens ?? 0} created`,
-          );
+        // Per-iteration log with full token breakdown and timing
+        wl?.agentIteration(
+          iterations,
+          maxIterations,
+          response.stopReason,
+          response.usage.inputTokens,
+          response.usage.outputTokens,
+          response.usage.cacheReadTokens ?? 0,
+          response.usage.cacheCreationTokens ?? 0,
+          iterDurationMs,
+        );
+        if (!wl) {
+          // Log cache utilization on first iteration for cost visibility
+          if (iterations === 1 && (response.usage.cacheReadTokens || response.usage.cacheCreationTokens)) {
+            this.logger.log(
+              `AgentRuntime: [${config.stepKey}] cache: ${response.usage.cacheReadTokens ?? 0} read, ${response.usage.cacheCreationTokens ?? 0} created`,
+            );
+          }
         }
 
         // Capture thinking content from first iteration (most relevant)
@@ -209,16 +236,26 @@ export class AgentRuntime {
           if (toolUse.name === 'return_output') {
             capturedOutput = (toolUse.input as any)?.data;
             toolResult = { success: true, result: { acknowledged: true } };
-            this.logger.debug(`AgentRuntime: captured return_output for ${config.stepKey}`);
+            wl?.log(`RETURN_OUTPUT captured`);
+            if (!wl) this.logger.debug(`AgentRuntime: captured return_output for ${config.stepKey}`);
           } else if (toolUse.name === 'flag_stale_data') {
             toolResult = await this.handleFlagStaleData(config, toolUse.input);
           } else {
-            this.logger.log(`AgentRuntime: [${config.stepKey}] iter=${iterations} calling tool=${toolUse.name}`);
+            const toolCallStartMs = Date.now();
+            if (!wl) this.logger.log(`AgentRuntime: [${config.stepKey}] iter=${iterations} calling tool=${toolUse.name}`);
             // Execute via sandbox (validates allowed tools)
             toolResult = await this.toolSandbox.execute(
               config.allowedTools,
               toolUse.name,
               toolUse.input,
+            );
+            const toolDurationMs = Date.now() - toolCallStartMs;
+            wl?.toolCall(
+              toolUse.name,
+              summarizeToolInput(toolUse.input),
+              toolResult.success,
+              toolDurationMs,
+              toolResult.success ? undefined : String(toolResult.error),
             );
           }
 
@@ -266,7 +303,9 @@ export class AgentRuntime {
       }
     } catch (error) {
       const message = error instanceof Error ? error.message : String(error);
-      this.logger.error(`AgentRuntime: ${config.stepKey} failed — ${message}`);
+      const agentDurationMs = Date.now() - agentStartMs;
+      wl?.error(`AGENT_ERROR after ${iterations} iterations, ${agentDurationMs}ms — ${message}`);
+      if (!wl) this.logger.error(`AgentRuntime: ${config.stepKey} failed — ${message}`);
 
       return {
         output: capturedOutput ?? null,
@@ -287,12 +326,17 @@ export class AgentRuntime {
       : 'completed';
 
     if (finishReason === 'max_iterations') {
-      this.logger.warn(`AgentRuntime: ${config.stepKey} hit max iterations (${maxIterations})`);
+      wl?.warn(`MAX_ITERATIONS hit (${maxIterations}) — output may be incomplete`);
+      if (!wl) this.logger.warn(`AgentRuntime: ${config.stepKey} hit max iterations (${maxIterations})`);
     }
 
-    this.logger.log(
-      `AgentRuntime: completed ${config.stepKey} (${iterations} iterations, ${toolCalls.length} tool calls, ${totalInput + totalOutput} tokens)`,
-    );
+    const agentTotalMs = Date.now() - agentStartMs;
+    wl?.agentCompleted(finishReason, iterations, totalInput, totalOutput, toolCalls.length, agentTotalMs);
+    if (!wl) {
+      this.logger.log(
+        `AgentRuntime: completed ${config.stepKey} (${iterations} iterations, ${toolCalls.length} tool calls, ${totalInput + totalOutput} tokens)`,
+      );
+    }
 
     return {
       output: capturedOutput ?? null,

@@ -2,6 +2,7 @@ import { Injectable, Logger, NotFoundException, BadRequestException, InternalSer
 import { InjectQueue } from '@nestjs/bullmq';
 import { Queue } from 'bullmq';
 import { eq, and, inArray, asc, or } from 'drizzle-orm';
+import { Cron } from '@nestjs/schedule';
 import { DatabaseService } from '../../shared/database/database.service';
 import {
   workflowRuns,
@@ -68,6 +69,66 @@ export class WorkflowService implements OnModuleInit, OnApplicationBootstrap {
       await this.reconcileOrphanedRuns();
     } catch (err) {
       this.logger.error(`Startup reconciliation failed: ${(err as Error).message}`);
+    }
+  }
+
+  /**
+   * Watchdog: runs every 5 minutes and auto-resumes any workflow that is stuck.
+   *
+   * Two stuck scenarios handled:
+   * 1. ALL steps are still 'pending' but the run has been 'running' for > 5 min:
+   *    the initial enqueuePendingSteps call must have failed silently after the DB
+   *    transaction committed (e.g. Redis was temporarily unavailable). Re-enqueue now.
+   *
+   * 2. At least one step has been in 'running' state for > 35 min:
+   *    the BullMQ job was lost (server crash, worker restart). resumeRun() resets
+   *    those orphaned steps to 'pending' and re-enqueues eligible ones.
+   */
+  @Cron('*/5 * * * *')
+  async workflowWatchdog(): Promise<void> {
+    let runningRuns: Array<typeof workflowRuns.$inferSelect & { steps: Array<typeof workflowSteps.$inferSelect> }>;
+    try {
+      runningRuns = await this.db.db.query.workflowRuns.findMany({
+        where: eq(workflowRuns.status, 'running'),
+        with: { steps: { columns: { stepKey: true, status: true, startedAt: true } } },
+      }) as typeof runningRuns;
+    } catch (err) {
+      this.logger.error(`Watchdog DB query failed: ${(err as Error).message}`);
+      return;
+    }
+
+    if (runningRuns.length === 0) return;
+
+    const ORPHAN_THRESHOLD_MS = 35 * 60 * 1000; // matches resumeRun's 35-min threshold
+    const ENQUEUE_STUCK_THRESHOLD_MS = 5 * 60 * 1000;
+
+    for (const run of runningRuns) {
+      try {
+        const allPending = run.steps.every((s) => s.status === 'pending');
+        const runAgeMs = run.startedAt ? Date.now() - new Date(run.startedAt).getTime() : 0;
+        const enqueueStuck = allPending && runAgeMs > ENQUEUE_STUCK_THRESHOLD_MS;
+
+        const hasOrphanedStep = run.steps.some(
+          (s) =>
+            s.status === 'running' &&
+            s.startedAt &&
+            Date.now() - new Date(s.startedAt).getTime() > ORPHAN_THRESHOLD_MS,
+        );
+
+        if (enqueueStuck) {
+          this.logger.warn(
+            `Watchdog: run ${run.id.slice(0, 8)} has been running ${Math.round(runAgeMs / 60000)}min with all steps pending — re-enqueueing`,
+          );
+          await this._doEnqueuePendingSteps(run.id);
+        } else if (hasOrphanedStep) {
+          this.logger.warn(
+            `Watchdog: run ${run.id.slice(0, 8)} has a step stuck in running >35min — invoking resumeRun`,
+          );
+          await this.resumeRun(run.id);
+        }
+      } catch (err) {
+        this.logger.error(`Watchdog: failed to recover run ${run.id.slice(0, 8)} — ${(err as Error).message}`);
+      }
     }
   }
 
@@ -410,8 +471,46 @@ export class WorkflowService implements OnModuleInit, OnApplicationBootstrap {
    * Find steps whose dependencies are all completed/approved and enqueue them.
    * Uses a transaction to prevent race conditions on dependency reads.
    * Returns the step keys that were enqueued.
+   *
+   * Redis distributed lock: prevents two concurrent completions (e.g. competitor-metrics
+   * and search-demand finishing within milliseconds of each other) from both reading
+   * phase1-baseline as 'pending' and double-enqueuing it. The lock is per-run so
+   * parallel runs never block each other.
    */
   async enqueuePendingSteps(workflowRunId: string): Promise<string[]> {
+    // Acquire a per-run Redis lock. If another fiber already holds it for this run,
+    // skip — they are already handling the enqueue and will pick up any newly-eligible steps.
+    const lockKey = `wf:enq:${workflowRunId}`;
+    const lockVal = `${Date.now()}-${Math.random()}`;
+    const LOCK_TTL_MS = 5000; // generous: DB transaction completes well under 1 s
+
+    const redisClient = await (this.workflowQueue as any).client as {
+      set(key: string, val: string, mode: string, ttl: number, flag: string): Promise<string | null>;
+      get(key: string): Promise<string | null>;
+      del(key: string): Promise<number>;
+    };
+
+    const acquired = await redisClient.set(lockKey, lockVal, 'PX', LOCK_TTL_MS, 'NX');
+    if (!acquired) {
+      this.logger.debug(`enqueuePendingSteps: lock busy for run ${workflowRunId.slice(0, 8)} — skipping concurrent call`);
+      return [];
+    }
+
+    try {
+      return await this._doEnqueuePendingSteps(workflowRunId);
+    } finally {
+      // Release lock only if we still own it (TTL may have expired on a very slow transaction)
+      try {
+        const current = await redisClient.get(lockKey);
+        if (current === lockVal) await redisClient.del(lockKey);
+      } catch {
+        // Best-effort lock release — TTL will clean it up automatically
+      }
+    }
+  }
+
+  /** Inner implementation — called only after the Redis lock is held. */
+  private async _doEnqueuePendingSteps(workflowRunId: string): Promise<string[]> {
     // Get the run to pass organizationId to job data
     const run = await this.db.db.query.workflowRuns.findFirst({
       where: eq(workflowRuns.id, workflowRunId),
