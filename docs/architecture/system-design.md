@@ -48,14 +48,38 @@ Pulse OS is an agent-led SEO/GEO/AEO strategy operating system. It runs an 18-st
 
 ## Service Ports
 
-| Service | Port | Purpose |
-|---------|------|---------|
-| Frontend | 3001 | Next.js dev server |
-| Backend API | 3002 | NestJS REST + WebSocket |
-| PostgreSQL | 5433 | Database |
-| Redis | 6379 | BullMQ queues |
+### Production
 
-## Infrastructure (Docker Compose)
+| Surface | URL / Port | Notes |
+|---------|------------|-------|
+| Frontend | https://app.rankorganiq.com | Vercel |
+| Backend API | https://api.rankorganiq.com | EC2 → nginx → :3002 |
+| Backend (internal) | :3002 | NestJS inside Docker |
+| PostgreSQL | RDS private endpoint | Accessible from EC2 only |
+| Redis | ElastiCache private endpoint (TLS) | Accessible from EC2 only |
+
+### Local Development
+
+| Service | Port | Notes |
+|---------|------|-------|
+| Frontend | 3001 | Next.js dev server |
+| Backend API | 3002 | NestJS dev server |
+| PostgreSQL | 5433 | Docker Compose |
+| Redis | 6379 | Docker Compose |
+
+## Infrastructure
+
+### Production (AWS + Vercel)
+
+| Layer | Service | Config |
+|-------|---------|--------|
+| Frontend | Vercel | Next.js, auto-deploy on `main` push |
+| Backend | EC2 t3.small + Docker | `organiq-server` container, nginx SSL |
+| Database | RDS PostgreSQL 16 | `pulse-postgres`, private subnet |
+| Cache/Queue | ElastiCache Redis 7 | `pulse-redis`, TLS, private subnet |
+| Image registry | ECR `organiq-server-prod` | `ap-southeast-1` |
+
+### Local Development (Docker Compose)
 
 | Container | Image | Volume |
 |-----------|-------|--------|

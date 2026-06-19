@@ -161,6 +161,7 @@ Fonts: Inter (primary), JetBrains Mono (scores, URLs, data).
 ## API Communication
 
 All calls through `shared/utils/api.ts`:
-- Base URL: `http://localhost:3002` (dev)
+- **Production base URL**: `https://api.rankorganiq.com` (from `NEXT_PUBLIC_API_URL`)
+- **Local dev base URL**: `http://localhost:3002`
 - Auth: Clerk session token in Authorization header
 - Error handling: Throws on non-OK, parsed JSON responses

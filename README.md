@@ -49,13 +49,27 @@ Agent-led SEO/GEO/AEO strategy consultant operating system for agencies.
 | **Audit** | [Performance](audit/performance.md) | API call inventory, credit costs per run, bottlenecks |
 | **Audit** | [Final Report](audit/final-report.md) | Audit findings log, decisions, open items |
 
-## Quick Start
+## Production
+
+| Surface | URL |
+|---------|-----|
+| Frontend | https://app.rankorganiq.com |
+| Backend API | https://api.rankorganiq.com |
+| API Docs | https://api.rankorganiq.com/docs |
+
+**Deployments are automatic:**
+- **Frontend**: push to `main` → Vercel builds and deploys
+- **Backend**: push to `main` touching `server/**` → GitHub Actions builds Docker image → pushes to ECR → SSHes to EC2 → runs migrations → hot-swaps container
+
+See [Infrastructure](docs/infrastructure.md) for full operational reference.
+
+## Local Development
 
 ```bash
 # 1. Clone and install
 npm run install:all
 
-# 2. Start infrastructure (Postgres + Redis)
+# 2. Start infrastructure (Postgres + Redis via Docker Compose)
 npm run infra:up
 
 # 3. Push schema to database
@@ -68,21 +82,29 @@ npm run db:seed
 npm run dev
 ```
 
-## Local Services
-
-| Service | URL |
-|---------|-----|
+| Local Service | URL |
+|---------------|-----|
 | Frontend (Next.js) | http://localhost:3001 |
 | Backend API (NestJS) | http://localhost:3002 |
 | API Docs (Swagger) | http://localhost:3002/docs |
 | Drizzle Studio | `npm run db:studio` |
 
-## Infrastructure
+## Infrastructure (Production — AWS + Vercel)
 
-| Service | Image | Port | DB/Details |
-|---------|-------|------|------------|
-| PostgreSQL | postgres:16-alpine | 5433 | `pulse_v2` / user: `pulse` |
-| Redis | redis:7-alpine | 6379 | BullMQ queues |
+| Service | Config | Purpose |
+|---------|--------|---------|
+| Vercel | Next.js (auto-deploy on `main`) | Frontend hosting |
+| EC2 t3.small | `ap-southeast-1`, Docker + nginx | Backend (NestJS) |
+| RDS PostgreSQL 16 | db.t3.micro, private subnet | Primary database |
+| ElastiCache Redis 7 | cache.t4g.micro, TLS | BullMQ queues |
+| ECR | `organiq-server-prod` | Docker image registry |
+
+**Local dev only** (Docker Compose, `infra/docker-compose.yml`):
+
+| Container | Image | Port |
+|-----------|-------|------|
+| `pulse_v2_postgres` | postgres:16-alpine | 5433 |
+| `pulse_v2_redis` | redis:7-alpine | 6379 |
 
 ## Tech Stack
 
