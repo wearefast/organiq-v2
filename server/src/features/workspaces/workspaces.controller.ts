@@ -4,7 +4,6 @@ import { WorkspacesService } from './workspaces.service';
 import { CreateWorkspaceDto, UpdateWorkspaceDto } from './dto/workspace.dto';
 import { ClerkGuard } from '../auth/clerk.guard';
 import { OrgMembershipGuard } from '../auth/org-membership.guard';
-import { AdminOnlyGuard } from '../auth/admin-only.guard';
 import { AccessService } from '../auth/access.service';
 
 @ApiTags('workspaces')
@@ -40,13 +39,11 @@ export class WorkspacesController {
   }
 
   @Post()
-  @UseGuards(AdminOnlyGuard)
   async create(@Body() body: CreateWorkspaceDto) {
     return this.workspacesService.create(body);
   }
 
   @Patch(':id')
-  @UseGuards(AdminOnlyGuard)
   async update(
     @Param('id') id: string,
     @Body() body: UpdateWorkspaceDto,
@@ -56,7 +53,6 @@ export class WorkspacesController {
   }
 
   @Delete(':id')
-  @UseGuards(AdminOnlyGuard)
   async remove(@Param('id') id: string, @Req() req: any) {
     return this.workspacesService.remove(id, req.org.id);
   }
