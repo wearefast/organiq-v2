@@ -239,7 +239,20 @@ export default function VisibilityPage() {
         <AddPromptForm
           projectId={projectId}
           initialText={prefillText}
-          onCreated={async () => { setShowAdd(false); await load(); }}
+          onCreated={async (created) => {
+            setShowAdd(false);
+            setPendingResultIds((prev) => new Set(prev).add(created.id));
+            await load();
+            let elapsed = 0;
+            const interval = setInterval(async () => {
+              elapsed += 15;
+              await load();
+              if (elapsed >= 90) {
+                clearInterval(interval);
+                setPendingResultIds((prev) => { const next = new Set(prev); next.delete(created.id); return next; });
+              }
+            }, 15_000);
+          }}
         />
       )}
 
