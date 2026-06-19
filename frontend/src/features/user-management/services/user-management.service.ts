@@ -33,6 +33,8 @@ export interface OrgMember {
   organizationId: string;
   clerkUserId: string;
   role: 'admin' | 'user' | 'owner' | 'member';
+  email: string;
+  name: string | null;
   createdAt: string;
   grants: AccessGrant[];
 }
