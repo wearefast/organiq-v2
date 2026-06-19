@@ -168,7 +168,13 @@ export class AhrefsService {
       url.searchParams.set(key, normalizedValue);
     }
 
-    this.logger.debug(`Ahrefs API: ${endpoint}`);
+    // Log key params (target/keywords) for traceability without leaking the API key
+    const traceable = ['target', 'keywords', 'keyword', 'country'].reduce<string[]>((acc, key) => {
+      if (params[key]) acc.push(`${key}="${String(params[key]).slice(0, 60)}"`);
+      return acc;
+    }, []);
+    this.logger.log(`Ahrefs → GET ${endpoint}${traceable.length ? ' ' + traceable.join(' ') : ''}`);
+    const reqStart = Date.now();
 
     return withRetry(
       async () => {
@@ -180,12 +186,17 @@ export class AhrefsService {
           signal: AbortSignal.timeout(30_000),
         });
 
+        const durationMs = Date.now() - reqStart;
+
         if (!response.ok) {
           const text = await response.text();
-          this.logger.error(`Ahrefs API error: ${response.status}`, text);
+          this.logger.error(
+            `Ahrefs ✗ GET ${endpoint} status=${response.status} duration=${durationMs}ms body=${text.slice(0, 300)}`,
+          );
           throw new Error(`Ahrefs API error: ${response.status}`);
         }
 
+        this.logger.log(`Ahrefs ✓ GET ${endpoint} duration=${durationMs}ms`);
         return response.json();
       },
       { label: `Ahrefs ${endpoint}` },

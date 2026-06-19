@@ -16,12 +16,19 @@ import { WorkflowGateway } from './workflow.gateway';
 import { WorkflowMaterializerService } from './workflow-materializer.service';
 import { DlqService } from './dlq.service';
 import { ProjectIntelligenceService } from '../projects/project-intelligence.service';
+import { WorkflowLogger } from '../../shared/utils/workflow-logger';
 import {
   workflowSteps,
   stepArtifacts,
   stepToolCalls,
   workflowRuns,
 } from '../../db/schema';
+
+interface StepJobData {
+  workflowRunId: string;
+  stepKey: string;
+  organizationId: string;
+}
 
 interface StepJobData {
   workflowRunId: string;
@@ -61,7 +68,11 @@ export class WorkflowProcessor extends WorkerHost {
 
   async process(job: Job<StepJobData>): Promise<void> {
     const { workflowRunId, stepKey, organizationId } = job.data;
-    this.logger.log(`Processing step: ${stepKey} (run: ${workflowRunId})`);
+    const wl = new WorkflowLogger(this.logger, workflowRunId, stepKey);
+    const stepStartMs = Date.now();
+
+    wl.stepStarted();
+    wl.log(`BullMQ jobId=${job.id} attempt=${job.attemptsMade + 1}/${job.opts?.attempts ?? 3}`);
 
     const abortController = new AbortController();
     const abortTimer = setTimeout(() => {
@@ -94,7 +105,12 @@ export class WorkflowProcessor extends WorkerHost {
       if (executionType === 'pipeline-only') {
         const context = await this.workflowService.getContext(workflowRunId);
         const transformedContext = this.transformContextForStep(stepKey, context);
+        wl.phaseStarted('pipeline');
+        const pipelineStart = Date.now();
         const pipelineOutput = await this.pipelineService.execute(stepKey, transformedContext);
+        const pipelineDurationMs = Date.now() - pipelineStart;
+        wl.phaseCompleted('pipeline', pipelineDurationMs);
+        wl.pipelineOutput(pipelineOutput);
 
         // Persist artifact directly
         const step = await this.db.db.query.workflowSteps.findFirst({
@@ -150,6 +166,8 @@ export class WorkflowProcessor extends WorkerHost {
         if (!agentDef.requiresApproval) {
           await this.workflowService.enqueuePendingSteps(workflowRunId);
         }
+
+        wl.stepCompleted(pipelineFinalStatus, 0, 0, Date.now() - stepStartMs);
         return;
       }
 
@@ -251,10 +269,20 @@ export class WorkflowProcessor extends WorkerHost {
       if (executionType === 'pipeline-then-agent') {
         // Step 1: Run pipeline to fetch raw data
         this.workflowGateway.emitStepPhase(workflowRunId, stepKey, 'pipeline');
+        wl.phaseStarted('pipeline');
+        const pipelineStart2 = Date.now();
         pipelineOutput = await this.pipelineService.execute(stepKey, transformedContext);
+        wl.phaseCompleted('pipeline', Date.now() - pipelineStart2);
+        wl.pipelineOutput(pipelineOutput);
+
+        // Warn if pipeline returned empty/null — agent will have no data to reason over
+        if (pipelineOutput == null || (typeof pipelineOutput === 'object' && Object.keys(pipelineOutput as object).length === 0)) {
+          wl.warn('Pipeline returned null/empty — agent proceeding with no pipeline data');
+        }
 
         // Step 2: Run agent to reason over pipeline data (no tools)
         this.workflowGateway.emitStepPhase(workflowRunId, stepKey, 'agent');
+        wl.phaseStarted('agent');
         const agentResult = await this.agentRuntime.execute({
           ...baseRuntimeConfig,
           allowedTools: [],
@@ -275,6 +303,7 @@ export class WorkflowProcessor extends WorkerHost {
         };
       } else if (executionType === 'agent-only') {
         // Agent reasons over prior context only, no tools, no pipeline
+        wl.phaseStarted('agent');
         const agentResult = await this.agentRuntime.execute({
           ...baseRuntimeConfig,
           allowedTools: [],
@@ -294,6 +323,7 @@ export class WorkflowProcessor extends WorkerHost {
         };
       } else {
         // agent-with-tools: AgentRuntime with full tool loop
+        wl.phaseStarted('agent');
         const agentResult = await this.agentRuntime.execute({
           ...baseRuntimeConfig,
           allowedTools: agentDef.tools,
@@ -318,21 +348,23 @@ export class WorkflowProcessor extends WorkerHost {
         const validation = this.outputValidator.validate(result.output, agentDef.outputSchema);
         if (!validation.valid) {
           const message = `Output validation failed for ${stepKey}: ${validation.errors.join(', ')}`;
-          this.logger.warn(message);
+          wl.warn(`SCHEMA_VALIDATION_FAILED errors="${validation.errors.join(', ')}"`);
           if (stepKey === 'content-brief') {
             throw new Error(message);
           }
+        } else {
+          wl.log(`SCHEMA_VALIDATION_PASSED`);
         }
       }
 
       // 5.6. Verification rules (post-execution quality check)
       const verification = this.verificationService.verify(stepKey, result.output, transformedContext);
       if (!verification.valid) {
-        this.logger.warn(`Verification failed for ${stepKey}: ${verification.errors.join('; ')}`);
+        wl.verificationFailed(verification.errors, 0, MAX_VERIFICATION_RETRIES);
 
         // Retry with feedback
         for (let retry = 0; retry < MAX_VERIFICATION_RETRIES; retry++) {
-          this.logger.log(`Verification retry ${retry + 1}/${MAX_VERIFICATION_RETRIES} for ${stepKey}`);
+          wl.log(`VERIFICATION_RETRY retry=${retry + 1}/${MAX_VERIFICATION_RETRIES}`);
           const feedback = `Your previous output failed verification:\n${verification.errors.join('\n')}\n\nPlease fix these issues and produce corrected output.`;
 
           // Retry uses same execution type via AgentRuntime with feedback appended
@@ -355,12 +387,17 @@ export class WorkflowProcessor extends WorkerHost {
           };
 
           const retryVerification = this.verificationService.verify(stepKey, result.output, transformedContext);
-          if (retryVerification.valid) break;
+          if (retryVerification.valid) {
+            wl.verificationPassed(stepKey);
+            break;
+          }
 
           if (retry === MAX_VERIFICATION_RETRIES - 1) {
-            this.logger.error(`Verification still failing after ${MAX_VERIFICATION_RETRIES} retries for ${stepKey}`);
+            wl.verificationExhausted(retryVerification.errors);
           }
         }
+      } else {
+        wl.verificationPassed(stepKey);
       }
 
       // 6. Get the step record
@@ -473,18 +510,19 @@ export class WorkflowProcessor extends WorkerHost {
         await this.workflowService.enqueuePendingSteps(workflowRunId);
       }
 
-      this.logger.log(`Step ${stepKey} completed (status: ${newStatus})`);
+      wl.stepCompleted(newStatus, result.iterations, result.totalTokens, Date.now() - stepStartMs);
     } catch (error) {
       const message = error instanceof Error ? error.message : String(error);
-      this.logger.error(`Step ${stepKey} failed: ${message}`);
+      const maxAttempts = job.opts?.attempts ?? 3;
+      const isFinalAttempt = job.attemptsMade >= maxAttempts;
+
+      wl.stepFailed(message, job.attemptsMade + 1, maxAttempts);
+      if (isFinalAttempt) wl.error(`FINAL_ATTEMPT — sending to DLQ`);
 
       // Emit error event
       this.workflowGateway.emitStepError(workflowRunId, stepKey, message);
 
       // Capture into DLQ on final attempt (BullMQ default: 3 attempts)
-      const maxAttempts = job.opts?.attempts ?? 3;
-      const isFinalAttempt = job.attemptsMade >= maxAttempts;
-
       if (isFinalAttempt) {
         await this.dlqService.captureFailedJob({
           workflowStepId: undefined,

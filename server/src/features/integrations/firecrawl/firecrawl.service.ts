@@ -76,7 +76,10 @@ export class FirecrawlService {
   private async post(endpoint: string, body: unknown): Promise<unknown> {
     if (!this.apiKey) throw new Error('FIRECRAWL_API_KEY is not configured');
 
-    this.logger.debug(`Firecrawl API: POST ${endpoint}`);
+    // Include the target URL in the log for traceability
+    const targetUrl = (body as Record<string, unknown>)?.url ?? '';
+    this.logger.log(`Firecrawl → POST ${endpoint}${targetUrl ? ` url="${String(targetUrl).slice(0, 100)}"` : ''}`);
+    const reqStart = Date.now();
 
     return withRetry(
       async () => {
@@ -90,12 +93,17 @@ export class FirecrawlService {
           signal: AbortSignal.timeout(60_000),
         });
 
+        const durationMs = Date.now() - reqStart;
+
         if (!response.ok) {
           const text = await response.text();
-          this.logger.error(`Firecrawl API error: ${response.status}`);
+          this.logger.error(
+            `Firecrawl ✗ POST ${endpoint} status=${response.status} duration=${durationMs}ms body=${text.slice(0, 300)}`,
+          );
           throw new Error(`Firecrawl API error: ${response.status}`);
         }
 
+        this.logger.log(`Firecrawl ✓ POST ${endpoint} duration=${durationMs}ms`);
         return response.json();
       },
       { label: `Firecrawl POST ${endpoint}` },
@@ -107,14 +115,19 @@ export class FirecrawlService {
 
     return withRetry(
       async () => {
+        const reqStart = Date.now();
         const response = await fetch(`${this.baseUrl}${endpoint}`, {
           headers: { Authorization: `Bearer ${this.apiKey}` },
           signal: AbortSignal.timeout(30_000),
         });
 
+        const durationMs = Date.now() - reqStart;
+
         if (!response.ok) {
           const text = await response.text();
-          this.logger.error(`Firecrawl API error: ${response.status}`);
+          this.logger.error(
+            `Firecrawl ✗ GET ${endpoint} status=${response.status} duration=${durationMs}ms body=${text.slice(0, 300)}`,
+          );
           throw new Error(`Firecrawl API error: ${response.status}`);
         }
 

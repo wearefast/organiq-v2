@@ -193,32 +193,50 @@ export default function ProjectsPage() {
       {loading ? (
         <div className="card py-16 text-center text-sm text-zinc-500">Loading projects...</div>
       ) : projects.length > 0 ? (
-        <div className="grid gap-4 lg:grid-cols-2">
-          {projects.map((project) => (
-            <Link
-              key={project.id}
-              href={`/workspaces/${params.wId}/projects/${project.id}/workflows`}
-              className="card block space-y-2 p-5 transition-colors hover:border-zinc-600 hover:bg-zinc-900/60"
-            >
-              <div className="flex items-center justify-between gap-3">
-                <h2 className="text-base font-semibold text-zinc-100">{project.name}</h2>
-                <span className="flex items-center gap-1.5 text-xs text-zinc-500">
-                  <img
-                    src={`https://flagcdn.com/16x12/${project.country.toLowerCase()}.png`}
-                    width={16}
-                    height={12}
-                    alt={project.country.toUpperCase()}
-                    className="rounded-[1px] object-cover"
-                  />
-                  <span>{getCountryByCode(project.country)?.name ?? project.country}</span>
-                  <span className="text-zinc-700">·</span>
-                  <span>{getLanguageByCode(project.language)?.name ?? project.language}</span>
-                </span>
-              </div>
-              <p className="text-sm text-zinc-400">{project.domain}</p>
-              <p className="text-xs text-zinc-600">{project.industry || 'No industry set'}</p>
-            </Link>
-          ))}
+        <div className="card overflow-hidden">
+          <table className="w-full">
+            <thead>
+              <tr className="border-b border-zinc-700 bg-zinc-800/50">
+                <th className="px-6 py-3 text-left text-xs font-semibold text-zinc-400">Project</th>
+                <th className="px-6 py-3 text-left text-xs font-semibold text-zinc-400">Domain</th>
+                <th className="px-6 py-3 text-left text-xs font-semibold text-zinc-400">Location</th>
+                <th className="px-6 py-3 text-left text-xs font-semibold text-zinc-400">Industry</th>
+              </tr>
+            </thead>
+            <tbody>
+              {projects.map((project) => (
+                <tr
+                  key={project.id}
+                  className="border-b border-zinc-800 transition-colors hover:bg-zinc-900/80"
+                >
+                  <td className="px-6 py-4">
+                    <Link
+                      href={`/workspaces/${params.wId}/projects/${project.id}/workflows`}
+                      className="font-semibold text-zinc-100 hover:text-rose-400"
+                    >
+                      {project.name}
+                    </Link>
+                  </td>
+                  <td className="px-6 py-4 text-sm text-zinc-400">{project.domain}</td>
+                  <td className="px-6 py-4">
+                    <span className="flex items-center gap-1.5 text-xs text-zinc-400">
+                      <img
+                        src={`https://flagcdn.com/16x12/${project.country.toLowerCase()}.png`}
+                        width={16}
+                        height={12}
+                        alt={project.country.toUpperCase()}
+                        className="rounded-[1px] object-cover"
+                      />
+                      <span>{getCountryByCode(project.country)?.name ?? project.country}</span>
+                      <span className="text-zinc-700">·</span>
+                      <span>{getLanguageByCode(project.language)?.name ?? project.language}</span>
+                    </span>
+                  </td>
+                  <td className="px-6 py-4 text-sm text-zinc-500">{project.industry || '—'}</td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
         </div>
       ) : (
         <div className="card flex flex-col items-center justify-center py-16">

@@ -2,6 +2,19 @@ import { Injectable, Logger } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { withRetry } from '../../../shared/utils/retry';
 
+/** One-line summary of the first task in a DataForSEO request body (for log context). */
+function summarizeRequestBody(body: unknown): string {
+  if (!Array.isArray(body) || body.length === 0) return '';
+  const first = body[0] as Record<string, unknown>;
+  const parts: string[] = [];
+  if (first.keywords && Array.isArray(first.keywords)) parts.push(`keywords=${first.keywords.length}`);
+  if (first.keyword) parts.push(`keyword="${String(first.keyword).slice(0, 50)}"`);
+  if (first.target) parts.push(`target="${first.target}"`);
+  if (first.location_name) parts.push(`location="${first.location_name}"`);
+  if (first.language_code) parts.push(`lang=${first.language_code}`);
+  return parts.join(' ');
+}
+
 /** Maps common ISO country codes and short names to DataForSEO location_name values. */
 const LOCATION_MAP: Record<string, string> = {
   us: 'United States',
@@ -232,7 +245,10 @@ export class DataForSeoService {
     const credentials = Buffer.from(`${this.login}:${this.password}`).toString('base64');
     const url = `${this.baseUrl}${endpoint}`;
 
-    this.logger.debug(`DataForSEO API: ${method} ${endpoint}`);
+    // Log first-element summary of the request body for debugging (never log credentials)
+    const bodySummary = body ? summarizeRequestBody(body) : '';
+    this.logger.log(`DataForSEO → ${method} ${endpoint}${bodySummary ? ' ' + bodySummary : ''}`);
+    const reqStart = Date.now();
 
     return withRetry(
       async () => {
@@ -246,9 +262,13 @@ export class DataForSeoService {
           ...(body ? { body: JSON.stringify(body) } : {}),
         });
 
+        const durationMs = Date.now() - reqStart;
+
         if (!response.ok) {
           const text = await response.text();
-          this.logger.error(`DataForSEO API error: ${response.status}`);
+          this.logger.error(
+            `DataForSEO ✗ ${method} ${endpoint} status=${response.status} duration=${durationMs}ms body=${text.slice(0, 300)}`,
+          );
           throw new Error(`DataForSEO API error: ${response.status}`);
         }
 
@@ -260,10 +280,11 @@ export class DataForSeoService {
         const task = result.tasks?.[0];
         if (task && task.status_code && task.status_code >= 40000) {
           const msg = `DataForSEO task error ${task.status_code}: ${task.status_message ?? 'unknown'}`;
-          this.logger.error(msg);
+          this.logger.error(`DataForSEO ✗ ${method} ${endpoint} taskStatus=${task.status_code} msg="${task.status_message}" duration=${durationMs}ms`);
           throw new Error(msg);
         }
 
+        this.logger.log(`DataForSEO ✓ ${method} ${endpoint} duration=${durationMs}ms`);
         return result;
       },
       { label: `DataForSEO ${method} ${endpoint}` },
