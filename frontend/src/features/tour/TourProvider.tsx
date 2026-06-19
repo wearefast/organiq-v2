@@ -234,8 +234,10 @@ export function TourAutoStarter({
     if (localStorage.getItem(TOUR_STORAGE_KEYS.active) !== null) return; // was active before
     if (getCompleted().size > 0) return; // has completed some sections
 
-    // Only auto-start if workspaceCount is 0 (brand new user)
-    if (workspaceCount !== 0) return;
+    // Wait until workspace data has finished loading before deciding.
+    // Any user who has never seen the tour (empty localStorage) should get it —
+    // including invited users who land with existing workspaces.
+    if (workspaceCount === null) return;
 
     hasRun.current = true;
     startTour();

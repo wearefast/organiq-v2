@@ -102,9 +102,6 @@ function HeroSection() {
         <div className="h-[500px] w-[900px] rounded-full bg-[#DA304F]/6 blur-[140px]" />
       </div>
       <div className="relative mx-auto max-w-5xl">
-        <div className="mb-8">
-          <Image src="/logo-with-text.png" alt="ORGANIQ" width={200} height={44} className="mx-auto" />
-        </div>
         <div className="mx-auto mb-6 inline-flex items-center gap-2 rounded-full border border-zinc-700/60 bg-zinc-900 px-4 py-1.5">
           <span className="h-1.5 w-1.5 rounded-full bg-[#DA304F]" />
           <span className="text-xs text-zinc-400">SEO · GEO · AEO — all in one pipeline</span>
@@ -119,14 +116,13 @@ function HeroSection() {
           18 specialized AI agents crawl, audit, research, and write — with your approval at every step. From URL to content calendar in hours, not weeks.
         </p>
         <div className="mt-10 flex flex-wrap items-center justify-center gap-4">
-          <Link href="/audit" className="inline-flex h-12 items-center gap-2 rounded-full bg-[#DA304F] px-8 text-sm font-semibold text-white shadow-lg shadow-[#DA304F]/25 transition-all hover:brightness-110">
-            Get your free audit <ArrowRight className="h-4 w-4" />
+          <Link href="/login" className="inline-flex h-12 items-center gap-2 rounded-full bg-[#DA304F] px-8 text-sm font-semibold text-white shadow-lg shadow-[#DA304F]/25 transition-all hover:brightness-110">
+            Get started <ArrowRight className="h-4 w-4" />
           </Link>
           <Link href="/login" className="inline-flex h-12 items-center gap-2 rounded-full border border-zinc-700 bg-zinc-900 px-8 text-sm font-semibold text-white transition-colors hover:bg-zinc-800">
-            Sign in to platform
+            Sign in
           </Link>
         </div>
-        <p className="mt-5 text-xs text-zinc-600">Free · No credit card · Results in 2 minutes</p>
         <div className="mx-auto mt-16 grid max-w-2xl grid-cols-2 gap-4 sm:grid-cols-4">
           {STATS.map(({ value, label }) => (
             <div key={label} className="rounded-xl border border-zinc-800 bg-zinc-900 py-5 text-center">
@@ -354,17 +350,16 @@ function CtaSection() {
         <div className="h-[300px] w-[600px] rounded-full bg-[#DA304F]/8 blur-[100px]" />
       </div>
       <div className="relative">
-        <h2 className="text-[32px] font-bold text-white sm:text-[40px]">See where you actually stand.</h2>
-        <p className="mt-3 text-sm text-zinc-500">Free, comprehensive, and surprisingly specific. In 2 minutes.</p>
+        <h2 className="text-[32px] font-bold text-white sm:text-[40px]">Ready to engineer your organic growth?</h2>
+        <p className="mt-3 text-sm text-zinc-500">Sign in and start your first workflow in minutes.</p>
         <div className="mt-8 flex flex-wrap items-center justify-center gap-4">
-          <Link href="/audit" className="inline-flex h-12 items-center gap-2 rounded-full bg-[#DA304F] px-8 text-sm font-semibold text-white shadow-lg shadow-[#DA304F]/25 transition-all hover:brightness-110">
-            Get your free audit <ArrowRight className="h-4 w-4" />
+          <Link href="/login" className="inline-flex h-12 items-center gap-2 rounded-full bg-[#DA304F] px-8 text-sm font-semibold text-white shadow-lg shadow-[#DA304F]/25 transition-all hover:brightness-110">
+            Get started <ArrowRight className="h-4 w-4" />
           </Link>
           <Link href="/login" className="inline-flex h-12 items-center rounded-full border border-zinc-700 px-8 text-sm font-semibold text-zinc-300 transition-colors hover:bg-zinc-800">
-            Sign in to platform
+            Sign in
           </Link>
         </div>
-        <p className="mt-5 text-xs text-zinc-600">No signup required for the free audit</p>
       </div>
     </section>
   );
@@ -379,15 +374,15 @@ export default function HomePage() {
       <nav className="fixed top-0 z-50 w-full border-b border-white/10 bg-zinc-950/90 backdrop-blur-md">
         <div className="mx-auto flex h-14 max-w-6xl items-center justify-between px-6">
           <Link href="/">
-            <Image src="/logo-with-text.png" alt="ORGANIQ" width={120} height={26} />
+            <Image src="/logo-with-text.png" alt="ORGANIQ" width={120} height={26} className="h-8 w-auto" />
           </Link>
           <div className="flex items-center gap-6">
             <Link href="/#pipeline" className="hidden text-sm text-white/60 transition-colors hover:text-white sm:block">Pipeline</Link>
             <Link href="/#features" className="hidden text-sm text-white/60 transition-colors hover:text-white sm:block">Features</Link>
             <Link href="/#how" className="hidden text-sm text-white/60 transition-colors hover:text-white sm:block">How it works</Link>
             <Link href="/login" className="text-sm text-white/60 transition-colors hover:text-white">Sign in</Link>
-            <Link href="/audit" className="hidden h-8 items-center gap-1.5 rounded-full bg-[#DA304F] px-4 text-xs font-semibold text-white hover:brightness-110 sm:inline-flex">
-              Free audit <ArrowRight className="h-3 w-3" />
+            <Link href="/login" className="hidden h-8 items-center gap-1.5 rounded-full bg-[#DA304F] px-4 text-xs font-semibold text-white hover:brightness-110 sm:inline-flex">
+              Get started <ArrowRight className="h-3 w-3" />
             </Link>
           </div>
         </div>
@@ -407,12 +402,10 @@ export default function HomePage() {
       {/* Footer */}
       <footer className="border-t border-zinc-800 bg-zinc-950 px-6 py-10">
         <div className="mx-auto flex max-w-5xl flex-col items-center justify-between gap-4 sm:flex-row">
-          <div className="flex items-center gap-2">
-            <span className="flex h-6 w-6 items-center justify-center rounded-md bg-zinc-800 text-[9px] font-bold text-white">O</span>
-            <span className="text-xs text-zinc-500">ORGANIQ — SEO · GEO · AEO platform</span>
-          </div>
+          <Link href="/">
+            <Image src="/logo-with-text.png" alt="ORGANIQ" width={120} height={26} className="h-8 w-auto opacity-70 hover:opacity-100 transition-opacity" />
+          </Link>
           <div className="flex items-center gap-6 text-xs text-zinc-600">
-            <Link href="/audit" className="hover:text-zinc-400">Free Audit</Link>
             <Link href="/login" className="hover:text-zinc-400">Sign In</Link>
             <span>© {new Date().getFullYear()} ORGANIQ</span>
           </div>
