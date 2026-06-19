@@ -1,4 +1,19 @@
+'use client';
+
+import { useEffect } from 'react';
+import { useClerk } from '@clerk/nextjs';
+
 export default function MaintenancePage() {
+  const { signOut } = useClerk();
+
+  useEffect(() => {
+    // Sign out any active session on landing so the user cannot navigate back
+    // into the app. redirectUrl keeps them here instead of the Clerk login page.
+    signOut({ redirectUrl: '/maintenance' }).catch(() => {
+      // Session may already be expired — safe to ignore.
+    });
+  }, [signOut]);
+
   return (
     <html lang="en">
       <body
