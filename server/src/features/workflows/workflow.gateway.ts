@@ -155,6 +155,16 @@ export class WorkflowGateway implements OnGatewayConnection, OnGatewayDisconnect
     catch (e) { this.logger.error(`WebSocket emit failed (step:error): ${e}`); }
   }
 
+  /**
+   * Emit a sub-phase transition for a running step so the UI can show
+   * "Fetching data…" vs "AI Analyzing…" instead of a generic spinner.
+   * phase: 'pipeline' | 'agent'
+   */
+  emitStepPhase(workflowRunId: string, stepKey: string, phase: 'pipeline' | 'agent') {
+    try { this.server.to(`run:${workflowRunId}`).emit('step:phase', { stepKey, phase }); }
+    catch (e) { this.logger.error(`WebSocket emit failed (step:phase): ${e}`); }
+  }
+
   emitWorkflowCompleted(workflowRunId: string) {
     try { this.server.to(`run:${workflowRunId}`).emit('workflow:completed', { workflowRunId }); }
     catch (e) { this.logger.error(`WebSocket emit failed (workflow:completed): ${e}`); }

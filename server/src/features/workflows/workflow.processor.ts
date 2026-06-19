@@ -250,9 +250,11 @@ export class WorkflowProcessor extends WorkerHost {
 
       if (executionType === 'pipeline-then-agent') {
         // Step 1: Run pipeline to fetch raw data
+        this.workflowGateway.emitStepPhase(workflowRunId, stepKey, 'pipeline');
         pipelineOutput = await this.pipelineService.execute(stepKey, transformedContext);
 
         // Step 2: Run agent to reason over pipeline data (no tools)
+        this.workflowGateway.emitStepPhase(workflowRunId, stepKey, 'agent');
         const agentResult = await this.agentRuntime.execute({
           ...baseRuntimeConfig,
           allowedTools: [],

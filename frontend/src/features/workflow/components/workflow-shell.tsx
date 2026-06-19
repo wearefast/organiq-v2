@@ -26,6 +26,7 @@ export function WorkflowShell({
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [resuming, setResuming] = useState(false);
+  const [stepPhases, setStepPhases] = useState<Record<string, 'pipeline' | 'agent'>>({});
   const initializedRef = useRef(false);
 
   // Fetch initial run data
@@ -70,6 +71,10 @@ export function WorkflowShell({
   // WebSocket event handler — refetch on meaningful events
   const handleWsEvent = useCallback(
     (event: StepEvent) => {
+      if (event.type === 'step:phase') {
+        setStepPhases((prev) => ({ ...prev, [event.stepKey]: event.phase }));
+        return;
+      }
       if (
         event.type === 'step:completed' ||
         event.type === 'step:started' ||
@@ -79,6 +84,14 @@ export function WorkflowShell({
         event.type === 'step:rerun' ||
         event.type === 'workflow:completed'
       ) {
+        // Clear phase label when step finishes
+        if (event.type === 'step:completed' || event.type === 'step:error') {
+          setStepPhases((prev) => {
+            const next = { ...prev };
+            delete next[(event as { stepKey: string }).stepKey];
+            return next;
+          });
+        }
         fetchRun();
       }
     },
@@ -287,6 +300,7 @@ export function WorkflowShell({
           steps={run.steps}
           activeStepKey={activeStepKey}
           onStepClick={setActiveStepKey}
+          stepPhases={stepPhases}
         />
         <ArtifactPanel
           step={activeStep}
