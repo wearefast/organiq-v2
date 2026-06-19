@@ -149,6 +149,23 @@ These apply at all times, in addition to the workflow above.
 
 ---
 
+## PRODUCTION ENVIRONMENT
+
+This codebase is **live in production**. Every change ships to real users.
+
+| Surface | URL |
+|---------|-----|
+| Frontend | https://app.rankorganiq.com |
+| Backend API | https://api.rankorganiq.com |
+
+**Deployment is fully automated:**
+- `git push origin main` → Vercel auto-deploys frontend (any `frontend/` change)
+- `git push origin main` (with `server/**` changes) → GitHub Actions builds Docker image → pushes to ECR → SSHes EC2 → runs Drizzle migrations → hot-swaps container
+
+**Never reference localhost or local ports** when describing production behaviour.
+
+---
+
 ## PROJECT STRUCTURE
 
 ```
@@ -174,10 +191,13 @@ docs/               → Documentation (READ before touching a feature)
   debugging/        → Known issues, debugging patterns
   decisions/        → Technical decisions and rationale
 
-infra/              → Docker Compose (Postgres + Redis)
+infra/              → Docker Compose (Postgres + Redis — LOCAL DEV ONLY)
+.github/workflows/  → deploy.yml (GitHub Actions CI/CD)
 ```
 
 **Tech stack:** Next.js 15 · NestJS 10 · Drizzle ORM · PostgreSQL · BullMQ · Redis · Clerk · Anthropic Claude · OpenAI · Ahrefs v3 · DataForSEO · Firecrawl · Serper.dev · PageSpeed/CrUX · Google Search Console · Stripe
+
+**Hosting:** Vercel (frontend) · AWS EC2 t3.small + RDS + ElastiCache (backend) · ECR (Docker images)
 
 **Before touching any feature:** Read `docs/project-handbook.md` and relevant section
 **After any change to API, schema, or architecture:** Update the relevant file in `docs/`

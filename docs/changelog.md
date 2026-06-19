@@ -4,7 +4,49 @@ All notable changes to the Pulse OS codebase, organized by audit and implementat
 
 ---
 
-## [DataForSEO Migration — Pipeline Keyword & Competitor Data] — June 12, 2026
+## [Production Launch — AWS + Vercel] — June 19, 2026
+
+**Pulse OS (Rank Organiq) is live in production.**
+
+### Production URLs
+
+| Surface | URL |
+|---------|-----|
+| Frontend | https://app.rankorganiq.com |
+| Backend API | https://api.rankorganiq.com |
+
+### Infrastructure
+
+| Layer | Service |
+|-------|---------|
+| Frontend hosting | Vercel (auto-deploy on `main` push) |
+| Backend | EC2 t3.small (`ap-southeast-1`), Docker, nginx, Let's Encrypt SSL |
+| Database | RDS PostgreSQL 16 (`pulse-postgres`, private subnet) |
+| Cache / Queue | ElastiCache Redis 7 (`pulse-redis`, TLS, private subnet) |
+| Container registry | ECR `organiq-server-prod` (`ap-southeast-1`) |
+
+### CI/CD Pipeline
+
+- **Frontend**: Push to `main` → Vercel builds and deploys automatically. No manual steps.
+- **Backend**: Push to `main` touching `server/**` → GitHub Actions (`.github/workflows/deploy.yml`):
+  1. Build multi-stage Docker image (`server/Dockerfile`, Node 20-alpine)
+  2. Push to ECR as `organiq-server-prod:latest` + `:<git-sha>`
+  3. SSH to EC2 (`ec2-user`)
+  4. Pre-pull image (old container still serving)
+  5. Run `drizzle-kit migrate` in one-off container (migrations before cutover)
+  6. Hot-swap: stop + remove old container → start `organiq-server` (~1-2s downtime)
+
+### Documentation Updated
+
+- `docs/infrastructure.md` — Rewritten from planning checklist to production operations reference
+- `docs/architecture/system-design.md` — Runtime topology updated with production URLs; Service Ports split into production + local
+- `docs/architecture/dependencies.md` — Infrastructure services updated to show production (RDS/ElastiCache), no localhost defaults
+- `README.md` — Production section added (URLs, deployment summary); Local Development section clarified
+- `.github/copilot-instructions.md` — Production environment section added with URLs and deploy pipeline; `infra/` noted as local-dev-only
+
+---
+
+
 
 **DataForSEO is now the primary SEO data source for all keyword intelligence, competitor discovery, and backlink analysis pipelines. Ahrefs is retained for SERP overview and organic page lookups only.**
 

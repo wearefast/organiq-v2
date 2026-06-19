@@ -97,12 +97,12 @@
 
 ### Infrastructure Services
 
-| Service | Env Variable | Default | Purpose |
-|---------|-------------|---------|---------|
-| **PostgreSQL 16** | `DATABASE_URL` | `postgres://pulse:pulse@localhost:5433/pulse_v2` | Primary data store |
-| **Redis 7** | `REDIS_URL` | `redis://localhost:6379` | BullMQ job queues |
-| **Clerk** | `CLERK_SECRET_KEY` / `CLERK_WEBHOOK_SECRET` | — | Auth provider (JWT, webhooks) |
-| **Stripe** | `STRIPE_SECRET_KEY` / `STRIPE_WEBHOOK_SECRET` | — | Billing & subscriptions |
+| Service | Env Variable | Production | Purpose |
+|---------|-------------|------------|------|
+| **PostgreSQL 16** | `DATABASE_URL` | RDS `pulse-postgres` (private subnet, `ap-southeast-1`) | Primary data store |
+| **Redis 7** | `REDIS_URL` | ElastiCache `pulse-redis` (TLS, `rediss://`) | BullMQ job queues |
+| **Clerk** | `CLERK_SECRET_KEY` / `CLERK_WEBHOOK_SECRET` | Clerk cloud | Auth provider (JWT, webhooks) |
+| **Stripe** | `STRIPE_SECRET_KEY` / `STRIPE_WEBHOOK_SECRET` | Stripe live | Billing & subscriptions |
 
 ---
 
@@ -112,8 +112,8 @@
 
 | Variable | Used By | Description |
 |----------|---------|-------------|
-| `DATABASE_URL` | Server | PostgreSQL connection string |
-| `REDIS_URL` | Server | Redis connection string |
+| `DATABASE_URL` | Server | PostgreSQL connection string (RDS in production) |
+| `REDIS_URL` | Server | Redis connection string (`rediss://` with TLS in production) |
 | `CLERK_SECRET_KEY` | Server | Clerk backend API key |
 | `CLERK_WEBHOOK_SECRET` | Server | Svix webhook verification secret |
 | `ANTHROPIC_API_KEY` | Server | Anthropic API key (primary agent runtime) |
