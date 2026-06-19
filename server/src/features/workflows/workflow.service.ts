@@ -365,6 +365,9 @@ export class WorkflowService implements OnModuleInit, OnApplicationBootstrap {
 
   /**
    * Resume a stuck running workflow by re-enqueuing eligible pending steps.
+   * Also resets steps that have been stuck in 'running' for > 35 minutes —
+   * these are orphaned jobs where the BullMQ worker crashed or was never
+   * picked up, leaving the step stranded with no active job behind it.
    */
   async resumeRun(runId: string) {
     const run = await this.db.db.query.workflowRuns.findFirst({
@@ -373,6 +376,29 @@ export class WorkflowService implements OnModuleInit, OnApplicationBootstrap {
     if (!run) throw new NotFoundException('Workflow run not found');
     if (run.status !== 'running') {
       throw new Error(`Cannot resume run in status: ${run.status}`);
+    }
+
+    // Reset steps that have been 'running' for more than 35 minutes.
+    // The processor has a 30-minute wall-clock abort, so anything beyond that
+    // is an orphaned job (server crash, BullMQ worker restart, etc.).
+    const STALE_THRESHOLD_MS = 35 * 60 * 1000;
+    const allSteps = await this.db.db.query.workflowSteps.findMany({
+      where: eq(workflowSteps.workflowRunId, runId),
+    });
+    const staleKeys = allSteps
+      .filter((s) => {
+        if (s.status !== 'running') return false;
+        if (!s.startedAt) return true; // no startedAt → definitely orphaned
+        return Date.now() - s.startedAt.getTime() > STALE_THRESHOLD_MS;
+      })
+      .map((s) => s.stepKey);
+
+    if (staleKeys.length > 0) {
+      this.logger.warn(`resumeRun ${runId}: resetting ${staleKeys.length} stale running step(s) to pending: [${staleKeys.join(', ')}]`);
+      await this.db.db
+        .update(workflowSteps)
+        .set({ status: 'pending', startedAt: null, error: null, updatedAt: new Date() })
+        .where(and(eq(workflowSteps.workflowRunId, runId), inArray(workflowSteps.stepKey, staleKeys)));
     }
 
     const enqueued = await this.enqueuePendingSteps(runId);
