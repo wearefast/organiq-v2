@@ -6,7 +6,6 @@ import { ProjectIntelligenceService } from './project-intelligence.service';
 import { CreateProjectDto, UpdateProjectDto } from './dto/project.dto';
 import { ClerkGuard } from '../auth/clerk.guard';
 import { OrgMembershipGuard } from '../auth/org-membership.guard';
-import { AdminOnlyGuard } from '../auth/admin-only.guard';
 import { AccessService } from '../auth/access.service';
 
 @ApiTags('projects')
@@ -49,7 +48,6 @@ export class ProjectsController {
   }
 
   @Post()
-  @UseGuards(AdminOnlyGuard)
   async create(@Body() body: CreateProjectDto) {
     const project = await this.projectsService.create(body);
     // Fire-and-forget: generate business profile immediately after project creation
@@ -60,7 +58,6 @@ export class ProjectsController {
   }
 
   @Patch(':id')
-  @UseGuards(AdminOnlyGuard)
   async update(
     @Param('id') id: string,
     @Body() body: UpdateProjectDto,
@@ -70,7 +67,6 @@ export class ProjectsController {
   }
 
   @Delete(':id')
-  @UseGuards(AdminOnlyGuard)
   async remove(@Param('id') id: string, @Req() req: any) {
     return this.projectsService.remove(id, req.org.id);
   }
