@@ -85,8 +85,8 @@ export function useMembers(orgId: string | undefined) {
       const clerkData = clerkMap.get(bm.clerkUserId);
       return {
         ...bm,
-        name: clerkData?.name || bm.clerkUserId,
-        email: clerkData?.email || bm.clerkUserId,
+        name: clerkData?.name || bm.name || bm.email || bm.clerkUserId,
+        email: clerkData?.email || bm.email || bm.clerkUserId,
         imageUrl: clerkData?.imageUrl ?? null,
       };
     });
