@@ -49,21 +49,23 @@ export class CompetitorMetricsPipeline implements Pipeline {
           return { domain: competitor, status: 'error' as const, error: (drResult.reason as Error).message };
         }
 
-        // Ahrefs v3 domain-rating: { domainRating: number, ahrefsRank: number }
-        const dr = drResult.status === 'fulfilled' ? (drResult.value as Record<string, unknown>) : {};
-        const domainRating = Number(dr?.domainRating ?? 0);
-        const ahrefsRank = dr?.ahrefsRank ? Number(dr.ahrefsRank) : undefined;
+        // Ahrefs v3 domain-rating: { domain_rating: { domain_rating: float, ahrefs_rank: int } }
+        const drRaw = drResult.status === 'fulfilled' ? (drResult.value as Record<string, unknown>) : {};
+        const drObj = drRaw?.domain_rating as Record<string, unknown> | undefined;
+        const domainRating = Math.round(Number(drObj?.domain_rating ?? 0));
+        const ahrefsRank = drObj?.ahrefs_rank ? Number(drObj.ahrefs_rank) : undefined;
 
-        // Ahrefs v3 backlinks-stats: { live: number, liveRefDomains: number, allTime: number, allTimeRefDomains: number }
-        const bl = blResult.status === 'fulfilled' ? (blResult.value as Record<string, unknown>) : {};
-        const blLive = Number(bl?.live ?? 0);
-        const blAllTime = Number(bl?.allTime ?? blLive);
-        const refDomainsLive = Number(bl?.liveRefDomains ?? 0);
-        const refDomainsAllTime = Number(bl?.allTimeRefDomains ?? refDomainsLive);
+        // Ahrefs v3 backlinks-stats: { metrics: { live: int, live_refdomains: int, all_time: int, all_time_refdomains: int } }
+        const blRaw = blResult.status === 'fulfilled' ? (blResult.value as Record<string, unknown>) : {};
+        const blMetrics = blRaw?.metrics as Record<string, unknown> | undefined;
+        const blLive = Number(blMetrics?.live ?? 0);
+        const blAllTime = Number(blMetrics?.all_time ?? blLive);
+        const refDomainsLive = Number(blMetrics?.live_refdomains ?? 0);
+        const refDomainsAllTime = Number(blMetrics?.all_time_refdomains ?? refDomainsLive);
 
-        // Ahrefs v3 organic-keywords: { keywords: { items: [{ keyword, volume, keyword_difficulty, best_position, best_position_url }] } }
+        // Ahrefs v3 organic-keywords: { keywords: [ { keyword, volume, keyword_difficulty, best_position, best_position_url } ] }
         const kwRaw = kwResult.status === 'fulfilled' ? (kwResult.value as Record<string, unknown>) : {};
-        const kwItems = ((kwRaw?.keywords as Record<string, unknown>)?.items as Array<Record<string, unknown>>) ?? [];
+        const kwItems = (kwRaw?.keywords as Array<Record<string, unknown>>) ?? [];
         const topKeywordList = kwItems
           .filter((k) => k.keyword)
           .map((k) => ({

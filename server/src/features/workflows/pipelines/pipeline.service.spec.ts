@@ -18,9 +18,9 @@ import { ConsolidatedKeywordsPipeline } from './consolidated-keywords.pipeline';
 
 // Mock dependencies
 const mockAhrefs = {
-  getDomainRating: vi.fn().mockResolvedValue({ domainRating: 65, ahrefsRank: 12345 }),
-  getBacklinksStats: vi.fn().mockResolvedValue({ live: 1500, liveRefDomains: 500, allTime: 2000, allTimeRefDomains: 800 }),
-  getOrganicKeywords: vi.fn().mockResolvedValue({ keywords: { items: [{ keyword: 'test keyword', volume: 1000, keyword_difficulty: 45, best_position: 3, best_position_url: 'https://example.com/page' }] } }),
+  getDomainRating: vi.fn().mockResolvedValue({ domain_rating: { domain_rating: 65.0, ahrefs_rank: 12345 } }),
+  getBacklinksStats: vi.fn().mockResolvedValue({ metrics: { live: 1500, live_refdomains: 500, all_time: 2000, all_time_refdomains: 800 } }),
+  getOrganicKeywords: vi.fn().mockResolvedValue({ keywords: [{ keyword: 'test keyword', volume: 1000, keyword_difficulty: 45, best_position: 3, best_position_url: 'https://example.com/page' }] }),
   getOrganicPages: vi.fn().mockResolvedValue({ pages: [] }),
   getKeywordDifficulty: vi.fn().mockResolvedValue({ results: [{ keyword: 'seo', difficulty: 45 }] }),
   getRelatedKeywords: vi.fn().mockResolvedValue({ results: [{ keyword: 'seo tools' }] }),
