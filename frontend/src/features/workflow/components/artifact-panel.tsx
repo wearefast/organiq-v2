@@ -10,9 +10,30 @@ import {
 import { ReasoningPanel } from './reasoning-panel';
 import { ToolCallTrail } from './tool-call-trail';
 
+/**
+ * Steps that run a data-fetching pipeline before handing off to the LLM agent.
+ * When the step is `running` and no `step:phase` event has arrived yet, these
+ * steps default to showing "Fetching data…" instead of "Agent is executing…"
+ * because the pipeline phase always comes first.
+ */
+const PIPELINE_THEN_AGENT_STEPS = new Set([
+  'seed-keywords',
+  'site-audit',
+  'ai-intelligence',
+  'serp-niche-map',
+  'competitor-buckets',
+  'phase1-baseline',
+  'method01-competitor-pages',
+  'method02-seed-expansion',
+  'content-brief',
+  'content-article',
+]);
+
 interface ArtifactPanelProps {
   step: WorkflowStep | null;
   allSteps?: WorkflowStep[];
+  /** Current sub-phase for this step ('pipeline' | 'agent'), from step:phase WS event. */
+  stepPhase?: 'pipeline' | 'agent';
   onApprove: (stepKey: string) => void;
   onRerun?: (stepKey: string) => void;
   renderArtifact?: (stepKey: string, data: unknown, allSteps?: WorkflowStep[]) => React.ReactNode;
@@ -21,6 +42,7 @@ interface ArtifactPanelProps {
 export function ArtifactPanel({
   step,
   allSteps,
+  stepPhase,
   onApprove,
   onRerun,
   renderArtifact,
@@ -78,32 +100,50 @@ export function ArtifactPanel({
 
       {/* Content area */}
       <div className="flex-1 overflow-y-auto px-6 py-4">
-        {step.status === 'running' && (
-          <div className="flex items-center gap-3 rounded-lg border border-blue-500/20 bg-blue-500/5 px-4 py-3">
-            <svg
-              className="h-4 w-4 animate-spin text-blue-400"
-              fill="none"
-              viewBox="0 0 24 24"
-            >
-              <circle
-                className="opacity-25"
-                cx="12"
-                cy="12"
-                r="10"
-                stroke="currentColor"
-                strokeWidth="4"
-              />
-              <path
-                className="opacity-75"
-                fill="currentColor"
-                d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z"
-              />
-            </svg>
-            <span className="text-sm text-blue-300">
-              Agent is executing this step...
-            </span>
-          </div>
-        )}
+        {step.status === 'running' && (() => {
+          // Determine display message:
+          // 1. If a step:phase WS event arrived, use it directly.
+          // 2. If no event yet but this step always starts with a pipeline phase, default to 'pipeline'.
+          // 3. Otherwise default to 'agent'.
+          const effectivePhase =
+            stepPhase ??
+            (PIPELINE_THEN_AGENT_STEPS.has(step.stepKey) ? 'pipeline' : 'agent');
+
+          const isPipeline = effectivePhase === 'pipeline';
+
+          return (
+            <div className={`flex items-center gap-3 rounded-lg border px-4 py-3 ${
+              isPipeline
+                ? 'border-amber-500/20 bg-amber-500/5'
+                : 'border-blue-500/20 bg-blue-500/5'
+            }`}>
+              <svg
+                className={`h-4 w-4 animate-spin ${isPipeline ? 'text-amber-400' : 'text-blue-400'}`}
+                fill="none"
+                viewBox="0 0 24 24"
+              >
+                <circle
+                  className="opacity-25"
+                  cx="12"
+                  cy="12"
+                  r="10"
+                  stroke="currentColor"
+                  strokeWidth="4"
+                />
+                <path
+                  className="opacity-75"
+                  fill="currentColor"
+                  d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z"
+                />
+              </svg>
+              <span className={`text-sm ${isPipeline ? 'text-amber-300' : 'text-blue-300'}`}>
+                {isPipeline
+                  ? 'Fetching data from external sources…'
+                  : 'Agent is analyzing…'}
+              </span>
+            </div>
+          );
+        })()}
 
         {step.status === 'pending' && (
           <div className="flex items-center gap-3 rounded-lg border border-zinc-700 bg-zinc-800/50 px-4 py-3">
