@@ -159,7 +159,7 @@ export class InvitationService {
 
     // Verify the signed-in user owns the invited email address.
     // Check ALL emails on their Clerk profile (primary + secondary).
-    const userEmails = await this.getClerkUserEmails(clerkUserId);
+    const { emails: userEmails, name: clerkName } = await this.getClerkUserEmails(clerkUserId);
     const invitedEmailLower = invitation.email.toLowerCase();
     if (!userEmails.some((e) => e.toLowerCase() === invitedEmailLower)) {
       throw new ForbiddenException(
@@ -188,6 +188,7 @@ export class InvitationService {
           organizationId: invitation.organizationId,
           clerkUserId,
           email: invitation.email,
+          name: clerkName,
           role: invitation.role as 'admin' | 'user',
         })
         .onConflictDoNothing()
@@ -465,18 +466,21 @@ export class InvitationService {
   }
 
   /**
-   * Fetch all verified email addresses for a Clerk user.
-   * Used to check if the signed-in user owns the invited email.
+   * Fetch verified email addresses and display name for a Clerk user.
+   * Used to check if the signed-in user owns the invited email and to
+   * persist the user's name in org_members on invite acceptance.
    */
-  private async getClerkUserEmails(clerkUserId: string): Promise<string[]> {
+  private async getClerkUserEmails(clerkUserId: string): Promise<{ emails: string[]; name: string | null }> {
     const secretKey = this.config.get<string>('CLERK_SECRET_KEY');
-    if (!secretKey) return [];
+    if (!secretKey) return { emails: [], name: null };
 
     const { createClerkClient } = await import('@clerk/backend');
     const clerk = createClerkClient({ secretKey });
 
     const user = await clerk.users.getUser(clerkUserId);
-    return user.emailAddresses.map((e) => e.emailAddress);
+    const name =
+      [user.firstName, user.lastName].filter(Boolean).join(' ') || null;
+    return { emails: user.emailAddresses.map((e) => e.emailAddress), name };
   }
 
   /**

@@ -1,6 +1,6 @@
 'use client';
 
-import { useEffect, useState, useRef, useCallback } from 'react';
+import { useEffect, useState, useCallback } from 'react';
 import { useAuth } from '@clerk/nextjs';
 import { setAuthToken } from '@/shared/utils/api';
 import {
@@ -37,8 +37,7 @@ export function RefreshSuggestionsCard({ projectId }: RefreshSuggestionsCardProp
   const { getToken } = useAuth();
   const [suggestions, setSuggestions] = useState<RefreshSuggestion[]>([]);
   const [loading, setLoading] = useState(true);
-  const [pendingDismiss, setPendingDismiss] = useState<string | null>(null);
-  const dismissTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const [collapsed, setCollapsed] = useState(true);
 
   useEffect(() => {
     if (!projectId) return;
@@ -55,94 +54,69 @@ export function RefreshSuggestionsCard({ projectId }: RefreshSuggestionsCardProp
     })();
   }, [projectId, getToken]);
 
-  const handleDismiss = useCallback((id: string) => {
-    setPendingDismiss(id);
-
-    // Clear any existing timer
-    if (dismissTimerRef.current) clearTimeout(dismissTimerRef.current);
-
-    // After 5s, commit the dismiss to the backend
-    dismissTimerRef.current = setTimeout(async () => {
-      try {
-        setAuthToken(await getToken());
-        await dismissRefreshSuggestion(projectId, id);
-      } catch {
-        // Ignore — already removed from UI
-      }
-      setSuggestions((prev) => prev.filter((s) => s.id !== id));
-      setPendingDismiss(null);
-    }, 5000);
+  const handleDismiss = useCallback(async (id: string) => {
+    // Optimistic: remove immediately from UI
+    setSuggestions((prev) => prev.filter((s) => s.id !== id));
+    try {
+      setAuthToken(await getToken());
+      await dismissRefreshSuggestion(projectId, id);
+    } catch {
+      // Silently fail — non-critical
+    }
   }, [projectId, getToken]);
 
-  const handleUndo = useCallback(() => {
-    if (dismissTimerRef.current) {
-      clearTimeout(dismissTimerRef.current);
-      dismissTimerRef.current = null;
-    }
-    setPendingDismiss(null);
-  }, []);
-
-  // Cleanup timer on unmount
-  useEffect(() => {
-    return () => {
-      if (dismissTimerRef.current) clearTimeout(dismissTimerRef.current);
-    };
-  }, []);
-
-  if (suggestions.length === 0) return null;
+  if (loading || suggestions.length === 0) return null;
 
   return (
     <div className="rounded-[24px] border border-amber-800/40 bg-amber-950/20">
-      <div className="flex items-center gap-2 border-b border-amber-800/30 px-6 py-4">
-        <svg className="h-4 w-4 text-amber-400" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+      <button
+        onClick={() => setCollapsed((c) => !c)}
+        className="flex w-full items-center gap-2 px-6 py-4 text-left"
+      >
+        <svg className="h-4 w-4 shrink-0 text-amber-400" fill="none" viewBox="0 0 24 24" stroke="currentColor">
           <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-2.5L13.732 4c-.77-.833-1.964-.833-2.732 0L4.082 16.5c-.77.833.192 2.5 1.732 2.5z" />
         </svg>
         <h2 className="text-sm font-semibold text-amber-200">Data Refresh Suggestions</h2>
-        <span className="ml-auto rounded-full bg-amber-500/20 px-2 py-0.5 text-xs font-medium text-amber-400">
-          {suggestions.filter((s) => s.id !== pendingDismiss).length}
+        <span className="rounded-full bg-amber-500/20 px-2 py-0.5 text-xs font-medium text-amber-400">
+          {suggestions.length}
         </span>
-      </div>
+        <svg
+          className={`ml-auto h-4 w-4 shrink-0 text-amber-400/60 transition-transform ${collapsed ? '' : 'rotate-180'}`}
+          fill="none" viewBox="0 0 24 24" stroke="currentColor"
+        >
+          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
+        </svg>
+      </button>
 
-      <div className="divide-y divide-amber-800/20 px-6">
-        {pendingDismiss && (
-          <div className="flex items-center justify-between py-2">
-            <span className="text-[11px] text-zinc-400">Suggestion dismissed</span>
-            <button
-              onClick={handleUndo}
-              className="rounded px-2 py-0.5 text-[11px] font-medium text-sky-400 transition-colors hover:bg-sky-500/10"
-            >
-              Undo
-            </button>
-          </div>
-        )}
-        {suggestions
-          .filter((s) => s.id !== pendingDismiss)
-          .map((s) => (
-          <div key={s.id} className="flex items-start gap-3 py-3">
-            <div className="min-w-0 flex-1">
-              <div className="flex items-center gap-2">
-                <span className="rounded bg-zinc-800 px-1.5 py-0.5 text-[10px] font-medium text-zinc-300">
-                  {DATA_TYPE_LABELS[s.dataType] || s.dataType}
-                </span>
-                {s.targetKey && s.targetKey !== 'latest' && (
-                  <span className="truncate text-[10px] text-zinc-500">{s.targetKey}</span>
-                )}
+      {!collapsed && (
+        <div className="divide-y divide-amber-800/20 border-t border-amber-800/30 px-6">
+          {suggestions.map((s) => (
+            <div key={s.id} className="flex items-start gap-3 py-3">
+              <div className="min-w-0 flex-1">
+                <div className="flex items-center gap-2">
+                  <span className="rounded bg-zinc-800 px-1.5 py-0.5 text-[10px] font-medium text-zinc-300">
+                    {DATA_TYPE_LABELS[s.dataType] || s.dataType}
+                  </span>
+                  {s.targetKey && s.targetKey !== 'latest' && (
+                    <span className="truncate text-[10px] text-zinc-500">{s.targetKey}</span>
+                  )}
+                </div>
+                <p className="mt-1 text-xs text-zinc-300">{s.reason}</p>
+                <p className="mt-0.5 text-[10px] text-zinc-500">
+                  Flagged {timeAgo(s.suggestedAt)} by {s.suggestedBy} · Data from {timeAgo(s.lastUpdated)}
+                </p>
               </div>
-              <p className="mt-1 text-xs text-zinc-300">{s.reason}</p>
-              <p className="mt-0.5 text-[10px] text-zinc-500">
-                Flagged {timeAgo(s.suggestedAt)} by {s.suggestedBy} · Data from {timeAgo(s.lastUpdated)}
-              </p>
+              <button
+                onClick={() => handleDismiss(s.id)}
+                className="shrink-0 rounded-md px-2 py-1 text-[10px] font-medium text-zinc-400 transition-colors hover:bg-zinc-800 hover:text-zinc-200"
+                title="Dismiss suggestion"
+              >
+                Dismiss
+              </button>
             </div>
-            <button
-              onClick={() => handleDismiss(s.id)}
-              className="shrink-0 rounded-md px-2 py-1 text-[10px] font-medium text-zinc-400 transition-colors hover:bg-zinc-800 hover:text-zinc-200"
-              title="Dismiss suggestion"
-            >
-              Dismiss
-            </button>
-          </div>
-        ))}
-      </div>
+          ))}
+        </div>
+      )}
     </div>
   );
 }
