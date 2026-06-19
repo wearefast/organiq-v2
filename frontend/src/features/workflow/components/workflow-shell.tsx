@@ -305,6 +305,7 @@ export function WorkflowShell({
         <ArtifactPanel
           step={activeStep}
           allSteps={run.steps}
+          stepPhase={activeStepKey ? stepPhases[activeStepKey] : undefined}
           onApprove={handleApprove}
           onRerun={handleRerun}
           renderArtifact={renderArtifact}
