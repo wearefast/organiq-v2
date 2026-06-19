@@ -31,8 +31,9 @@ RUN npm ci --omit=dev
 # Copy built output
 COPY --from=builder /app/server/dist ./dist
 
-# Copy prompts (needed at runtime)
+# Copy prompts and agent definitions (needed at runtime)
 COPY server/src/prompts ./src/prompts
+COPY server/src/agents/definitions ./src/agents/definitions
 
 EXPOSE 3002
 
