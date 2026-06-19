@@ -100,3 +100,7 @@ export async function updateArtifact(
     },
   );
 }
+
+export async function deleteRun(runId: string): Promise<{ deleted: string }> {
+  return apiFetch<{ deleted: string }>(`${BASE}/${runId}`, { method: 'DELETE' });
+}

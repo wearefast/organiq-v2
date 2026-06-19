@@ -229,18 +229,30 @@ export function WorkflowShell({
   }
 
   // Detect stuck run: status is running but no steps are genuinely active or completed.
-  // A step in 'running' state for > 35 minutes is considered orphaned (job crashed or
-  // was never picked up) rather than genuinely processing — it should not count as active.
-  const STALE_RUNNING_THRESHOLD_MS = 35 * 60 * 1000;
+  //
+  // Two signals are combined with OR:
+  // 1. Individual step staleness: a step in 'running' state for > 35 minutes is orphaned.
+  //    (The processor aborts after 30 min, so anything beyond that has no live job.)
+  // 2. Run-level staleness: the run has been 'running' for > 35 minutes without any
+  //    step producing output. This covers the case where the server restarted and
+  //    re-enqueued steps with fresh startedAt values, resetting the per-step clock
+  //    while the run itself has been stuck for much longer.
+  const STALE_THRESHOLD_MS = 35 * 60 * 1000;
+  const hasNoOutput = !run.steps.some(
+    (s) => s.status === 'completed' || s.status === 'awaiting_approval' || s.status === 'approved',
+  );
   const hasGenuinelyRunningStep = run.steps.some((s) => {
     if (s.status !== 'running') return false;
     const startedMs = s.startedAt ? new Date(s.startedAt).getTime() : 0;
-    return Date.now() - startedMs < STALE_RUNNING_THRESHOLD_MS;
+    return Date.now() - startedMs < STALE_THRESHOLD_MS;
   });
+  const runElapsedMs = run.startedAt ? Date.now() - new Date(run.startedAt).getTime() : 0;
+  const runIsStale = runElapsedMs > STALE_THRESHOLD_MS;
+
   const isStuck =
     run.status === 'running' &&
-    !hasGenuinelyRunningStep &&
-    !run.steps.some((s) => s.status === 'completed' || s.status === 'awaiting_approval' || s.status === 'approved');
+    hasNoOutput &&
+    (!hasGenuinelyRunningStep || runIsStale);
 
   const activeStep: WorkflowStep | null =
     run.steps.find((s) => s.stepKey === activeStepKey) ?? null;
