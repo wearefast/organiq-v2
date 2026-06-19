@@ -3,7 +3,7 @@
 import Link from 'next/link';
 import { usePathname } from 'next/navigation';
 import {
-  LayoutGrid,
+  Home,
   Settings,
   FileText,
   ChevronLeft,
@@ -22,6 +22,7 @@ import { useBusinessProfileReady } from '@/features/projects/hooks/use-business-
 import { useOrganization } from '@clerk/nextjs';
 import { useUser } from '@clerk/nextjs';
 import { WorkspaceDropdown } from './workspace-dropdown';
+import { useTour, PROJECT_NAV_TOUR_SECTIONS } from '@/features/tour';
 
 function isSuperAdmin(clerkUserId: string | undefined | null): boolean {
   if (!clerkUserId) return false;
@@ -76,7 +77,7 @@ function getProjectItems(wId: string, pId: string): NavItem[] {
   return [
     {
       href: `${base}/overview`,
-      icon: LayoutGrid,
+      icon: Home,
       label: 'Overview',
     },
     {
@@ -145,7 +146,7 @@ function isAnyActive(hrefs: string[], pathname: string): boolean {
 
 // ─── NavLink component ────────────────────────────────────────
 
-function NavLink({ item, pathname, disabled }: { item: NavItem; pathname: string; disabled?: boolean }) {
+function NavLink({ item, pathname, disabled, tourDot }: { item: NavItem; pathname: string; disabled?: boolean; tourDot?: boolean }) {
   const childHrefs = item.children?.map((c) => c.href) ?? [];
   // Parent is active when on its own path OR any child's path
   const isActive =
@@ -165,6 +166,7 @@ function NavLink({ item, pathname, disabled }: { item: NavItem; pathname: string
         </span>
       </div>
     );
+
   }
 
   return (
@@ -178,7 +180,15 @@ function NavLink({ item, pathname, disabled }: { item: NavItem; pathname: string
             : 'text-zinc-500 hover:bg-zinc-800/50 hover:text-zinc-300',
         )}
       >
-        <item.icon className="h-5 w-5 shrink-0" />
+        <span className="relative">
+          <item.icon className="h-5 w-5 shrink-0" />
+          {tourDot && (
+            <span className="absolute -right-0.5 -top-0.5 flex h-2 w-2">
+              <span className="absolute inline-flex h-full w-full animate-ping rounded-full bg-indigo-400 opacity-75" />
+              <span className="relative inline-flex h-2 w-2 rounded-full bg-indigo-500" />
+            </span>
+          )}
+        </span>
         <span className="truncate opacity-0 transition-opacity duration-200 group-hover:opacity-100">
           {item.label}
         </span>
@@ -209,7 +219,19 @@ function NavLink({ item, pathname, disabled }: { item: NavItem; pathname: string
     </div>
   );
 }
-
+// ─── Module-level constant: nav label → tour section keys it covers ─────────────
+// Declared outside SideNav so it is not recreated on every render.
+// Keys with multiple values (AI Search, Content, Research) cover their
+// full sub-nav group; a dot appears if ANY key in the group is incomplete.
+const LABEL_TO_TOUR_KEYS: Record<string, string[]> = {
+  Overview:     ['project-overview'],
+  Workflow:     ['workflow'],
+  'AI Search':  ['prompt-visibility', 'llm-traffic', 'llm-audit'],
+  Analytics:    ['analytics'],
+  Agents:       ['agents'],
+  Content:      ['content', 'forums'],
+  Research:     ['keywords', 'topical-map'],
+};
 // ─── SideNav ──────────────────────────────────────────────────
 
 export function SideNav() {
@@ -221,6 +243,19 @@ export function SideNav() {
   const { user } = useUser();
   const isAdmin = membership?.role === 'org:admin' || membership?.role === 'org:owner';
   const superAdmin = isSuperAdmin(user?.id);
+
+  // Tour integration — show pulsing dot on unvisited project nav sections
+  const { isActive: tourActive, completedSections: tourCompleted } = useTour();
+
+  function hasTourDot(item: NavItem): boolean {
+    if (!tourActive) return false;
+    const keys = LABEL_TO_TOUR_KEYS[item.label];
+    if (!keys) return false;
+    // Show dot if ANY key for this group is unvisited and is a project-nav section
+    return keys.some(
+      (k) => PROJECT_NAV_TOUR_SECTIONS.has(k) && !tourCompleted.has(k),
+    );
+  }
 
   return (
     <aside className="group fixed left-0 top-topbar z-40 flex h-[calc(100vh-48px)] w-sidenav flex-col border-r border-zinc-800 bg-sidebar transition-[width] duration-200 hover:w-sidenav-expanded">
@@ -248,6 +283,7 @@ export function SideNav() {
                 item={item}
                 pathname={pathname}
                 disabled={!profileReady && !item.href.endsWith('/overview')}
+                tourDot={hasTourDot(item)}
               />
             ))}
           </>

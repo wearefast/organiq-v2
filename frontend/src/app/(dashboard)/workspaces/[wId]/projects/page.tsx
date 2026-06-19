@@ -149,7 +149,7 @@ export default function ProjectsPage() {
             {workspace ? `SEO projects within ${workspace.name}.` : 'SEO projects within this workspace.'}
           </p>
         </div>
-        <button className="btn-primary disabled:cursor-not-allowed disabled:opacity-50" onClick={() => setShowForm((open) => !open)} disabled={loading || submitting || !workspace}>
+        <button data-tour="new-project-btn" className="btn-primary disabled:cursor-not-allowed disabled:opacity-50" onClick={() => setShowForm((open) => !open)} disabled={loading || submitting || !workspace}>
             {showForm ? 'Cancel' : 'New Project'}
           </button>
       </div>
@@ -193,7 +193,7 @@ export default function ProjectsPage() {
       {loading ? (
         <div className="card py-16 text-center text-sm text-zinc-500">Loading projects...</div>
       ) : projects.length > 0 ? (
-        <div className="card overflow-hidden">
+        <div data-tour="project-grid" className="card overflow-hidden">
           <table className="w-full">
             <thead>
               <tr className="border-b border-zinc-700 bg-zinc-800/50">

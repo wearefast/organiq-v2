@@ -59,11 +59,13 @@ export default function WorkflowRunsPage() {
             SEO strategy workflow executions for this project.
           </p>
         </div>
-        <StartRun
-          projectId={params.pId}
-          organizationId={orgId ?? ''}
-          workspaceId={params.wId}
-        />
+        <div data-tour="start-run-btn">
+          <StartRun
+            projectId={params.pId}
+            organizationId={orgId ?? ''}
+            workspaceId={params.wId}
+          />
+        </div>
       </div>
 
       {error && <p className="mb-4 text-sm text-red-400">{error}</p>}
@@ -89,7 +91,7 @@ export default function WorkflowRunsPage() {
           </p>
         </div>
       ) : (
-        <div className="space-y-2">
+        <div data-tour="runs-table" className="space-y-2">
           {runs.map((run) => (
             <div key={run.id} className="relative">
               <Link

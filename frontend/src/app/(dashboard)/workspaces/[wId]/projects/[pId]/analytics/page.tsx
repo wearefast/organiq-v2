@@ -3,6 +3,7 @@
 import { useMemo } from 'react';
 import { useParams } from 'next/navigation';
 import { BarChart, Bar, XAxis, YAxis, Tooltip, ResponsiveContainer, PieChart, Pie, Cell, Legend } from 'recharts';
+import { ComingSoonOverlay } from '@/shared/components/ComingSoonOverlay';
 import { useGscStatus, useGscSummary, useGscKeywords } from '@/features/analytics/hooks/useGsc';
 import { getGscConnectUrl } from '@/features/analytics/services/gsc.service';
 
@@ -96,12 +97,13 @@ export default function AnalyticsPage() {
   // Not connected — multi-engine connection hub
   if (!status?.connected) {
     return (
-      <div className="p-6">
-        <h1 className="text-2xl font-bold mb-1">Search Analytics</h1>
-        <p className="text-gray-500 text-sm mb-8">
-          Connect your search engine accounts to see keyword performance, impressions, CTR, and position data directly in OrganiQ.
-        </p>
-        <div className="grid grid-cols-1 sm:grid-cols-3 gap-4 max-w-3xl">
+      <ComingSoonOverlay>
+        <div data-tour="gsc-section" className="p-6">
+          <h1 className="text-2xl font-bold mb-1">Search Analytics</h1>
+          <p className="text-gray-500 text-sm mb-8">
+            Connect your search engine accounts to see keyword performance, impressions, CTR, and position data directly in OrganiQ.
+          </p>
+          <div className="grid grid-cols-1 sm:grid-cols-3 gap-4 max-w-3xl">
           <EngineCard
             logo={<GoogleLogo size={28} />}
             name="Google Search Console"
@@ -121,12 +123,14 @@ export default function AnalyticsPage() {
             status="coming_soon"
           />
         </div>
-      </div>
+        </div>
+      </ComingSoonOverlay>
     );
   }
 
   return (
-    <div className="p-6">
+    <ComingSoonOverlay>
+      <div className="p-6">
       <div className="flex items-center justify-between mb-6">
         <h1 className="text-2xl font-bold">Search Analytics</h1>
         <div className="flex items-center gap-3">
@@ -245,7 +249,8 @@ export default function AnalyticsPage() {
           </div>
         </div>
       )}
-    </div>
+      </div>
+    </ComingSoonOverlay>
   );
 }
 

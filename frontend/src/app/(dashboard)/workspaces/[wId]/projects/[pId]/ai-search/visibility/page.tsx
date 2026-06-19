@@ -227,6 +227,7 @@ export default function VisibilityPage() {
           </p>
         </div>
         <button
+          data-tour="add-prompt-btn"
           onClick={() => { setPrefillText(''); setShowAdd(!showAdd); }}
           className="px-4 py-2 bg-indigo-600 text-white text-sm font-medium rounded-md hover:bg-indigo-700"
         >
@@ -383,7 +384,7 @@ export default function VisibilityPage() {
           </div>
         </div>
       ) : (
-        <div className="space-y-3">
+        <div data-tour="tracked-prompts" className="space-y-3">
           {prompts.map((p) => (
             <PromptCard
               key={p.id}
