@@ -1,10 +1,10 @@
 import { Injectable, Logger } from '@nestjs/common';
 import { Pipeline } from './pipeline.interface';
-import { DataForSeoService } from '../../integrations/dataforseo/dataforseo.service';
+import { AhrefsService } from '../../integrations/ahrefs/ahrefs.service';
 
 /**
  * Tier 1 pipeline: Competitor Metrics
- * Collects backlink summary + ranked keywords for each competitor via DataForSEO.
+ * Collects domain rating, backlinks, organic keywords for each competitor via Ahrefs v3.
  * No LLM needed — pure API aggregation.
  */
 @Injectable()
@@ -12,13 +12,10 @@ export class CompetitorMetricsPipeline implements Pipeline {
   stepKey = 'competitor-metrics';
   private readonly logger = new Logger(CompetitorMetricsPipeline.name);
 
-  constructor(private readonly dataforseo: DataForSeoService) {}
+  constructor(private readonly ahrefs: AhrefsService) {}
 
   async execute(context: Record<string, unknown>): Promise<unknown> {
     const domain = context.domain as string;
-    const country = (context.country as string) || 'us';
-    const language = (context.language as string) || 'en';
-    const location = (context.location as string) || 'United States';
 
     // competitor-buckets output shape: { buckets: { direct: { competitors: [{domain, name, ...}] }, content: {...}, ... } }
     const bucketsCtx = context['competitor-buckets'] as {
@@ -37,36 +34,31 @@ export class CompetitorMetricsPipeline implements Pipeline {
 
     this.logger.log(`Fetching competitor metrics for ${competitors.length} competitors (${domain})`);
 
-    const results = await Promise.all(
+    // Use Promise.allSettled for resilient per-competitor handling
+    const results = await Promise.allSettled(
       competitors.map(async (competitor) => {
-        try {
-          const [backlinksSummary, rankedKws] = await Promise.all([
-            this.dataforseo.getBacklinksSummary(competitor),
-            this.dataforseo.getRankedKeywords(competitor, location, language, 20),
-          ]);
+        const [drData, blData, kwData] = await Promise.all([
+          this.ahrefs.getDomainRating(competitor),
+          this.ahrefs.getBacklinksStats(competitor),
+          this.ahrefs.getOrganicKeywords(competitor),
+        ]);
 
-          return {
-            domain: competitor,
-            backlinksSummary,
-            rankedKeywords: rankedKws,
-            status: 'success' as const,
-          };
-        } catch (error) {
-          this.logger.warn(`Failed to fetch metrics for ${competitor}: ${(error as Error).message}`);
-          return {
-            domain: competitor,
-            backlinksSummary: null,
-            rankedKeywords: null,
-            status: 'error' as const,
-            error: (error as Error).message,
-          };
-        }
+        return {
+          domain: competitor,
+          drData,
+          blData,
+          kwData,
+          status: 'success' as const,
+        };
       }),
     );
 
-    // Also fetch the target domain for comparison —
-    // business-profile pipeline already ran getBacklinksSummary for this domain;
-    // read from context instead of making duplicate API calls.
+    // Filter out errors, extract successful results
+    const successResults = results
+      .filter((r): r is PromiseFulfilledResult<{ domain: string; drData: unknown; blData: unknown; kwData: unknown; status: 'success' }> => r.status === 'fulfilled')
+      .map((r) => r.value);
+
+    // Read target domain metrics from business-profile context
     const bpCtx = context['business-profile'] as {
       domain_authority?: {
         domain_rating?: number | null;
@@ -82,59 +74,52 @@ export class CompetitorMetricsPipeline implements Pipeline {
     const targetBacklinksLive = bpCtx?.domain_authority?.backlinks ?? 0;
     const targetBacklinksAllTime = bpCtx?.domain_authority?.backlinks_all_time ?? 0;
 
-    // Align output with the competitorMetrics agent definition schema
-    const competitorMetrics = results.map((r) => {
-      // Extract backlink metrics from DataForSEO backlinks/summary/live response
-      const blRaw = r.backlinksSummary as {
-        tasks?: Array<{ result?: Array<{
-          backlinks?: number;
-          dofollow?: number;
-          referring_domains?: number;
-          referring_main_domains?: number;
-          rank?: number;
-          main_domain_rank?: number;
-        }> }>;
-      } | null;
-      const bl = blRaw?.tasks?.[0]?.result?.[0];
+    // Parse Ahrefs v3 responses and build competitor metrics
+    const competitorMetrics = successResults.map((r) => {
+      // Parse domain rating: { domain_rating: { domain_rating, ahrefs_rank } }
+      const drObj = ((r.drData as Record<string, unknown>)?.domain_rating) as Record<string, unknown> | undefined;
+      const dr = drObj?.domain_rating != null ? Math.round(Number(drObj.domain_rating)) : 0;
+      const rank = drObj?.ahrefs_rank != null ? Number(drObj.ahrefs_rank) : undefined;
 
-      // Extract keywords from DataForSEO ranked_keywords response
-      const kwRaw = r.rankedKeywords as {
-        tasks?: Array<{ result?: Array<{ items?: Array<{
-          keyword_data?: {
-            keyword?: string;
-            keyword_info?: { search_volume?: number; cpc?: number };
-            keyword_properties?: { keyword_difficulty?: number };
-          };
-          ranked_serp_element?: { serp_item?: { rank_group?: number; url?: string } };
-        }> }> }>;
-      } | null;
-      const kwItems = kwRaw?.tasks?.[0]?.result?.[0]?.items ?? [];
-      const topKeywordList = kwItems
-        .filter((k) => k.keyword_data?.keyword)
+      // Parse backlinks stats: { metrics: { live, live_refdomains, all_time, all_time_refdomains } }
+      const blMetrics = ((r.blData as Record<string, unknown>)?.metrics) as Record<string, unknown> | undefined;
+      const blLive = blMetrics?.live != null ? Number(blMetrics.live) : 0;
+      const blRefDomainsLive = blMetrics?.live_refdomains != null ? Number(blMetrics.live_refdomains) : 0;
+      const blAllTime = blMetrics?.all_time != null ? Number(blMetrics.all_time) : 0;
+      const blRefDomainsAllTime = blMetrics?.all_time_refdomains != null ? Number(blMetrics.all_time_refdomains) : 0;
+
+      // Parse organic keywords: { keywords: [{ keyword, volume, keyword_difficulty, best_position, best_position_url }] }
+      const kwList = ((r.kwData as Record<string, unknown>)?.keywords ?? []) as Array<{
+        keyword?: string;
+        volume?: number;
+        keyword_difficulty?: number;
+        best_position?: number;
+        best_position_url?: string;
+      }>;
+      const topKeywordList = kwList
+        .filter((k) => k.keyword)
+        .slice(0, 10)
         .map((k) => ({
-          keyword: k.keyword_data!.keyword!,
-          volume: k.keyword_data?.keyword_info?.search_volume ?? 0,
-          difficulty: k.keyword_data?.keyword_properties?.keyword_difficulty ?? 0,
-          position: k.ranked_serp_element?.serp_item?.rank_group ?? null,
-          url: k.ranked_serp_element?.serp_item?.url ?? '',
+          keyword: k.keyword!,
+          volume: k.volume ?? 0,
+          difficulty: k.keyword_difficulty ?? 0,
+          position: k.best_position ?? null,
+          url: k.best_position_url ?? '',
         }));
-
-      // Use main_domain_rank / 10 as DR proxy (DFS 0-1000 → 0-100)
-      const domainRating = bl?.main_domain_rank ? Math.round(bl.main_domain_rank / 10) : 0;
 
       return {
         domain: r.domain,
         bucket: 'direct' as const,
-        domainRating,
-        ahrefsRank: bl?.rank ?? undefined,
+        domainRating: dr,
+        ahrefsRank: rank,
         organicKeywords: topKeywordList.length,
         organicTraffic: 0,
-        referringDomains: bl?.referring_domains ?? 0,
+        referringDomains: blRefDomainsLive,
         backlinks: {
-          live: bl?.backlinks ?? 0,
-          allTime: bl?.backlinks ?? 0,
-          liveRefDomains: bl?.referring_domains ?? 0,
-          allTimeRefDomains: bl?.referring_main_domains ?? 0,
+          live: blLive,
+          allTime: blAllTime,
+          liveRefDomains: blRefDomainsLive,
+          allTimeRefDomains: blRefDomainsAllTime,
         },
         keywords: topKeywordList,
         topPages: topKeywordList.slice(0, 5).map((k) => ({
@@ -142,8 +127,7 @@ export class CompetitorMetricsPipeline implements Pipeline {
           traffic: k.volume,
           topKeyword: k.keyword,
         })),
-        status: r.status,
-        error: (r as { error?: string }).error,
+        status: 'success' as const,
       };
     });
 
