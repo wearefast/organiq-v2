@@ -287,10 +287,45 @@ export class InvitationService {
   // ─── List ────────────────────────────────────────────────────────────────────
 
   async listByOrg(orgId: string) {
-    return this.db.db.query.invitations.findMany({
+    const invs = await this.db.db.query.invitations.findMany({
       where: eq(invitations.organizationId, orgId),
       orderBy: (inv, { desc }) => [desc(inv.createdAt)],
     });
+
+    // Enrich accessGrants with workspace/project names
+    return Promise.all(
+      invs.map(async (inv) => ({
+        ...inv,
+        accessGrants: await Promise.all(
+          (inv.accessGrants ?? []).map(async (grant: any) => {
+            if (grant.type === 'org') {
+              return { ...grant, workspaceName: null, projectName: null };
+            }
+            if (grant.type === 'workspace' && grant.workspaceId) {
+              const ws = await this.db.db.query.workspaces.findFirst({
+                where: eq(workspaces.id, grant.workspaceId),
+                columns: { name: true },
+              });
+              return { ...grant, workspaceName: ws?.name ?? null, projectName: null };
+            }
+            if (grant.type === 'project' && grant.projectId) {
+              const proj = await this.db.db.query.projects.findFirst({
+                where: eq(projects.id, grant.projectId),
+                columns: { name: true },
+              });
+              const ws = grant.workspaceId
+                ? await this.db.db.query.workspaces.findFirst({
+                    where: eq(workspaces.id, grant.workspaceId),
+                    columns: { name: true },
+                  })
+                : null;
+              return { ...grant, workspaceName: ws?.name ?? null, projectName: proj?.name ?? null };
+            }
+            return grant;
+          }),
+        ),
+      })),
+    );
   }
 
   // ─── Token lookup (public accept page) ───────────────────────────────────────

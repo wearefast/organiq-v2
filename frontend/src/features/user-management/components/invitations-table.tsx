@@ -20,6 +20,58 @@ function RoleBadge({ role }: { role: string }) {
   );
 }
 
+function AccessSummary({
+  grants,
+}: {
+  grants: Array<{
+    type: 'org' | 'workspace' | 'project';
+    workspaceId?: string;
+    projectId?: string;
+    workspaceName?: string | null;
+    projectName?: string | null;
+  }>;
+}) {
+  const hasOrg = grants.some((g) => g.type === 'org');
+  if (hasOrg) return <span className="text-xs text-zinc-400">Org-wide access</span>;
+
+  if (grants.length === 0) return <span className="text-xs text-zinc-500">No access</span>;
+
+  // Group by type
+  const wsGrants = grants.filter((g) => g.type === 'workspace');
+  const pGrants = grants.filter((g) => g.type === 'project');
+
+  // Build display items
+  const items: string[] = [];
+  for (const grant of wsGrants) {
+    items.push(`📁 ${grant.workspaceName || 'Unknown'}`);
+  }
+  for (const grant of pGrants) {
+    const ws = grant.workspaceName || 'Unknown';
+    const proj = grant.projectName || 'Unknown';
+    items.push(`📊 ${ws} / ${proj}`);
+  }
+
+  if (items.length === 0) return <span className="text-xs text-zinc-500">No access</span>;
+
+  if (items.length <= 2) {
+    return <span className="text-xs text-zinc-400">{items.join(', ')}</span>;
+  }
+
+  // For many grants, show count with tooltip
+  return (
+    <div className="group relative inline-block">
+      <span className="text-xs text-zinc-400 cursor-help">
+        {items.length} access items
+      </span>
+      <div className="absolute bottom-full left-0 mb-2 hidden w-max rounded bg-zinc-900 px-2 py-1 text-xs text-zinc-200 group-hover:block border border-zinc-700 z-10">
+        {items.map((item, i) => (
+          <div key={i}>{item}</div>
+        ))}
+      </div>
+    </div>
+  );
+}
+
 interface InvitationsTableProps {
   invitations: Invitation[];
   onRevoke: (invitationId: string) => Promise<void>;
@@ -50,6 +102,7 @@ export function InvitationsTable({ invitations, onRevoke }: InvitationsTableProp
             <tr className="border-b border-zinc-700 bg-zinc-800/50">
               <th className="px-4 py-3 text-left text-xs font-medium text-zinc-500">Email</th>
               <th className="px-4 py-3 text-left text-xs font-medium text-zinc-500">Role</th>
+              <th className="px-4 py-3 text-left text-xs font-medium text-zinc-500">Access</th>
               <th className="px-4 py-3 text-left text-xs font-medium text-zinc-500">Sent</th>
               <th className="px-4 py-3 text-left text-xs font-medium text-zinc-500">Expires</th>
               <th className="w-20 px-4 py-3" />
@@ -66,6 +119,9 @@ export function InvitationsTable({ invitations, onRevoke }: InvitationsTableProp
                 </td>
                 <td className="px-4 py-3">
                   <RoleBadge role={inv.role} />
+                </td>
+                <td className="px-4 py-3">
+                  <AccessSummary grants={inv.accessGrants ?? []} />
                 </td>
                 <td className="px-4 py-3 text-xs text-zinc-500">
                   {new Date(inv.createdAt).toLocaleDateString()}

@@ -23,16 +23,44 @@ function RoleBadge({ role }: { role: string }) {
 
 function AccessSummary({ grants }: { grants: AccessGrant[] }) {
   const hasOrg = grants.some((g) => g.grantType === 'org');
-  if (hasOrg) return <span className="text-xs text-zinc-400">Org-wide</span>;
+  if (hasOrg) return <span className="text-xs text-zinc-400">Org-wide access</span>;
 
-  const wsCount = grants.filter((g) => g.grantType === 'workspace').length;
-  const pCount = grants.filter((g) => g.grantType === 'project').length;
-  if (wsCount + pCount === 0) return <span className="text-xs text-zinc-500">No access</span>;
+  if (grants.length === 0) return <span className="text-xs text-zinc-500">No access</span>;
 
-  const parts: string[] = [];
-  if (wsCount > 0) parts.push(`${wsCount} workspace${wsCount > 1 ? 's' : ''}`);
-  if (pCount > 0) parts.push(`${pCount} project${pCount > 1 ? 's' : ''}`);
-  return <span className="text-xs text-zinc-400">{parts.join(', ')}</span>;
+  // Group by type
+  const wsGrants = grants.filter((g) => g.grantType === 'workspace');
+  const pGrants = grants.filter((g) => g.grantType === 'project');
+
+  // Build display items
+  const items: string[] = [];
+  for (const grant of wsGrants) {
+    items.push(`📁 ${grant.workspaceName || 'Unknown'}`);
+  }
+  for (const grant of pGrants) {
+    const ws = grant.workspaceName || 'Unknown';
+    const proj = grant.projectName || 'Unknown';
+    items.push(`📊 ${ws} / ${proj}`);
+  }
+
+  if (items.length === 0) return <span className="text-xs text-zinc-500">No access</span>;
+
+  if (items.length <= 2) {
+    return <span className="text-xs text-zinc-400">{items.join(', ')}</span>;
+  }
+
+  // For many grants, show count with tooltip
+  return (
+    <div className="group relative inline-block">
+      <span className="text-xs text-zinc-400 cursor-help">
+        {items.length} access items
+      </span>
+      <div className="absolute bottom-full left-0 mb-2 hidden w-max rounded bg-zinc-900 px-2 py-1 text-xs text-zinc-200 group-hover:block border border-zinc-700 z-10">
+        {items.map((item, i) => (
+          <div key={i}>{item}</div>
+        ))}
+      </div>
+    </div>
+  );
 }
 
 interface MembersTableProps {

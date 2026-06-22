@@ -26,6 +26,8 @@ export interface AccessGrant {
   grantType: 'org' | 'workspace' | 'project';
   workspaceId: string | null;
   projectId: string | null;
+  workspaceName?: string | null;
+  projectName?: string | null;
 }
 
 export interface OrgMember {
@@ -48,6 +50,8 @@ export interface Invitation {
     type: 'org' | 'workspace' | 'project';
     workspaceId?: string;
     projectId?: string;
+    workspaceName?: string | null;
+    projectName?: string | null;
   }>;
   token: string;
   expiresAt: string;

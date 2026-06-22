@@ -73,7 +73,7 @@ export class AccessGrantService {
   }
 
   /**
-   * Get all members of an org with their current access grants.
+   * Get all members of an org with their current access grants, enriched with workspace/project names.
    */
   async getMembersWithGrants(orgId: string) {
     const members = await this.db.db.query.orgMembers.findMany({
@@ -84,7 +84,42 @@ export class AccessGrantService {
         },
       },
     });
-    return members;
+
+    // Enrich grants with workspace/project names
+    const enriched = await Promise.all(
+      members.map(async (member) => ({
+        ...member,
+        grants: await Promise.all(
+          member.grants.map(async (grant) => {
+            if (grant.grantType === 'org') {
+              return { ...grant, workspaceName: null, projectName: null };
+            }
+            if (grant.grantType === 'workspace' && grant.workspaceId) {
+              const ws = await this.db.db.query.workspaces.findFirst({
+                where: eq(workspaces.id, grant.workspaceId),
+                columns: { name: true },
+              });
+              return { ...grant, workspaceName: ws?.name ?? null, projectName: null };
+            }
+            if (grant.grantType === 'project' && grant.projectId) {
+              const proj = await this.db.db.query.projects.findFirst({
+                where: eq(projects.id, grant.projectId),
+                columns: { name: true },
+              });
+              const ws = grant.workspaceId
+                ? await this.db.db.query.workspaces.findFirst({
+                    where: eq(workspaces.id, grant.workspaceId),
+                    columns: { name: true },
+                  })
+                : null;
+              return { ...grant, workspaceName: ws?.name ?? null, projectName: proj?.name ?? null };
+            }
+            return grant;
+          }),
+        ),
+      })),
+    );
+    return enriched;
   }
 
   /**
