@@ -25,6 +25,7 @@ interface SeedKeywordsData {
 
 export function SeedKeywordsRenderer({ data }: { data: unknown }) {
   const seedData = data as SeedKeywordsData;
+  const [selectedCategory, setSelectedCategory] = useState<string | null>(null);
 
   if (!seedData || typeof seedData !== 'object') {
     return <p className="text-sm text-zinc-500">No keyword data available.</p>;
@@ -40,14 +41,19 @@ export function SeedKeywordsRenderer({ data }: { data: unknown }) {
       ? Object.keys(seedData.categories)
       : [];
 
+  // Filter keywords by selected category
+  const filteredKeywords = selectedCategory
+    ? keywords.filter(kw => kw.category === selectedCategory)
+    : keywords;
+
   return (
     <div className="space-y-4">
       {/* Summary row */}
       <div className="flex items-center gap-6">
-        {keywords.length > 0 && (
+        {filteredKeywords.length > 0 && (
           <div className="flex items-center gap-2">
             <span className="text-2xl font-semibold text-zinc-100">
-              {keywords.length}
+              {filteredKeywords.length}{selectedCategory ? ` / ${keywords.length}` : ''}
             </span>
             <InfoTip tip="Initial keywords used to discover your niche"><span className="text-sm text-zinc-500">seed keywords</span></InfoTip>
           </div>
@@ -62,22 +68,38 @@ export function SeedKeywordsRenderer({ data }: { data: unknown }) {
         )}
       </div>
 
-      {/* Categories pills */}
+      {/* Categories pills — clickable to filter */}
       {categoryNames.length > 0 && (
         <div className="flex flex-wrap gap-2">
+          {/* "All" button to clear filter */}
+          <button
+            onClick={() => setSelectedCategory(null)}
+            className={`rounded-full px-3 py-1 text-[11px] font-medium transition-colors ${
+              selectedCategory === null
+                ? 'bg-blue-500 text-white'
+                : 'bg-blue-500/10 text-blue-400 hover:bg-blue-500/20'
+            }`}
+          >
+            All
+          </button>
           {categoryNames.map((cat, i) => (
-            <span
+            <button
               key={i}
-              className="rounded-full bg-blue-500/10 px-3 py-1 text-[11px] font-medium text-blue-400"
+              onClick={() => setSelectedCategory(selectedCategory === cat ? null : cat)}
+              className={`rounded-full px-3 py-1 text-[11px] font-medium transition-colors cursor-pointer ${
+                selectedCategory === cat
+                  ? 'bg-blue-500 text-white'
+                  : 'bg-blue-500/10 text-blue-400 hover:bg-blue-500/20'
+              }`}
             >
               {cat}
-            </span>
+            </button>
           ))}
         </div>
       )}
 
       {/* Keywords table */}
-      {keywords.length > 0 && <SortableSeedKeywordsTable keywords={keywords} />}
+      {filteredKeywords.length > 0 && <SortableSeedKeywordsTable keywords={filteredKeywords} />}
     </div>
   );
 }

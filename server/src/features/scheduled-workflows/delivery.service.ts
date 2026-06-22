@@ -81,7 +81,7 @@ export class DeliveryService {
 
   private async deliverEmail(payload: DeliveryPayload): Promise<void> {
     const sendgridApiKey = this.configService.get<string>('SENDGRID_API_KEY');
-    const fromEmail = this.configService.get<string>('EMAIL_FROM') ?? 'notifications@pulse.platformance.io';
+    const fromEmail = this.configService.get<string>('EMAIL_FROM') ?? 'notifications@rankorganiq.com';
 
     if (!sendgridApiKey) {
       this.logger.warn('SENDGRID_API_KEY not configured, skipping email delivery');

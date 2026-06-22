@@ -214,6 +214,62 @@ export class DataForSeoService {
     ]);
   }
 
+  /**
+   * Enrich an array of keywords with volume and difficulty metrics from DataForSEO.
+   * Returns a map of keyword → { volume, difficulty } for matching keywords.
+   * Unmatched keywords are absent from the returned map.
+   */
+  async enrichKeywordsWithMetrics(
+    keywords: Array<{ keyword: string; [key: string]: unknown }>,
+    location: string = 'United States',
+    language: string = 'en',
+  ): Promise<Array<{ keyword: string; volume: number | null; difficulty: number | null; [key: string]: unknown }>> {
+    if (!keywords.length) return [];
+
+    const keywordStrings = keywords.map(kw => kw.keyword);
+
+    try {
+      // Fetch search volume and difficulty in parallel
+      const [volumeResp, difficultyResp] = await Promise.all([
+        this.getKeywordSearchVolume(keywordStrings, location, language),
+        this.getKeywordDifficulty(keywordStrings, location, language),
+      ]);
+
+      // Parse volume response: tasks[0].result[].keyword, search_volume
+      const volumeMap = new Map<string, number>();
+      const volumeItems = (volumeResp as any)?.tasks?.[0]?.result ?? [];
+      for (const item of volumeItems) {
+        if (item.keyword) {
+          volumeMap.set(item.keyword.toLowerCase(), item.search_volume ?? null);
+        }
+      }
+
+      // Parse difficulty response: tasks[0].result[].keyword, keyword_difficulty
+      const difficultyMap = new Map<string, number>();
+      const diffItems = (difficultyResp as any)?.tasks?.[0]?.result ?? [];
+      for (const item of diffItems) {
+        if (item.keyword) {
+          difficultyMap.set(item.keyword.toLowerCase(), item.keyword_difficulty ?? null);
+        }
+      }
+
+      // Merge back into original keywords array
+      return keywords.map(kw => ({
+        ...kw,
+        volume: volumeMap.get(kw.keyword.toLowerCase()) ?? null,
+        difficulty: difficultyMap.get(kw.keyword.toLowerCase()) ?? null,
+      }));
+    } catch (err) {
+      this.logger.warn(`enrichKeywordsWithMetrics failed: ${(err as Error).message}. Returning keywords as-is with null metrics.`);
+      // On failure, return keywords with null metrics rather than crashing
+      return keywords.map(kw => ({
+        ...kw,
+        volume: null,
+        difficulty: null,
+      }));
+    }
+  }
+
   // ─── Core Request Methods ─────────────────────────────────
 
   private async post(endpoint: string, data: unknown[]): Promise<unknown> {

@@ -14,6 +14,7 @@ import { CreditsService } from '../credits/credits.service';
 import { WorkflowService, STEP_DEFINITIONS } from './workflow.service';
 import { WorkflowGateway } from './workflow.gateway';
 import { WorkflowMaterializerService } from './workflow-materializer.service';
+import { DataForSeoService } from '../integrations/dataforseo/dataforseo.service';
 import { DlqService } from './dlq.service';
 import { ProjectIntelligenceService } from '../projects/project-intelligence.service';
 import { WorkflowLogger } from '../../shared/utils/workflow-logger';
@@ -59,6 +60,7 @@ export class WorkflowProcessor extends WorkerHost {
     private readonly dlqService: DlqService,
     private readonly skillService: SkillService,
     private readonly intelligenceService: ProjectIntelligenceService,
+    private readonly dataforseo: DataForSeoService,
   ) {
     super();
   }
@@ -492,10 +494,23 @@ export class WorkflowProcessor extends WorkerHost {
       // data is materialized into the content_images table by WorkflowMaterializerService.
       // Storing 15–30 MB of base64 in workflow_context/JSONB is unnecessary and slow.
       if (result.output != null) {
-        const contextValue =
+        let contextValue =
           stepKey === 'content-images'
             ? this.stripImagesBase64(result.output)
             : result.output;
+
+        // Enrich seed-keywords with volume and difficulty from DataForSEO
+        if (stepKey === 'seed-keywords' && contextValue && typeof contextValue === 'object') {
+          const output = contextValue as Record<string, unknown>;
+          const seedKeywords = (output.seedKeywords ?? []) as Array<{ keyword: string; [key: string]: unknown }>;
+          if (Array.isArray(seedKeywords) && seedKeywords.length > 0) {
+            const country = context?.country as string || 'us';
+            const language = context?.language as string || 'en';
+            const enriched = await this.dataforseo.enrichKeywordsWithMetrics(seedKeywords, country, language);
+            contextValue = { ...output, seedKeywords: enriched };
+          }
+        }
+
         await this.workflowService.setContext(workflowRunId, stepKey, contextValue);
       }
 
