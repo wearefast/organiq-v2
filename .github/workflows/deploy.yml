@@ -48,18 +48,42 @@ jobs:
           host: ${{ secrets.EC2_HOST }}
           username: ec2-user
           key: ${{ secrets.EC2_SSH_KEY }}
+          command_timeout: 10m
           script: |
+            set -e
+            echo "Logging into ECR..."
             aws ecr get-login-password --region ${{ env.AWS_REGION }} | docker login --username AWS --password-stdin ${{ secrets.ECR_REGISTRY }}
+            
+            echo "Pulling latest image..."
             docker pull ${{ secrets.ECR_REGISTRY }}/${{ env.ECR_REPOSITORY }}:latest
-            docker stop organiq-server || true
-            docker rm organiq-server || true
+            
+            echo "Stopping and removing old container..."
+            docker stop organiq-server 2>/dev/null || true
+            docker rm organiq-server 2>/dev/null || true
+            
+            echo "Removing dangling images..."
+            docker image prune -f --filter "dangling=true" || true
+            
+            echo "Starting new container..."
             docker run -d \
               --name organiq-server \
               --restart unless-stopped \
               --env-file /opt/organiq/.env \
               -p 3002:3002 \
               ${{ secrets.ECR_REGISTRY }}/${{ env.ECR_REPOSITORY }}:latest
-            echo "Waiting for container to be ready..."
-            sleep 10
+            
+            echo "Waiting for container to be healthy..."
+            sleep 15
+            
+            echo "Verifying container is running..."
+            if ! docker ps | grep -q organiq-server; then
+              echo "ERROR: Container failed to start"
+              docker logs organiq-server || true
+              exit 1
+            fi
+            
+            echo "Running database migrations..."
             docker exec organiq-server npx drizzle-kit migrate
             echo "Migrations complete"
+            
+            echo "Deployment successful!"
