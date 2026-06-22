@@ -26,7 +26,7 @@ WORKDIR /app
 
 # Copy package files and install production deps only
 COPY server/package.json server/package-lock.json* ./
-RUN npm ci --omit=dev
+RUN npm ci --omit=dev && npm install drizzle-kit
 
 # Copy built output
 COPY --from=builder /app/server/dist ./dist
