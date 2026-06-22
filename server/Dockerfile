@@ -31,6 +31,9 @@ RUN npm ci --omit=dev
 # Copy built output
 COPY --from=builder /app/server/dist ./dist
 
+# Copy drizzle migrations (run on startup via main.ts)
+COPY server/drizzle ./drizzle
+
 # Copy prompts and agent definitions (needed at runtime)
 COPY server/src/prompts ./src/prompts
 COPY server/src/agents/definitions ./src/agents/definitions
