@@ -31,7 +31,7 @@ export class WorkspaceCreditLimitService {
     firstOfMonth.setDate(1);
     firstOfMonth.setHours(0, 0, 0, 0);
 
-    const [result] = await this.db.db
+    await this.db.db
       .insert(workspaceCreditLimits)
       .values({
         organizationId: orgId,
@@ -49,7 +49,8 @@ export class WorkspaceCreditLimitService {
       })
       .returning();
 
-    return result;
+    // Return properly formatted result matching frontend CreditLimitResult type
+    return this.getLimit(orgId, workspaceId);
   }
 
   /**
