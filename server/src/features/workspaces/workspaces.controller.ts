@@ -1,4 +1,4 @@
-import { Controller, Get, Post, Patch, Delete, Param, Body, UseGuards, Req } from '@nestjs/common';
+import { Controller, Get, Post, Patch, Delete, Param, Body, UseGuards, Req, ForbiddenException } from '@nestjs/common';
 import { ApiTags, ApiBearerAuth } from '@nestjs/swagger';
 import { WorkspacesService } from './workspaces.service';
 import { CreateWorkspaceDto, UpdateWorkspaceDto } from './dto/workspace.dto';
@@ -39,7 +39,19 @@ export class WorkspacesController {
   }
 
   @Post()
-  async create(@Body() body: CreateWorkspaceDto) {
+  async create(@Body() body: CreateWorkspaceDto, @Req() req: any) {
+    const role: string = req.member?.role ?? 'user';
+    const isAdmin = role === 'admin' || role === 'owner';
+
+    if (!isAdmin) {
+      // Only org-level members can create workspaces.
+      // Workspace/project-scoped members get a filtered view and cannot create new workspaces.
+      const allowedIds = await this.accessService.getAccessibleWorkspaceIds(req.member.id, req.org.id);
+      if (allowedIds !== null) {
+        throw new ForbiddenException('You do not have permission to create workspaces');
+      }
+    }
+
     return this.workspacesService.create(body);
   }
 

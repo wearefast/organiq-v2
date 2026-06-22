@@ -2,10 +2,11 @@
 
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
-import { useAuth, useClerk, useOrganizationList } from '@clerk/nextjs';
+import { useAuth, useClerk, useOrganizationList, useOrganization } from '@clerk/nextjs';
 import { TourAutoStarter } from '@/features/tour';
 import { useEffect, useState } from 'react';
 import { apiFetch, setAuthToken } from '@/shared/utils/api';
+import { getMyAccess, type AccessGrant } from '@/features/user-management/services/user-management.service';
 
 interface Workspace {
   id: string;
@@ -29,16 +30,23 @@ export default function WorkspacesPage() {
   const router = useRouter();
   const clerk = useClerk();
   const { getToken, isLoaded, isSignedIn, orgId } = useAuth();
+  const { membership } = useOrganization();
+  const isAdmin = membership?.role === 'org:admin' || membership?.role === 'org:owner';
   const { isLoaded: organizationsLoaded, setActive, userMemberships } = useOrganizationList({
     userMemberships: { infinite: true },
   });
   const [workspaces, setWorkspaces] = useState<Workspace[]>([]);
+  const [grants, setGrants] = useState<AccessGrant[]>([]);
   const [showForm, setShowForm] = useState(false);
   const [name, setName] = useState('');
   const [domain, setDomain] = useState('');
   const [loading, setLoading] = useState(true);
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState<string | null>(null);
+
+  // User can create workspaces if they are an admin OR have an org-level access grant.
+  // Workspace/project-scoped members can only see their assigned workspaces.
+  const canCreateWorkspace = isAdmin || grants.some((g) => g.grantType === 'org');
 
   async function handlePrimaryAction() {
     setError(null);
@@ -75,8 +83,14 @@ export default function WorkspacesPage() {
       setError(null);
       try {
         setAuthToken(await getToken());
-        const data = await apiFetch<Workspace[]>(`/workspaces/org/${orgId}`);
-        if (active) setWorkspaces(data);
+        const [data, myGrants] = await Promise.all([
+          apiFetch<Workspace[]>(`/workspaces/org/${orgId}`),
+          getMyAccess(orgId!),
+        ]);
+        if (active) {
+          setWorkspaces(data);
+          setGrants(myGrants);
+        }
       } catch (err) {
         if (active) setError(err instanceof Error ? err.message : 'Failed to load workspaces');
       } finally {
@@ -136,12 +150,15 @@ export default function WorkspacesPage() {
           <h1 className="text-page-title text-zinc-100">Workspaces</h1>
           <p className="mt-1 text-sm text-zinc-500">Manage your client workspaces and their projects.</p>
         </div>
-        <button data-tour="new-workspace-btn" className="btn-primary disabled:cursor-not-allowed disabled:opacity-50" onClick={() => { void handlePrimaryAction(); }} disabled={submitting}>
-          {orgId ? (showForm ? 'Cancel' : 'New Workspace') : 'Set Up Organization'}
-        </button>
+        {/* Only show New Workspace to users with org-level access (or no org yet) */}
+        {(!orgId || canCreateWorkspace) && (
+          <button data-tour="new-workspace-btn" className="btn-primary disabled:cursor-not-allowed disabled:opacity-50" onClick={() => { void handlePrimaryAction(); }} disabled={submitting}>
+            {orgId ? (showForm ? 'Cancel' : 'New Workspace') : 'Set Up Organization'}
+          </button>
+        )}
       </div>
 
-      {showForm && (
+      {showForm && canCreateWorkspace && (
         <form onSubmit={handleCreateWorkspace} className="card space-y-4 p-5">
           <div className="grid gap-4 md:grid-cols-2">
             <label className="space-y-2 text-sm text-zinc-300">
