@@ -26,7 +26,7 @@ WORKDIR /app
 
 # Copy package files and install production deps only
 COPY server/package.json server/package-lock.json* ./
-RUN npm ci --omit=dev && npm install drizzle-kit
+RUN npm ci --omit=dev
 
 # Copy built output
 COPY --from=builder /app/server/dist ./dist
@@ -34,10 +34,6 @@ COPY --from=builder /app/server/dist ./dist
 # Copy prompts and agent definitions (needed at runtime)
 COPY server/src/prompts ./src/prompts
 COPY server/src/agents/definitions ./src/agents/definitions
-
-# Copy drizzle config and migrations (needed for migrations)
-COPY --from=builder /app/server/drizzle.config.ts ./
-COPY --from=builder /app/server/drizzle ./drizzle
 
 EXPOSE 3002
 
