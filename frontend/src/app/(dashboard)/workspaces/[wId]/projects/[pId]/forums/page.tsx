@@ -71,16 +71,11 @@ function formatRelativeTime(dateStr: string | null | undefined): string | null {
 
 function RedditLogo() {
   return (
-    <svg className="h-5 w-5 text-orange-500" viewBox="0 0 24 24" fill="currentColor">
-      <circle cx="12" cy="12" r="10" fill="currentColor" />
-      <g fill="white">
-        <circle cx="9" cy="10" r="1.5" />
-        <circle cx="15" cy="10" r="1.5" />
-        <path d="M12 14c1.657 0 3-0.672 3-1.5S13.657 11 12 11s-3 0.672-3 1.5 1.343 1.5 3 1.5z" />
-        <path d="M7.5 9c-0.828 0-1.5 0.672-1.5 1.5S6.672 12 7.5 12 9 11.328 9 10.5 8.328 9 7.5 9z" />
-        <path d="M16.5 9c-0.828 0-1.5 0.672-1.5 1.5S15.672 12 16.5 12 18 11.328 18 10.5 17.328 9 16.5 9z" />
-      </g>
-    </svg>
+    <img 
+      src="https://redditinc.com/hs-fs/hubfs/Reddit%20Inc/Content/Brand%20Page/Reddit_Logo.png" 
+      alt="Reddit" 
+      className="h-5 w-5"
+    />
   );
 }
 

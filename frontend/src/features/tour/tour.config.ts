@@ -307,8 +307,8 @@ export const TOUR_SECTIONS: TourSection[] = [
   // ── 13. Forums ────────────────────────────────────────────────────────────
   {
     key: 'forums',
-    label: 'Forums',
-    matchPath: (p) => /\/content\/forums$/.test(p),
+    label: 'Forum Intelligence',
+    matchPath: (p) => /\/forums$/.test(p),
     steps: [
       {
         element: '[data-tour="forum-opportunities"]',

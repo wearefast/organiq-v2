@@ -116,7 +116,6 @@ function getProjectItems(wId: string, pId: string): NavItem[] {
         { href: `${base}/content/articles`, label: 'Articles' },
         { href: `${base}/content/assets`,   label: 'Assets' },
         { href: `${base}/content/calendar`, label: 'Calendar' },
-        { href: `${base}/content/forums`,   label: 'Forums' },
       ],
     },
     {
@@ -228,7 +227,7 @@ const LABEL_TO_TOUR_KEYS: Record<string, string[]> = {
   'AI Search':  ['prompt-visibility', 'llm-traffic', 'llm-audit'],
   Analytics:    ['analytics'],
   Agents:       ['agents'],
-  Content:      ['content', 'forums'],
+  Content:      ['content'],
   Research:     ['keywords', 'topical-map'],
 };
 // ─── SideNav ──────────────────────────────────────────────────

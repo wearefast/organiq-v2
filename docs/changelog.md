@@ -108,16 +108,16 @@ Frontend: `/admin` page (super-admin only).
 
 ## [Forum Intelligence Feature] — June 19–22, 2026
 
-**New content sub-feature: AI-driven forum/community content opportunity discovery.**
+**New main-level feature: AI-driven forum/community content opportunity discovery.**
 
 | File | Purpose |
 |------|---------|
 | `server/src/features/content/forum-intelligence.service.ts` | DataForSEO Reddit SERP + AI analysis |
 | `server/src/features/content/forum-intelligence.processor.ts` | BullMQ processor |
-| `frontend/src/app/(dashboard)/.../content/forums/page.tsx` | Forum intelligence page |
+| `frontend/src/app/(dashboard)/.../forums/page.tsx` | Forum intelligence page (main nav) |
 
 - Searches Reddit via DataForSEO `searchRedditThreads`; surfaces content opportunities from community discussions
-- Accessible via side nav under Content → Forums
+- Accessible via main side nav as **Forum Intelligence** (between AI Search and Analytics)
 - New DB tables: `forum_topics`, `forum_opportunities` (migration 0019)
 
 ---
@@ -251,11 +251,11 @@ Scoring system: 4 categories (bot permissions 20pts, content structure 25pts, tr
 
 | Component | Change |
 |-----------|--------|
-| `content.controller.ts` | New endpoints for content assets and forum intelligence |
+| `content.controller.ts` | New endpoints for forum intelligence |
 | `forum-intelligence.service.ts` | New service for forum content analysis |
 | `forum-intelligence.processor.ts` | BullMQ processor for forum intel |
 | `content/assets/page.tsx` | New content assets page |
-| `content/forums/page.tsx` | Enhanced forum intelligence page |
+| `forums/page.tsx` | Forum intelligence page (main nav) |
 
 ### Agent Runtime Refactoring
 

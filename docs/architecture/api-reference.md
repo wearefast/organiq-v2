@@ -410,7 +410,7 @@ Base: `/internal`
 | `/workspaces/:wId/projects/:pId/technical` | Technical | Technical SEO audit |
 | `/workspaces/:wId/projects/:pId/agents` | Agents | On-demand agent interface |
 | `/workspaces/:wId/projects/:pId/content` | Content | Content pieces list/editor |
-| `/workspaces/:wId/projects/:pId/content/forums` | Forums | Forum intelligence (community opportunity discovery) |
+| `/workspaces/:wId/projects/:pId/forums/opportunities` | Forums | Get forum opportunities (paginated, filtered by status) |
 | `/workspaces/:wId/projects/:pId/research` | Research | Keywords, topical maps |
 | `/workspaces/:wId/projects/:pId/settings` | Settings | Project settings |
 | `/workspaces/:wId/projects/:pId/keywords` | Keywords | Keyword management |
