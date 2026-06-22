@@ -7,15 +7,6 @@ export class CreateWorkspaceDto {
   @IsString()
   @MaxLength(100)
   name: string;
-
-  @IsString()
-  @MaxLength(100)
-  slug: string;
-
-  @IsOptional()
-  @IsString()
-  @MaxLength(255)
-  domain?: string;
 }
 
 export class UpdateWorkspaceDto {
@@ -28,9 +19,4 @@ export class UpdateWorkspaceDto {
   @IsString()
   @MaxLength(100)
   slug?: string;
-
-  @IsOptional()
-  @IsString()
-  @MaxLength(255)
-  domain?: string;
 }

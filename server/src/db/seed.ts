@@ -54,7 +54,6 @@ async function seed() {
       organizationId: org.id,
       name: 'Acme Corp',
       slug: 'acme-corp',
-      domain: 'acme.com',
     })
     .returning();
 

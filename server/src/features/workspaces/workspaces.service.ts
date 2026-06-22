@@ -29,15 +29,23 @@ export class WorkspacesService {
     return workspace;
   }
 
-  async create(data: { organizationId: string; name: string; slug: string; domain?: string }) {
+  async create(data: { organizationId: string; name: string }) {
+    // Generate slug from name
+    const slug = data.name
+      .toLowerCase()
+      .trim()
+      .replace(/[^a-z0-9]+/g, '-')
+      .replace(/^-+|-+$/g, '')
+      .slice(0, 100) || 'workspace';
+
     const [workspace] = await this.db.db
       .insert(workspaces)
-      .values(data)
+      .values({ organizationId: data.organizationId, name: data.name, slug })
       .returning();
     return workspace;
   }
 
-  async update(id: string, organizationId: string, data: { name?: string; slug?: string; domain?: string }) {
+  async update(id: string, organizationId: string, data: { name?: string; slug?: string }) {
     const [updated] = await this.db.db
       .update(workspaces)
       .set({ ...data, updatedAt: new Date() })

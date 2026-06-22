@@ -11,6 +11,26 @@ import { ReasoningPanel } from './reasoning-panel';
 import { ToolCallTrail } from './tool-call-trail';
 
 /**
+ * Format a duration in milliseconds to a human-readable string.
+ * E.g., 65000 → "1m 5s", 5000 → "5s"
+ */
+function formatDuration(ms: number): string {
+  if (ms < 1000) {
+    return `${Math.round(ms / 100) * 100}ms`;
+  }
+  const seconds = Math.round(ms / 1000);
+  if (seconds < 60) {
+    return `${seconds}s`;
+  }
+  const minutes = Math.floor(seconds / 60);
+  const remainingSeconds = seconds % 60;
+  if (remainingSeconds === 0) {
+    return `${minutes}m`;
+  }
+  return `${minutes}m ${remainingSeconds}s`;
+}
+
+/**
  * Steps that run a data-fetching pipeline before handing off to the LLM agent.
  * When the step is `running` and no `step:phase` event has arrived yet, these
  * steps default to showing "Fetching data…" instead of "Agent is executing…"
@@ -112,35 +132,42 @@ export function ArtifactPanel({
           const isPipeline = effectivePhase === 'pipeline';
 
           return (
-            <div className={`flex items-center gap-3 rounded-lg border px-4 py-3 ${
+            <div className={`flex items-center justify-between gap-3 rounded-lg border px-4 py-3 ${
               isPipeline
                 ? 'border-amber-500/20 bg-amber-500/5'
                 : 'border-blue-500/20 bg-blue-500/5'
             }`}>
-              <svg
-                className={`h-4 w-4 animate-spin ${isPipeline ? 'text-amber-400' : 'text-blue-400'}`}
-                fill="none"
-                viewBox="0 0 24 24"
-              >
-                <circle
-                  className="opacity-25"
-                  cx="12"
-                  cy="12"
-                  r="10"
-                  stroke="currentColor"
-                  strokeWidth="4"
-                />
-                <path
-                  className="opacity-75"
-                  fill="currentColor"
-                  d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z"
-                />
-              </svg>
-              <span className={`text-sm ${isPipeline ? 'text-amber-300' : 'text-blue-300'}`}>
-                {isPipeline
-                  ? 'Fetching data from external sources…'
-                  : 'Agent is analyzing…'}
-              </span>
+              <div className="flex items-center gap-3">
+                <svg
+                  className={`h-4 w-4 animate-spin ${isPipeline ? 'text-amber-400' : 'text-blue-400'}`}
+                  fill="none"
+                  viewBox="0 0 24 24"
+                >
+                  <circle
+                    className="opacity-25"
+                    cx="12"
+                    cy="12"
+                    r="10"
+                    stroke="currentColor"
+                    strokeWidth="4"
+                  />
+                  <path
+                    className="opacity-75"
+                    fill="currentColor"
+                    d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z"
+                  />
+                </svg>
+                <span className={`text-sm ${isPipeline ? 'text-amber-300' : 'text-blue-300'}`}>
+                  {isPipeline
+                    ? 'Fetching data from external sources…'
+                    : 'Agent is analyzing…'}
+                </span>
+              </div>
+              {step.estimatedDurationMs && (
+                <span className={`text-[12px] font-medium ${isPipeline ? 'text-amber-400' : 'text-blue-400'}`}>
+                  Est. {formatDuration(step.estimatedDurationMs)}
+                </span>
+              )}
             </div>
           );
         })()}

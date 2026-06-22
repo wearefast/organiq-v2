@@ -24,7 +24,7 @@ export class SearchDemandPipeline implements Pipeline {
     const location = (context.location as string) || 'United States';
     const language = (context.language as string) || 'en';
 
-    this.logger.log(`Fetching search demand for ${keywords.length} keywords (location="${location}", lang=${language})`);
+    this.logger.log(`Fetching search demand for ${keywords.length} keywords`);
 
     // Batch in chunks of 50
     const BATCH_SIZE = 50;
@@ -35,58 +35,26 @@ export class SearchDemandPipeline implements Pipeline {
       cpc: number;
     }> = [];
 
-    let batchFailures = 0;
-    let lastBatchError: unknown = null;
-
     for (let i = 0; i < keywords.length; i += BATCH_SIZE) {
       const batch = keywords.slice(i, i + BATCH_SIZE);
-      const batchNum = Math.floor(i / BATCH_SIZE) + 1;
-      const totalBatches = Math.ceil(keywords.length / BATCH_SIZE);
 
-      try {
-        const [volumes, difficulties] = await Promise.all([
-          this.dataforseo.getKeywordSearchVolume(batch, location),
-          this.dataforseo.getBulkKeywordDifficulty(batch, location, language),
-        ]);
+      const [volumes, difficulties] = await Promise.all([
+        this.dataforseo.getKeywordSearchVolume(batch, location),
+        this.dataforseo.getBulkKeywordDifficulty(batch, location, language),
+      ]);
 
-        const volumeMap = this.parseVolumeResponse(volumes);
-        const difficultyMap = this.parseDifficultyResponse(difficulties);
+      const volumeMap = this.parseVolumeResponse(volumes);
+      const difficultyMap = this.parseDifficultyResponse(difficulties);
 
-        for (const kw of batch) {
-          const kwLower = kw.toLowerCase();
-          allResults.push({
-            keyword: kw,
-            volume: volumeMap.get(kwLower) ?? 0,
-            difficulty: difficultyMap.get(kwLower) ?? 0,
-            cpc: 0,
-          });
-        }
-
-        this.logger.log(`search-demand: batch ${batchNum}/${totalBatches} OK (${batch.length} keywords)`);
-      } catch (err) {
-        batchFailures++;
-        lastBatchError = err;
-        const errMsg = err instanceof Error ? err.message : String(err);
-        this.logger.error(
-          `search-demand: batch ${batchNum}/${totalBatches} FAILED (keywords: ${batch.slice(0, 3).join(', ')}…) — ${errMsg}. Using 0-metric fallback for these keywords.`,
-        );
-        // Fill with zero-metric entries so the batch doesn't silently disappear
-        for (const kw of batch) {
-          allResults.push({ keyword: kw, volume: 0, difficulty: 0, cpc: 0 });
-        }
+      for (const kw of batch) {
+        const kwLower = kw.toLowerCase();
+        allResults.push({
+          keyword: kw,
+          volume: volumeMap.get(kwLower) ?? 0,
+          difficulty: difficultyMap.get(kwLower) ?? 0,
+          cpc: 0, // CPC comes from volume response if available
+        });
       }
-    }
-
-    // If ALL batches failed, rethrow the last error so BullMQ retries the step.
-    // Partial failures are tolerated — the agent can still reason over whichever
-    // keywords got real data.
-    if (batchFailures > 0 && batchFailures === Math.ceil(keywords.length / BATCH_SIZE)) {
-      const errMsg = lastBatchError instanceof Error ? lastBatchError.message : String(lastBatchError);
-      throw new Error(`search-demand: all ${batchFailures} DataForSEO batches failed. Last error: ${errMsg}`);
-    }
-
-    if (batchFailures > 0) {
-      this.logger.warn(`search-demand: ${batchFailures} batch(es) failed — continuing with partial data (${allResults.filter(r => r.volume > 0).length}/${allResults.length} keywords have volume)`);
     }
 
     // Calculate aggregate stats

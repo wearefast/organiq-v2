@@ -12,7 +12,6 @@ interface Workspace {
   id: string;
   name: string;
   slug: string;
-  domain?: string | null;
   projects?: Array<{ id: string }>;
 }
 
@@ -20,11 +19,6 @@ function slugify(value: string) {
   return value.toLowerCase().trim().replace(/[^a-z0-9]+/g, '-').replace(/^-+|-+$/g, '').slice(0, 100) || 'workspace';
 }
 
-function normalizeDomain(value: string) {
-  const trimmedValue = value.trim();
-  if (!trimmedValue) return undefined;
-  return trimmedValue.replace(/^https?:\/\//i, '').replace(/\/.*$/, '').slice(0, 255);
-}
 
 export default function WorkspacesPage() {
   const router = useRouter();
@@ -39,7 +33,6 @@ export default function WorkspacesPage() {
   const [grants, setGrants] = useState<AccessGrant[]>([]);
   const [showForm, setShowForm] = useState(false);
   const [name, setName] = useState('');
-  const [domain, setDomain] = useState('');
   const [loading, setLoading] = useState(true);
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -126,13 +119,10 @@ export default function WorkspacesPage() {
         body: JSON.stringify({
           organizationId: orgId,
           name: trimmedName,
-          slug: slugify(trimmedName),
-          domain: normalizeDomain(domain),
         }),
       });
       setWorkspaces((current) => [created, ...current]);
       setName('');
-      setDomain('');
       setShowForm(false);
       router.push(`/workspaces/${created.id}/projects`);
     } catch (err) {
@@ -160,18 +150,11 @@ export default function WorkspacesPage() {
 
       {showForm && canCreateWorkspace && (
         <form onSubmit={handleCreateWorkspace} className="card space-y-4 p-5">
-          <div className="grid gap-4 md:grid-cols-2">
-            <label className="space-y-2 text-sm text-zinc-300">
-              <span>Workspace name</span>
-              <input value={name} onChange={(e) => setName(e.target.value)} placeholder="Acme Shoes" className="h-11 w-full rounded-md border border-zinc-700 bg-zinc-900 px-3 text-sm text-zinc-100 outline-none transition-colors focus:border-rose-500" />
-            </label>
-            <label className="space-y-2 text-sm text-zinc-300">
-              <span>Primary domain</span>
-              <input value={domain} onChange={(e) => setDomain(e.target.value)} placeholder="acmeshoes.com" className="h-11 w-full rounded-md border border-zinc-700 bg-zinc-900 px-3 text-sm text-zinc-100 outline-none transition-colors focus:border-rose-500" />
-            </label>
-          </div>
-          <div className="flex items-center justify-between gap-3">
-            <p className="text-xs text-zinc-500">Slug preview: {slugify(name || 'workspace')}</p>
+          <label className="space-y-2 text-sm text-zinc-300">
+            <span>Workspace name</span>
+            <input value={name} onChange={(e) => setName(e.target.value)} placeholder="Acme Shoes" className="h-11 w-full rounded-md border border-zinc-700 bg-zinc-900 px-3 text-sm text-zinc-100 outline-none transition-colors focus:border-rose-500" />
+          </label>
+          <div className="flex justify-end gap-3">
             <button type="submit" className="btn-primary disabled:cursor-not-allowed disabled:opacity-50" disabled={submitting}>
               {submitting ? 'Creating...' : 'Create Workspace'}
             </button>
@@ -191,8 +174,7 @@ export default function WorkspacesPage() {
                 <h2 className="text-base font-semibold text-zinc-100">{workspace.name}</h2>
                 <span className="text-xs text-zinc-500">{workspace.projects?.length ?? 0} projects</span>
               </div>
-              <p className="text-sm text-zinc-400">{workspace.domain || 'No domain set yet'}</p>
-              <p className="text-xs uppercase tracking-wide text-zinc-600">/{workspace.slug}</p>
+              <p className="text-sm text-zinc-400">Client workspace and projects.</p>
             </Link>
           ))}
         </div>

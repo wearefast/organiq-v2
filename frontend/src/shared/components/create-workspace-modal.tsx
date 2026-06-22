@@ -10,7 +10,6 @@ interface Workspace {
   id: string;
   name: string;
   slug: string;
-  domain?: string | null;
 }
 
 interface Props {
@@ -25,17 +24,11 @@ function slugify(value: string) {
   );
 }
 
-function normalizeDomain(value: string) {
-  const trimmedValue = value.trim();
-  if (!trimmedValue) return undefined;
-  return trimmedValue.replace(/^https?:\/\//i, '').replace(/\/.*$/, '').slice(0, 255);
-}
 
 export function CreateWorkspaceModal({ onClose, onSuccess }: Props) {
   const router = useRouter();
   const { getToken, orgId } = useAuth();
   const [name, setName] = useState('');
-  const [domain, setDomain] = useState('');
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const panelRef = useRef<HTMLDivElement>(null);
@@ -68,8 +61,6 @@ export function CreateWorkspaceModal({ onClose, onSuccess }: Props) {
         body: JSON.stringify({
           organizationId: orgId,
           name: trimmedName,
-          slug: slugify(trimmedName),
-          domain: normalizeDomain(domain),
         }),
       });
       onSuccess(created);
@@ -101,40 +92,26 @@ export function CreateWorkspaceModal({ onClose, onSuccess }: Props) {
         </div>
 
         <form onSubmit={handleSubmit} className="space-y-4">
-          <div className="grid gap-4 md:grid-cols-2">
-            <label className="space-y-2 text-sm text-zinc-300">
-              <span>Workspace name</span>
-              <input
-                autoFocus
-                value={name}
-                onChange={(e) => setName(e.target.value)}
-                placeholder="Acme Shoes"
-                className="h-11 w-full rounded-md border border-zinc-700 bg-zinc-900 px-3 text-sm text-zinc-100 outline-none transition-colors focus:border-rose-500"
-              />
-            </label>
-            <label className="space-y-2 text-sm text-zinc-300">
-              <span>Primary domain</span>
-              <input
-                value={domain}
-                onChange={(e) => setDomain(e.target.value)}
-                placeholder="acmeshoes.com"
-                className="h-11 w-full rounded-md border border-zinc-700 bg-zinc-900 px-3 text-sm text-zinc-100 outline-none transition-colors focus:border-rose-500"
-              />
-            </label>
-          </div>
+          <label className="space-y-2 text-sm text-zinc-300">
+            <span>Workspace name</span>
+            <input
+              autoFocus
+              value={name}
+              onChange={(e) => setName(e.target.value)}
+              placeholder="Acme Shoes"
+              className="h-11 w-full rounded-md border border-zinc-700 bg-zinc-900 px-3 text-sm text-zinc-100 outline-none transition-colors focus:border-rose-500"
+            />
+          </label>
 
           {error && <p className="text-sm text-red-400">{error}</p>}
 
-          <div className="flex items-center justify-between gap-3">
-            <p className="text-xs text-zinc-500">Slug: {slugify(name || 'workspace')}</p>
-            <button
-              type="submit"
-              className="btn-primary disabled:cursor-not-allowed disabled:opacity-50"
-              disabled={submitting}
-            >
-              {submitting ? 'Creating...' : 'Create Workspace'}
-            </button>
-          </div>
+          <button
+            type="submit"
+            className="btn-primary w-full disabled:cursor-not-allowed disabled:opacity-50"
+            disabled={submitting}
+          >
+            {submitting ? 'Creating...' : 'Create Workspace'}
+          </button>
         </form>
       </div>
     </div>

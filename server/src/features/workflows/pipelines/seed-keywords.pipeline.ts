@@ -1,6 +1,7 @@
 import { Injectable, Logger } from '@nestjs/common';
 import { Pipeline } from './pipeline.interface';
 import { DataForSeoService } from '../../integrations/dataforseo/dataforseo.service';
+import { AhrefsService } from '../../integrations/ahrefs/ahrefs.service';
 
 const sleep = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms));
 
@@ -43,6 +44,7 @@ export class SeedKeywordsPipeline implements Pipeline {
 
   constructor(
     private readonly dataforseo: DataForSeoService,
+    private readonly ahrefs: AhrefsService,
   ) {}
 
   async execute(context: Record<string, unknown>): Promise<unknown> {
@@ -70,10 +72,10 @@ export class SeedKeywordsPipeline implements Pipeline {
     let fallbackUsed = false;
     let competitorOrganicKeywords: Array<{ competitor: string; keywords: SlimKeyword[] }> = [];
 
-    if (seedTerms.length === 0) {
+    if (seedTerms.length < 5) {
       fallbackUsed = true;
       this.logger.warn(
-        `Seed keywords: DataForSEO returned 0 ranked keywords for ${domain}. Activating fallback seed generation.`,
+        `Seed keywords: DataForSEO returned ${seedTerms.length} ranked keywords for ${domain} (threshold: 5). Activating fallback seed generation.`,
       );
 
       const fallbackSeeds = this.deriveFallbackSeeds(domain, industry, context['business-profile']);
@@ -118,10 +120,33 @@ export class SeedKeywordsPipeline implements Pipeline {
       await Promise.all(
         batch.map(async (seed) => {
           try {
-            const suggestionsRaw = await this.dataforseo.getKeywordSuggestions(seed, location, language, 25);
-            apiCallCount++;
-            const suggData = suggestionsRaw as { tasks?: Array<{ result?: Array<{ items?: Array<Record<string, unknown>> }> }> };
-            suggestionsResults.push({ seed, keywords: this.slimDfsKeywordList(suggData) });
+            // Run DFS suggestions and Ahrefs related terms in parallel for richer coverage
+            const [suggestionsRaw, ahrefsRaw] = await Promise.allSettled([
+              this.dataforseo.getKeywordSuggestions(seed, location, language, 25),
+              this.ahrefs.getRelatedKeywords(seed, country, 20),
+            ]);
+            apiCallCount += 2;
+
+            const dfsKws = suggestionsRaw.status === 'fulfilled'
+              ? this.slimDfsKeywordList(suggestionsRaw.value as { tasks?: Array<{ result?: Array<{ items?: Array<Record<string, unknown>> }> }> })
+              : [];
+
+            const ahrefsKws = ahrefsRaw.status === 'fulfilled'
+              ? this.slimAhrefsRelatedKeywords(ahrefsRaw.value)
+              : [];
+
+            // Merge and deduplicate by keyword string
+            const seen = new Set<string>();
+            const merged: SlimKeyword[] = [];
+            for (const kw of [...dfsKws, ...ahrefsKws]) {
+              const key = kw.keyword.toLowerCase();
+              if (!seen.has(key)) {
+                seen.add(key);
+                merged.push(kw);
+              }
+            }
+
+            suggestionsResults.push({ seed, keywords: merged });
           } catch (err) {
             this.logger.warn(`Seed expansion failed for "${seed}": ${(err as Error).message}`);
           }
@@ -182,6 +207,22 @@ export class SeedKeywordsPipeline implements Pipeline {
       difficulty: (item.keyword_data?.keyword_properties?.keyword_difficulty ?? null) as number | null,
       cpc: (item.keyword_data?.keyword_info?.cpc ?? null) as number | null,
       currentPosition: (item.ranked_serp_element?.serp_item?.rank_group ?? null) as number | null,
+    })).filter((k) => k.keyword.length > 0);
+  }
+
+  /**
+   * Slim an Ahrefs related-terms response to SlimKeyword[].
+   * Response shape: { keywords: [{keyword, volume, difficulty, cpc, ...}] }
+   */
+  private slimAhrefsRelatedKeywords(raw: unknown): SlimKeyword[] {
+    const data = raw as { keywords?: Array<{ keyword?: string; volume?: number; difficulty?: number; cpc?: number }> };
+    const items = data?.keywords ?? [];
+    return items.map((k) => ({
+      keyword: String(k.keyword ?? ''),
+      volume: (k.volume ?? null) as number | null,
+      difficulty: (k.difficulty ?? null) as number | null,
+      cpc: (k.cpc ?? null) as number | null,
+      currentPosition: null,
     })).filter((k) => k.keyword.length > 0);
   }
 

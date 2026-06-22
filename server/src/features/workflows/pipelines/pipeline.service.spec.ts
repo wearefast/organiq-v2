@@ -18,9 +18,9 @@ import { ConsolidatedKeywordsPipeline } from './consolidated-keywords.pipeline';
 
 // Mock dependencies
 const mockAhrefs = {
-  getDomainRating: vi.fn().mockResolvedValue({ domain_rating: { domain_rating: 65.0, ahrefs_rank: 12345 } }),
-  getBacklinksStats: vi.fn().mockResolvedValue({ metrics: { live: 1500, live_refdomains: 500, all_time: 2000, all_time_refdomains: 800 } }),
-  getOrganicKeywords: vi.fn().mockResolvedValue({ keywords: [{ keyword: 'test keyword', volume: 1000, keyword_difficulty: 45, best_position: 3, best_position_url: 'https://example.com/page' }] }),
+  getDomainRating: vi.fn().mockResolvedValue(65),
+  getBacklinksStats: vi.fn().mockResolvedValue({ total: 1500, dofollow: 900 }),
+  getOrganicKeywords: vi.fn().mockResolvedValue({ keywords: [{ keyword: 'test', position: 3 }] }),
   getOrganicPages: vi.fn().mockResolvedValue({ pages: [] }),
   getKeywordDifficulty: vi.fn().mockResolvedValue({ results: [{ keyword: 'seo', difficulty: 45 }] }),
   getRelatedKeywords: vi.fn().mockResolvedValue({ results: [{ keyword: 'seo tools' }] }),
@@ -70,13 +70,13 @@ describe('PipelineService', () => {
   beforeEach(() => {
     vi.clearAllMocks();
 
-    const competitorMetrics = new CompetitorMetricsPipeline(mockAhrefs as any);
+    const competitorMetrics = new CompetitorMetricsPipeline(mockDataforseo as any);
     const searchDemand = new SearchDemandPipeline(mockDataforseo as any);
     const method01 = new Method01CompetitorPagesPipeline(mockAhrefs as any);
     const method02 = new Method02SeedExpansionPipeline();
     const method03 = new Method03ContentGapPipeline(mockAhrefs as any);
     const businessProfile = new BusinessProfilePipeline(mockFirecrawl as any, mockDataforseo as any);
-    const seedKeywords = new SeedKeywordsPipeline(mockDataforseo as any);
+    const seedKeywords = new SeedKeywordsPipeline(mockDataforseo as any, mockAhrefs as any);
     const serpNicheMap = new SerpNicheMapPipeline(mockAhrefs as any);
     const competitorBuckets = new CompetitorBucketsPipeline(mockDataforseo as any, mockSerper as any);
     const phase1Baseline = new Phase1BaselinePipeline(mockAhrefs as any);
@@ -124,7 +124,7 @@ describe('CompetitorMetricsPipeline', () => {
 
   beforeEach(() => {
     vi.clearAllMocks();
-    pipeline = new CompetitorMetricsPipeline(mockAhrefs as any);
+    pipeline = new CompetitorMetricsPipeline(mockDataforseo as any);
   });
 
   it('has correct stepKey', () => {
@@ -135,20 +135,15 @@ describe('CompetitorMetricsPipeline', () => {
     const result = (await pipeline.execute({
       domain: 'example.com',
       country: 'us',
-      'competitor-buckets': {
-        buckets: {
-          direct: { competitors: [{ domain: 'comp1.com' }, { domain: 'comp2.com' }] },
-        },
-      },
+      competitors: ['comp1.com', 'comp2.com'],
     })) as any;
 
-    expect(result.targetMetrics.domain).toBe('example.com');
-    expect(result.competitorMetrics).toHaveLength(2);
-    expect(result.competitorMetrics[0].status).toBe('success');
-    expect(result.competitorMetrics[0].domainRating).toBe(65);
-    expect(result.competitorMetrics[0].backlinks.live).toBe(1500);
-    expect(result.competitorMetrics[0].referringDomains).toBe(500);
-    expect(result.competitorMetrics[0].ahrefsRank).toBe(12345);
+    expect(result.targetDomain.domain).toBe('example.com');
+    expect(result.competitors).toHaveLength(2);
+    expect(result.competitors[0].status).toBe('success');
+    expect(result.competitors[0].domainRating).toBe(65);
+    expect(result.meta.totalCompetitors).toBe(2);
+    expect(result.meta.successCount).toBe(2);
   });
 
   it('handles competitor fetch failures gracefully', async () => {
@@ -158,13 +153,12 @@ describe('CompetitorMetricsPipeline', () => {
 
     const result = (await pipeline.execute({
       domain: 'example.com',
-      'competitor-buckets': {
-        buckets: { direct: { competitors: [{ domain: 'failing.com' }] } },
-      },
+      competitors: ['failing.com'],
     })) as any;
 
-    expect(result.competitorMetrics).toHaveLength(0);
-    expect(result.summary).toContain('0 competitors');
+    expect(result.competitors[0].status).toBe('error');
+    expect(result.competitors[0].error).toContain('API rate limit');
+    expect(result.meta.successCount).toBe(0);
   });
 });
 
