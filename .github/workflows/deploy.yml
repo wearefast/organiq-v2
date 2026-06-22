@@ -59,45 +59,11 @@ jobs:
             echo "==> Pulling latest image..."
             docker pull $IMAGE
 
-            # Clean up any leftover canary from a previous failed deploy
-            docker stop organiq-server-canary 2>/dev/null || true
-            docker rm organiq-server-canary 2>/dev/null || true
-
-            echo "==> Starting canary container on port 3003 (old container still live on 3002)..."
-            docker run -d \
-              --name organiq-server-canary \
-              --env-file /opt/organiq/.env \
-              -p 3003:3002 \
-              $IMAGE
-
-            echo "==> Waiting for canary to be ready..."
-            MAX=30
-            N=0
-            until docker exec organiq-server-canary wget -qO- http://localhost:3002/health >/dev/null 2>&1; do
-              N=$((N+1))
-              if [ $N -ge $MAX ]; then
-                echo "ERROR: Canary failed health check after ${MAX} attempts"
-                docker logs organiq-server-canary
-                docker stop organiq-server-canary && docker rm organiq-server-canary
-                exit 1
-              fi
-              echo "  attempt $N/$MAX..."
-              sleep 2
-            done
-            echo "==> Canary is healthy"
-
-            echo "==> Running database migrations..."
-            docker exec organiq-server-canary npx drizzle-kit migrate --config=drizzle.config.ts
-            echo "==> Migrations complete"
-
             echo "==> Stopping old container..."
             docker stop organiq-server 2>/dev/null || true
             docker rm organiq-server 2>/dev/null || true
 
-            echo "==> Promoting canary to production (port 3002)..."
-            docker stop organiq-server-canary
-            docker rm organiq-server-canary
-
+            echo "==> Starting new container..."
             docker run -d \
               --name organiq-server \
               --restart unless-stopped \
@@ -105,15 +71,21 @@ jobs:
               -p 3002:3002 \
               $IMAGE
 
-            echo "==> Verifying production container..."
-            sleep 5
+            echo "==> Waiting for container to start..."
+            sleep 15
+
+            echo "==> Verifying container is running..."
             if ! docker ps | grep -q organiq-server; then
-              echo "ERROR: Production container failed to start"
+              echo "ERROR: Container failed to start"
               docker logs organiq-server || true
               exit 1
             fi
 
+            echo "==> Running database migrations..."
+            docker exec organiq-server npx drizzle-kit migrate --config=drizzle.config.ts
+            echo "==> Migrations complete"
+
             echo "==> Cleaning up dangling images..."
             docker image prune -f --filter "dangling=true" || true
 
-            echo "==> Deployment successful — zero downtime achieved"
+            echo "==> Deployment successful!"
