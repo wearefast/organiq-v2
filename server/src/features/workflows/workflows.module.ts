@@ -8,6 +8,7 @@ import { WorkflowGateway } from './workflow.gateway';
 import { WorkflowMaterializerService } from './workflow-materializer.service';
 import { WorkflowQueueListenerService } from './workflow-queue-listener.service';
 import { DlqService } from './dlq.service';
+import { PlanLimitGuard } from '../billing/plan-limit.guard';
 import {
   PipelineService,
   CompetitorMetricsPipeline,
@@ -63,6 +64,7 @@ import { ProjectsModule } from '../projects/projects.module';
   providers: [
     WorkflowService, WorkflowProcessor, WorkflowGateway, WorkflowMaterializerService,
     WorkflowQueueListenerService, DlqService,
+    PlanLimitGuard,
     PipelineService, CompetitorMetricsPipeline, SearchDemandPipeline,
     Method01CompetitorPagesPipeline, Method02SeedExpansionPipeline, Method03ContentGapPipeline,
     BusinessProfilePipeline,

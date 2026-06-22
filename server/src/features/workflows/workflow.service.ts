@@ -1,4 +1,4 @@
-import { Injectable, Logger, NotFoundException, BadRequestException, InternalServerErrorException, OnModuleInit, OnApplicationBootstrap } from '@nestjs/common';
+import { Injectable, Logger, NotFoundException, BadRequestException, ForbiddenException, InternalServerErrorException, OnModuleInit, OnApplicationBootstrap } from '@nestjs/common';
 import { InjectQueue } from '@nestjs/bullmq';
 import { Queue } from 'bullmq';
 import { eq, and, inArray, asc, or } from 'drizzle-orm';
@@ -775,7 +775,15 @@ export class WorkflowService implements OnModuleInit, OnApplicationBootstrap {
     return { rerun: stepKey, cascadeReset };
   }
 
-  async getStepToolCalls(stepId: string) {
+  async getStepToolCalls(stepId: string, organizationId: string) {
+    // CVE-008: Verify the step belongs to a workflow run owned by the requesting org
+    const step = await this.db.db.query.workflowSteps.findFirst({
+      where: eq(workflowSteps.id, stepId),
+      with: { workflowRun: { columns: { organizationId: true } } },
+    });
+    if (!step || step.workflowRun.organizationId !== organizationId) {
+      throw new ForbiddenException('Access denied');
+    }
     return this.db.db
       .select()
       .from(stepToolCalls)

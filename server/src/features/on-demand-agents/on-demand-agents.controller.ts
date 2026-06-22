@@ -5,6 +5,7 @@ import { OnDemandAgentsService } from './on-demand-agents.service';
 import { AgentRouterService } from './agent-router.service';
 import { ClerkGuard } from '../auth/clerk.guard';
 import { OrgMembershipGuard } from '../auth/org-membership.guard';
+import { PlanLimitGuard, PlanLimit } from '../billing/plan-limit.guard';
 
 class RunAgentDto {
   @IsString()
@@ -28,6 +29,8 @@ export class OnDemandAgentsController {
   @Post('run')
   // Each on-demand run invokes Claude — stricter limit to protect Anthropic spend.
   @Throttle({ default: { limit: 10, ttl: 60_000 } })
+  @UseGuards(PlanLimitGuard)
+  @PlanLimit('agentRunsPerMonth')
   async runAgent(
     @Param('projectId') projectId: string,
     @Body() dto: RunAgentDto,

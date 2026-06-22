@@ -10,6 +10,7 @@ import { KeywordOpportunityBuilder } from './context-builders/keyword-opportunit
 import { GoogleVsAiBuilder } from './context-builders/google-vs-ai.builder';
 import { KeywordDecayBuilder } from './context-builders/keyword-decay.builder';
 import { CompetitorAnalysisBuilder } from './context-builders/competitor-analysis.builder';
+import { PlanLimitGuard } from '../billing/plan-limit.guard';
 import { CreditsModule } from '../credits/credits.module';
 import { ProjectsModule } from '../projects/projects.module';
 
@@ -19,6 +20,7 @@ import { ProjectsModule } from '../projects/projects.module';
   providers: [
     OnDemandAgentsService,
     AgentRouterService,
+    PlanLimitGuard,
     ContextBuilderRegistry,
     ContentRefreshBuilder,
     AiSearchVisibilityBuilder,

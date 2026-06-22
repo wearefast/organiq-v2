@@ -1,4 +1,4 @@
-import { Controller, Get, Post, Patch, Delete, Query, Param, Body, UseGuards, Req } from '@nestjs/common';
+import { Controller, Get, Post, Patch, Delete, Query, Param, Body, UseGuards, Req, ForbiddenException, NotFoundException } from '@nestjs/common';
 import { ApiTags, ApiBearerAuth } from '@nestjs/swagger';
 import { Throttle } from '@nestjs/throttler';
 import { WorkflowService } from './workflow.service';
@@ -6,6 +6,10 @@ import { WorkflowGateway } from './workflow.gateway';
 import { WorkflowMaterializerService } from './workflow-materializer.service';
 import { ClerkGuard } from '../auth/clerk.guard';
 import { OrgMembershipGuard } from '../auth/org-membership.guard';
+import { PlanLimitGuard, PlanLimit } from '../billing/plan-limit.guard';
+import { DatabaseService } from '../../shared/database/database.service';
+import { projects } from '../../db/schema';
+import { eq } from 'drizzle-orm';
 
 @ApiTags('workflows')
 @ApiBearerAuth()
@@ -16,19 +20,32 @@ export class WorkflowController {
     private readonly workflowService: WorkflowService,
     private readonly workflowGateway: WorkflowGateway,
     private readonly materializer: WorkflowMaterializerService,
+    private readonly db: DatabaseService,
   ) {}
 
   @Post('backfill-materialization')
-  async backfillMaterialization(@Query('projectId') projectId: string) {
+  async backfillMaterialization(@Query('projectId') projectId: string, @Req() req: any) {
     if (!projectId) {
       throw new Error('projectId query parameter is required');
+    }
+    // CVE-013: Validate the project belongs to the requesting org before allowing backfill
+    const project = await this.db.db.query.projects.findFirst({
+      where: eq(projects.id, projectId),
+      columns: { organizationId: true },
+    });
+    if (!project) throw new NotFoundException('Project not found');
+    if (project.organizationId !== req.org.id) {
+      throw new ForbiddenException('Access denied');
     }
     return this.materializer.backfillProject(projectId);
   }
 
   @Post()
-  async createRun(@Body() body: { projectId: string; organizationId: string; targetKey?: string }) {
-    return this.workflowService.createRun(body.projectId, body.organizationId, body.targetKey);
+  @UseGuards(PlanLimitGuard)
+  @PlanLimit('workflowsPerMonth')
+  // §4.3: Use org from the guard (req.org.id) — never trust organizationId from request body
+  async createRun(@Body() body: { projectId: string; targetKey?: string }, @Req() req: any) {
+    return this.workflowService.createRun(body.projectId, req.org.id, body.targetKey);
   }
 
   @Post(':id/start')
@@ -44,8 +61,9 @@ export class WorkflowController {
   }
 
   @Get('steps/:stepId/tool-calls')
-  async getStepToolCalls(@Param('stepId') stepId: string) {
-    return this.workflowService.getStepToolCalls(stepId);
+  // CVE-008: Pass org ID for ownership validation — prevents IDOR cross-tenant data access
+  async getStepToolCalls(@Param('stepId') stepId: string, @Req() req: any) {
+    return this.workflowService.getStepToolCalls(stepId, req.org.id);
   }
 
   @Get(':id')

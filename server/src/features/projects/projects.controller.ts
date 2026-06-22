@@ -6,6 +6,7 @@ import { ProjectIntelligenceService } from './project-intelligence.service';
 import { CreateProjectDto, UpdateProjectDto } from './dto/project.dto';
 import { ClerkGuard } from '../auth/clerk.guard';
 import { OrgMembershipGuard } from '../auth/org-membership.guard';
+import { PlanLimitGuard, PlanLimit } from '../billing/plan-limit.guard';
 import { AccessService } from '../auth/access.service';
 
 @ApiTags('projects')
@@ -48,6 +49,8 @@ export class ProjectsController {
   }
 
   @Post()
+  @UseGuards(PlanLimitGuard)
+  @PlanLimit('projects')
   async create(@Body() body: CreateProjectDto) {
     const project = await this.projectsService.create(body);
     // Fire-and-forget: generate business profile immediately after project creation

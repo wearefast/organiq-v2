@@ -1,7 +1,7 @@
 'use client';
 
 import { useState, useEffect, useCallback } from 'react';
-import { useAuth, useUser } from '@clerk/nextjs';
+import { useAuth } from '@clerk/nextjs';
 import { redirect } from 'next/navigation';
 import { ShieldAlert, Search, Plus, Loader2, ChevronDown, ChevronRight, RefreshCw } from 'lucide-react';
 import { setAuthToken } from '@/shared/utils/api';
@@ -12,12 +12,6 @@ import {
   type AdminOrg,
   type OrgCredits,
 } from '@/features/admin/services/admin.service';
-
-function isSuperAdmin(clerkUserId: string | undefined | null): boolean {
-  if (!clerkUserId) return false;
-  const allowed = (process.env.NEXT_PUBLIC_SUPER_ADMIN_CLERK_IDS ?? '').split(',').map((s) => s.trim()).filter(Boolean);
-  return allowed.includes(clerkUserId);
-}
 
 // ─── Credits Panel ────────────────────────────────────────────
 
@@ -223,12 +217,11 @@ function OrgRow({ org }: { org: AdminOrg }) {
 
 export default function AdminPage() {
   const { getToken } = useAuth();
-  const { user, isLoaded } = useUser();
 
-  // Gate: redirect non-super-admins immediately once Clerk loads
-  if (isLoaded && !isSuperAdmin(user?.id)) {
-    redirect('/workspaces');
-  }
+  // CVE-005: Admin check is now enforced server-side in middleware.ts using
+  // SUPER_ADMIN_CLERK_IDS (not NEXT_PUBLIC_*). If we reach this page, the
+  // middleware has already verified the user is an admin. No client-side
+  // NEXT_PUBLIC_SUPER_ADMIN_CLERK_IDS check needed here.
 
   const [orgs, setOrgs] = useState<AdminOrg[]>([]);
   const [loading, setLoading] = useState(true);
@@ -259,7 +252,11 @@ export default function AdminPage() {
     o.slug.toLowerCase().includes(search.toLowerCase()),
   );
 
-  if (!isLoaded) return null;
+  if (loading && orgs.length === 0) return (
+    <div className="flex items-center gap-2 p-6 text-sm text-zinc-500">
+      <Loader2 className="h-4 w-4 animate-spin" /> Loading…
+    </div>
+  );
 
   return (
     <div className="space-y-6 p-6">

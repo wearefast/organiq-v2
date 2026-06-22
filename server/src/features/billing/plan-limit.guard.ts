@@ -38,7 +38,8 @@ export class PlanLimitGuard implements CanActivate {
     if (!resource) return true;
 
     const request = context.switchToHttp().getRequest();
-    const organizationId = request.params?.organizationId ?? request.body?.organizationId;
+    // Prefer req.org.id (set by OrgMembershipGuard) — avoids relying on untrusted body/params
+    const organizationId = request.org?.id ?? request.params?.organizationId ?? request.body?.organizationId;
     if (!organizationId) return true;
 
     const org = await this.db.db.query.organizations.findFirst({

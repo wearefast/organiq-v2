@@ -21,17 +21,9 @@ import { cn } from '@/shared/utils/cn';
 import { useBusinessProfileReady } from '@/features/projects/hooks/use-business-profile-ready';
 import { useOrganization } from '@clerk/nextjs';
 import { useUser } from '@clerk/nextjs';
+import { useSuperAdmin } from '@/shared/hooks/use-super-admin';
 import { WorkspaceDropdown } from './workspace-dropdown';
 import { useTour, PROJECT_NAV_TOUR_SECTIONS } from '@/features/tour';
-
-function isSuperAdmin(clerkUserId: string | undefined | null): boolean {
-  if (!clerkUserId) return false;
-  const allowed = (process.env.NEXT_PUBLIC_SUPER_ADMIN_CLERK_IDS ?? '')
-    .split(',')
-    .map((s) => s.trim())
-    .filter(Boolean);
-  return allowed.includes(clerkUserId);
-}
 
 // ─── Types ────────────────────────────────────────────────────
 
@@ -242,7 +234,8 @@ export function SideNav() {
   const { membership } = useOrganization();
   const { user } = useUser();
   const isAdmin = membership?.role === 'org:admin' || membership?.role === 'org:owner';
-  const superAdmin = isSuperAdmin(user?.id);
+  // CVE-005: Use server-side admin check — never rely on NEXT_PUBLIC_SUPER_ADMIN_CLERK_IDS
+  const superAdmin = useSuperAdmin();
 
   // Tour integration — show pulsing dot on unvisited project nav sections
   const { isActive: tourActive, completedSections: tourCompleted } = useTour();
