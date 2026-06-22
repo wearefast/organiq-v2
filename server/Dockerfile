@@ -35,6 +35,10 @@ COPY --from=builder /app/server/dist ./dist
 COPY server/src/prompts ./src/prompts
 COPY server/src/agents/definitions ./src/agents/definitions
 
+# Copy drizzle config and migrations (needed for migrations)
+COPY server/drizzle.config.ts ./
+COPY server/drizzle ./drizzle
+
 EXPOSE 3002
 
 ENV NODE_ENV=production
