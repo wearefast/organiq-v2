@@ -63,6 +63,7 @@ export interface WorkflowStep {
   error: string | null;
   createdAt: string;
   updatedAt: string;
+  estimatedDurationMs: number | null;
   artifacts: StepArtifact[];
   approvals: StepApproval[];
 }

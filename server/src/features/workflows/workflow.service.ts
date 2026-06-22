@@ -1,7 +1,7 @@
 import { Injectable, Logger, NotFoundException, BadRequestException, ForbiddenException, InternalServerErrorException, OnModuleInit, OnApplicationBootstrap } from '@nestjs/common';
 import { InjectQueue } from '@nestjs/bullmq';
 import { Queue } from 'bullmq';
-import { eq, and, inArray, asc, or } from 'drizzle-orm';
+import { eq, and, inArray, asc, or, avg, isNotNull, sql } from 'drizzle-orm';
 import { Cron } from '@nestjs/schedule';
 import { DatabaseService } from '../../shared/database/database.service';
 import {
@@ -327,7 +327,75 @@ export class WorkflowService implements OnModuleInit, OnApplicationBootstrap {
       },
     });
     if (!run) throw new NotFoundException('Workflow run not found');
-    return run;
+
+    // Enrich each step with estimated duration based on historical data
+    const stepsWithEstimates = await Promise.all(
+      run.steps.map(async (step) => {
+        const estimatedDurationMs = await this.getStepEstimatedDuration(
+          step.stepKey,
+          run.organizationId,
+        );
+        return {
+          ...step,
+          estimatedDurationMs,
+        };
+      }),
+    );
+
+    return {
+      ...run,
+      steps: stepsWithEstimates,
+    };
+  }
+
+  /**
+   * Calculate the average duration for a specific step based on past runs.
+   * Only considers steps that are completed or approved (have both startedAt and completedAt).
+   * Returns the average duration in milliseconds, or null if no historical data exists.
+   */
+  private async getStepEstimatedDuration(
+    stepKey: string,
+    organizationId: string,
+  ): Promise<number | null> {
+    // Query all completed steps with this key in the organization
+    const completedSteps = await this.db.db
+      .select({
+        stepId: workflowSteps.id,
+        startedAt: workflowSteps.startedAt,
+        completedAt: workflowSteps.completedAt,
+      })
+      .from(workflowSteps)
+      .innerJoin(
+        workflowRuns,
+        eq(workflowSteps.workflowRunId, workflowRuns.id),
+      )
+      .where(
+        and(
+          eq(workflowRuns.organizationId, organizationId),
+          eq(workflowSteps.stepKey, stepKey),
+          or(
+            eq(workflowSteps.status, 'completed'),
+            eq(workflowSteps.status, 'approved'),
+          ),
+          isNotNull(workflowSteps.startedAt),
+          isNotNull(workflowSteps.completedAt),
+        ),
+      );
+
+    if (completedSteps.length === 0) {
+      return null;
+    }
+
+    // Calculate average duration
+    let totalDuration = 0;
+    for (const step of completedSteps) {
+      if (step.startedAt && step.completedAt) {
+        totalDuration += step.completedAt.getTime() - step.startedAt.getTime();
+      }
+    }
+
+    const averageDuration = Math.round(totalDuration / completedSteps.length);
+    return averageDuration;
   }
 
   async listRuns(projectId: string) {

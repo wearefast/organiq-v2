@@ -27,6 +27,26 @@ const PHASE_COLORS: Record<number, string> = {
   4: 'text-emerald-400 border-emerald-500/30',
 };
 
+/**
+ * Format a duration in milliseconds to a human-readable string.
+ * E.g., 65000 → "1m 5s", 5000 → "5s"
+ */
+function formatDuration(ms: number): string {
+  if (ms < 1000) {
+    return `${Math.round(ms / 100) * 100}ms`;
+  }
+  const seconds = Math.round(ms / 1000);
+  if (seconds < 60) {
+    return `${seconds}s`;
+  }
+  const minutes = Math.floor(seconds / 60);
+  const remainingSeconds = seconds % 60;
+  if (remainingSeconds === 0) {
+    return `${minutes}m`;
+  }
+  return `${minutes}m ${remainingSeconds}s`;
+}
+
 interface StepRailProps {
   steps: WorkflowStep[];
   activeStepKey: string | null;
@@ -130,10 +150,19 @@ export function StepRail({ steps, activeStepKey, onStepClick, stepPhases = {} }:
                         {def.label}
                       </span>
                     </div>
-                    {status === 'running' && stepPhases[def.key] && (
-                      <p className="mt-0.5 text-[10px] text-blue-400/80">
-                        {stepPhases[def.key] === 'pipeline' ? 'Fetching data…' : 'AI analyzing…'}
-                      </p>
+                    {status === 'running' && (
+                      <div className="mt-0.5 space-y-0.5 text-[10px]">
+                        {stepPhases[def.key] && (
+                          <p className="text-blue-400/80">
+                            {stepPhases[def.key] === 'pipeline' ? 'Fetching data…' : 'AI analyzing…'}
+                          </p>
+                        )}
+                        {step?.estimatedDurationMs && (
+                          <p className="text-zinc-400">
+                            Est. {formatDuration(step.estimatedDurationMs)}
+                          </p>
+                        )}
+                      </div>
                     )}
                   </div>
                 </button>

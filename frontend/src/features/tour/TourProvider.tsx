@@ -132,6 +132,9 @@ export function TourProvider({ children }: { children: React.ReactNode }) {
       // Destroy any currently running driver first
       driverRef.current?.destroy();
 
+      // Definite assignment pattern: d is assigned before onDestroyStarted can fire
+      let d!: ReturnType<typeof createDriver>;
+
       const config: DriverConfig = {
         animate: true,
         showProgress: false,
@@ -143,8 +146,13 @@ export function TourProvider({ children }: { children: React.ReactNode }) {
         nextBtnText: 'Next →',
         prevBtnText: '← Back',
         doneBtnText: 'Got it ✓',
-        onDestroyed: () => {
-          markComplete(section.key);
+        onDestroyStarted: () => {
+          // Only mark complete if the user finished all steps.
+          // Pressing ESC mid-tour (isLastStep() === false) will NOT mark the section complete,
+          // so the tour will start again on next login.
+          if (d.isLastStep()) {
+            markComplete(section.key);
+          }
         },
         steps: section.steps.map((step) => ({
           ...(step.element ? { element: step.element } : {}),
@@ -152,7 +160,7 @@ export function TourProvider({ children }: { children: React.ReactNode }) {
         })),
       };
 
-      const d = createDriver(config);
+      d = createDriver(config);
       driverRef.current = d;
       d.drive();
     },
