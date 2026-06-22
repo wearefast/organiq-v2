@@ -2,11 +2,21 @@ import { NestFactory } from '@nestjs/core';
 import { ValidationPipe } from '@nestjs/common';
 import { SwaggerModule, DocumentBuilder } from '@nestjs/swagger';
 import { Logger } from 'nestjs-pino';
+import helmet from 'helmet';
 import { AppModule } from './app.module';
 
 async function bootstrap() {
   const app = await NestFactory.create(AppModule, { bufferLogs: true, rawBody: true });
   app.useLogger(app.get(Logger));
+
+  // HTTP security headers — applied before all other middleware
+  app.use(helmet({
+    // Allow same-origin iframes for internal tooling if needed; deny others
+    frameguard: { action: 'deny' },
+    // contentSecurityPolicy is disabled here since this is an API server,
+    // not a web app serving HTML. The frontend (Vercel/Next.js) has its own CSP.
+    contentSecurityPolicy: false,
+  }));
 
   app.enableShutdownHooks();
 

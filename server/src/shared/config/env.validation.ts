@@ -21,33 +21,32 @@ class EnvironmentVariables {
   @IsString()
   OPENAI_API_KEY: string;
 
-  @IsOptional()
+  // Required for SEO data in workflow steps
   @IsString()
-  AHREFS_API_KEY?: string;
+  AHREFS_API_KEY: string;
 
-  @IsOptional()
+  // Required for SERP data in workflows
   @IsString()
-  SERPER_API_KEY?: string;
+  SERPER_API_KEY: string;
 
-  @IsOptional()
+  // Required for web scraping
   @IsString()
-  FIRECRAWL_API_KEY?: string;
+  FIRECRAWL_API_KEY: string;
 
-  @IsOptional()
+  // Required for search volume data
   @IsString()
-  DATAFORSEO_LOGIN?: string;
+  DATAFORSEO_LOGIN: string;
 
-  @IsOptional()
   @IsString()
-  DATAFORSEO_PASSWORD?: string;
+  DATAFORSEO_PASSWORD: string;
 
   @IsOptional()
   @IsString()
   FRONTEND_URL?: string;
 
-  @IsOptional()
+  // Required for all agent LLM calls
   @IsString()
-  ANTHROPIC_API_KEY?: string;
+  ANTHROPIC_API_KEY: string;
 
   @IsOptional()
   @IsString()

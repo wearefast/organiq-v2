@@ -29,8 +29,15 @@ export class DeliveryService {
   private async deliverSlack(payload: DeliveryPayload): Promise<void> {
     const webhookUrl = payload.target;
 
-    // Validate webhook URL format
-    if (!webhookUrl.startsWith('https://hooks.slack.com/')) {
+    // Validate webhook URL — use hostname comparison to prevent SSRF via
+    // URLs like https://hooks.slack.com.attacker.com/...
+    let parsedWebhookUrl: URL;
+    try {
+      parsedWebhookUrl = new URL(webhookUrl);
+    } catch {
+      throw new Error('Invalid Slack webhook URL');
+    }
+    if (parsedWebhookUrl.protocol !== 'https:' || parsedWebhookUrl.hostname !== 'hooks.slack.com') {
       throw new Error('Invalid Slack webhook URL');
     }
 

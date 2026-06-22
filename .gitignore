@@ -12,6 +12,8 @@ out/
 .env.*.local
 server/.env
 
+# Documents
+docs/audit-action-plan.md
 
 # IDE
 .vscode/settings.json
@@ -29,6 +31,15 @@ docker-data/
 
 # Debug
 npm-debug.log*
+
+# Debug/diagnostic scripts (never commit these — they contain hardcoded DSNs and prod UUIDs)
+server/chk*.js
+server/check-*.js
+server/diag-*.js
+server/verify-*.js
+server/test-engines.js
+server/scripts/check-*.js
+server/scripts/create-test-run.js
 
 # Server log / diagnostic output files
 *.log
