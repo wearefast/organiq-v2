@@ -83,7 +83,7 @@ jobs:
             fi
             
             echo "Running database migrations..."
-            docker exec organiq-server npx drizzle-kit migrate
+            docker exec organiq-server npx drizzle-kit migrate --config=drizzle.config.ts
             echo "Migrations complete"
             
             echo "Deployment successful!"
