@@ -665,6 +665,33 @@ export const gscKeywordData = pgTable(
   }),
 );
 
+// ─── API Usage Logs ──────────────────────────────────────────
+
+export const apiUsageLogs = pgTable(
+  'api_usage_logs',
+  {
+    id: uuid('id').primaryKey().defaultRandom(),
+    organizationId: uuid('organization_id').notNull().references(() => organizations.id, { onDelete: 'cascade' }),
+    projectId: uuid('project_id').references(() => projects.id, { onDelete: 'set null' }),
+    workflowRunId: uuid('workflow_run_id').references(() => workflowRuns.id, { onDelete: 'set null' }),
+    stepKey: text('step_key'),
+    provider: text('provider').notNull(),
+    endpoint: text('endpoint').notNull(),
+    tokensIn: integer('tokens_in'),
+    tokensOut: integer('tokens_out'),
+    requestCount: integer('request_count').default(1).notNull(),
+    costUsd: decimal('cost_usd', { precision: 10, scale: 6 }).notNull(),
+    durationMs: integer('duration_ms'),
+    success: boolean('success').default(true).notNull(),
+    createdAt: timestamp('created_at').defaultNow().notNull(),
+  },
+  (table) => ({
+    orgCreatedAtIdx: index('api_usage_logs_org_created_at_idx').on(table.organizationId, table.createdAt),
+    projectCreatedAtIdx: index('api_usage_logs_project_created_at_idx').on(table.projectId, table.createdAt),
+    runStepIdx: index('api_usage_logs_run_step_idx').on(table.workflowRunId, table.stepKey),
+  }),
+);
+
 // ─── Relations ───────────────────────────────────────────────
 
 export const organizationsRelations = relations(organizations, ({ many }) => ({
@@ -674,6 +701,7 @@ export const organizationsRelations = relations(organizations, ({ many }) => ({
   workflowRuns: many(workflowRuns),
   invitations: many(invitations),
   workspaceCreditLimits: many(workspaceCreditLimits),
+  apiUsageLogs: many(apiUsageLogs),
 }));
 
 export const orgMembersRelations = relations(orgMembers, ({ one, many }) => ({

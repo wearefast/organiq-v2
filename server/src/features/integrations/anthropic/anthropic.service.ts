@@ -1,6 +1,9 @@
 import { Injectable, Logger } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import Anthropic from '@anthropic-ai/sdk';
+import { ApiUsageContextService } from '../../api-usage/api-usage-context.service';
+import { ApiUsageService } from '../../api-usage/api-usage.service';
+import { anthropicCostUsd } from '../../api-usage/pricing.constants';
 
 export interface AnthropicChatOptions {
   messages: Array<{
@@ -55,7 +58,11 @@ export class AnthropicService {
     'claude-sonnet-4': 'claude-sonnet-4-6',
   };
 
-  constructor(private readonly config: ConfigService) {
+  constructor(
+    private readonly config: ConfigService,
+    private readonly apiUsageContext: ApiUsageContextService,
+    private readonly apiUsageService: ApiUsageService,
+  ) {
     const apiKey = this.config.get<string>('ANTHROPIC_API_KEY', '');
     this.client = new Anthropic({ apiKey });
     this.defaultModel = this.config.get<string>('ANTHROPIC_DEFAULT_MODEL', 'claude-opus-4-6');
@@ -67,6 +74,7 @@ export class AnthropicService {
     this.logger.debug(`Anthropic API: messages (model=${model})`);
 
     let lastError: Error | null = null;
+    const callStart = Date.now();
 
     for (let attempt = 0; attempt <= AnthropicService.MAX_RETRIES; attempt++) {
       try {
@@ -139,7 +147,28 @@ export class AnthropicService {
           ? await Promise.race([stream.finalMessage(), abortRace])
           : await stream.finalMessage();
 
-        return this.parseResponse(response);
+        const durationMs = Date.now() - callStart;
+        const parsed = this.parseResponse(response);
+
+        // Record API usage — fire-and-forget, never blocks the response
+        const ctx = this.apiUsageContext.getContext();
+        if (ctx) {
+          this.apiUsageService.record({
+            organizationId: ctx.organizationId,
+            projectId: ctx.projectId,
+            workflowRunId: ctx.workflowRunId,
+            stepKey: ctx.stepKey,
+            provider: 'anthropic',
+            endpoint: model,
+            tokensIn: parsed.usage.inputTokens + (parsed.usage.cacheReadTokens ?? 0),
+            tokensOut: parsed.usage.outputTokens,
+            costUsd: anthropicCostUsd(model, parsed.usage.inputTokens + (parsed.usage.cacheReadTokens ?? 0), parsed.usage.outputTokens),
+            durationMs,
+            success: true,
+          });
+        }
+
+        return parsed;
       } catch (error: unknown) {
         lastError = error instanceof Error ? error : new Error(String(error));
 

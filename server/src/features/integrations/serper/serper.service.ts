@@ -1,6 +1,9 @@
 import { Injectable, Logger } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { withRetry } from '../../../shared/utils/retry';
+import { ApiUsageContextService } from '../../api-usage/api-usage-context.service';
+import { ApiUsageService } from '../../api-usage/api-usage.service';
+import { serperCostUsd } from '../../api-usage/pricing.constants';
 
 type SearchType = 'search' | 'news' | 'images' | 'places';
 
@@ -18,7 +21,11 @@ export class SerperService {
   private readonly apiKey: string;
   private readonly baseUrl = 'https://google.serper.dev';
 
-  constructor(private readonly config: ConfigService) {
+  constructor(
+    private readonly config: ConfigService,
+    private readonly apiUsageContext: ApiUsageContextService,
+    private readonly apiUsageService: ApiUsageService,
+  ) {
     this.apiKey = this.config.get<string>('SERPER_API_KEY', '');
   }
 
@@ -64,7 +71,24 @@ export class SerperService {
           throw new Error(`Serper API error: ${response.status} - ${text}`);
         }
 
-        return response.json();
+        const data = await response.json();
+
+        // Record API usage — fire-and-forget
+        const ctx = this.apiUsageContext.getContext();
+        if (ctx) {
+          this.apiUsageService.record({
+            organizationId: ctx.organizationId,
+            projectId: ctx.projectId,
+            workflowRunId: ctx.workflowRunId,
+            stepKey: ctx.stepKey,
+            provider: 'serper',
+            endpoint,
+            costUsd: serperCostUsd(endpoint),
+            success: true,
+          });
+        }
+
+        return data;
       },
       { label: `Serper POST ${endpoint}` },
     );

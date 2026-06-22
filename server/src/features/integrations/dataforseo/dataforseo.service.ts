@@ -1,6 +1,9 @@
 import { Injectable, Logger } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { withRetry } from '../../../shared/utils/retry';
+import { ApiUsageContextService } from '../../api-usage/api-usage-context.service';
+import { ApiUsageService } from '../../api-usage/api-usage.service';
+import { dataforseoEndpointCostUsd } from '../../api-usage/pricing.constants';
 
 /** Maps common ISO country codes and short names to DataForSEO location_name values. */
 const LOCATION_MAP: Record<string, string> = {
@@ -68,7 +71,11 @@ export class DataForSeoService {
   private readonly password: string;
   private readonly baseUrl = 'https://api.dataforseo.com/v3';
 
-  constructor(private readonly config: ConfigService) {
+  constructor(
+    private readonly config: ConfigService,
+    private readonly apiUsageContext: ApiUsageContextService,
+    private readonly apiUsageService: ApiUsageService,
+  ) {
     this.login = this.config.get<string>('DATAFORSEO_LOGIN', '');
     this.password = this.config.get<string>('DATAFORSEO_PASSWORD', '');
   }
@@ -289,6 +296,7 @@ export class DataForSeoService {
     const url = `${this.baseUrl}${endpoint}`;
 
     this.logger.debug(`DataForSEO API: ${method} ${endpoint}`);
+    const callStart = Date.now();
 
     return withRetry(
       async () => {
@@ -318,6 +326,22 @@ export class DataForSeoService {
           const msg = `DataForSEO task error ${task.status_code}: ${task.status_message ?? 'unknown'}`;
           this.logger.error(msg);
           throw new Error(msg);
+        }
+
+        // Record API usage — fire-and-forget
+        const ctx = this.apiUsageContext.getContext();
+        if (ctx) {
+          this.apiUsageService.record({
+            organizationId: ctx.organizationId,
+            projectId: ctx.projectId,
+            workflowRunId: ctx.workflowRunId,
+            stepKey: ctx.stepKey,
+            provider: 'dataforseo',
+            endpoint,
+            costUsd: dataforseoEndpointCostUsd(endpoint),
+            durationMs: Date.now() - callStart,
+            success: true,
+          });
         }
 
         return result;

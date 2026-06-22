@@ -2,7 +2,6 @@
 
 import { useState, useEffect, useCallback } from 'react';
 import { useAuth } from '@clerk/nextjs';
-import { redirect } from 'next/navigation';
 import { ShieldAlert, Search, Plus, Loader2, ChevronDown, ChevronRight, RefreshCw } from 'lucide-react';
 import { setAuthToken } from '@/shared/utils/api';
 import {
@@ -12,6 +11,7 @@ import {
   type AdminOrg,
   type OrgCredits,
 } from '@/features/admin/services/admin.service';
+import { ApiCostsPanel } from '@/features/admin/components/api-costs-panel';
 
 // ─── Credits Panel ────────────────────────────────────────────
 
@@ -223,6 +223,7 @@ export default function AdminPage() {
   // middleware has already verified the user is an admin. No client-side
   // NEXT_PUBLIC_SUPER_ADMIN_CLERK_IDS check needed here.
 
+  const [activeTab, setActiveTab] = useState<'orgs' | 'api-costs'>('orgs');
   const [orgs, setOrgs] = useState<AdminOrg[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -265,46 +266,77 @@ export default function AdminPage() {
         <ShieldAlert className="h-6 w-6 text-violet-400" />
         <div>
           <h1 className="text-2xl font-bold text-white">Platform Admin</h1>
-          <p className="text-sm text-zinc-500">Manage organizations and credits</p>
+          <p className="text-sm text-zinc-500">Manage organizations, credits, and API costs</p>
         </div>
       </div>
 
-      {/* Search */}
-      <div className="relative max-w-sm">
-        <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-zinc-500" />
-        <input
-          type="text"
-          value={search}
-          onChange={(e) => setSearch(e.target.value)}
-          placeholder="Search organizations…"
-          className="w-full rounded-lg border border-zinc-700 bg-zinc-800 py-2 pl-9 pr-3 text-sm text-white placeholder-zinc-500 outline-none focus:border-zinc-500"
-        />
+      {/* Tabs */}
+      <div className="flex border-b border-zinc-700">
+        {([
+          { key: 'orgs',      label: 'Organizations' },
+          { key: 'api-costs', label: 'API Costs' },
+        ] as const).map((tab) => (
+          <button
+            key={tab.key}
+            onClick={() => setActiveTab(tab.key)}
+            className={`px-4 py-2.5 text-sm font-medium transition-colors border-b-2 -mb-px ${
+              activeTab === tab.key
+                ? 'border-violet-400 text-violet-300'
+                : 'border-transparent text-zinc-500 hover:text-zinc-300'
+            }`}
+          >
+            {tab.label}
+          </button>
+        ))}
       </div>
 
-      {/* Error */}
-      {error && (
-        <div className="rounded-lg border border-red-800 bg-red-900/20 px-4 py-3 text-sm text-red-300">
-          {error}
+      {/* ── Organizations Tab ── */}
+      {activeTab === 'orgs' && (
+        <div className="space-y-4">
+          {/* Search */}
+          <div className="relative max-w-sm">
+            <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-zinc-500" />
+            <input
+              type="text"
+              value={search}
+              onChange={(e) => setSearch(e.target.value)}
+              placeholder="Search organizations…"
+              className="w-full rounded-lg border border-zinc-700 bg-zinc-800 py-2 pl-9 pr-3 text-sm text-white placeholder-zinc-500 outline-none focus:border-zinc-500"
+            />
+          </div>
+
+          {/* Error */}
+          {error && (
+            <div className="rounded-lg border border-red-800 bg-red-900/20 px-4 py-3 text-sm text-red-300">
+              {error}
+            </div>
+          )}
+
+          {/* Org list */}
+          {loading ? (
+            <div className="flex items-center gap-2 py-8 text-sm text-zinc-500">
+              <Loader2 className="h-4 w-4 animate-spin" /> Loading organizations…
+            </div>
+          ) : filtered.length === 0 ? (
+            <p className="py-8 text-sm text-zinc-500">
+              {search ? 'No organizations match your search.' : 'No organizations found.'}
+            </p>
+          ) : (
+            <div className="space-y-2">
+              <p className="text-xs text-zinc-500">{filtered.length} organization{filtered.length !== 1 ? 's' : ''}</p>
+              {filtered.map((org) => (
+                <OrgRow key={org.id} org={org} />
+              ))}
+            </div>
+          )}
         </div>
       )}
 
-      {/* Org list */}
-      {loading ? (
-        <div className="flex items-center gap-2 py-8 text-sm text-zinc-500">
-          <Loader2 className="h-4 w-4 animate-spin" /> Loading organizations…
-        </div>
-      ) : filtered.length === 0 ? (
-        <p className="py-8 text-sm text-zinc-500">
-          {search ? 'No organizations match your search.' : 'No organizations found.'}
-        </p>
-      ) : (
-        <div className="space-y-2">
-          <p className="text-xs text-zinc-500">{filtered.length} organization{filtered.length !== 1 ? 's' : ''}</p>
-          {filtered.map((org) => (
-            <OrgRow key={org.id} org={org} />
-          ))}
-        </div>
+      {/* ── API Costs Tab ── */}
+      {activeTab === 'api-costs' && (
+        <ApiCostsPanel orgs={orgs.map((o) => ({ id: o.id, name: o.name }))} />
       )}
     </div>
   );
 }
+

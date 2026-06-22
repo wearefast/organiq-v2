@@ -1,5 +1,8 @@
 import { Injectable, Logger } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
+import { ApiUsageContextService } from '../../api-usage/api-usage-context.service';
+import { ApiUsageService } from '../../api-usage/api-usage.service';
+import { openAiCostUsd } from '../../api-usage/pricing.constants';
 
 interface ChatMessage {
   role: 'system' | 'user' | 'assistant' | 'tool';
@@ -44,7 +47,11 @@ export class OpenAiService {
   private readonly defaultModel: string;
   private readonly baseUrl = 'https://api.openai.com/v1';
 
-  constructor(private readonly config: ConfigService) {
+  constructor(
+    private readonly config: ConfigService,
+    private readonly apiUsageContext: ApiUsageContextService,
+    private readonly apiUsageService: ApiUsageService,
+  ) {
     this.apiKey = this.config.get<string>('OPENAI_API_KEY', '');
     this.defaultModel = this.config.get<string>('OPENAI_MODEL', 'gpt-4o');
   }
@@ -71,6 +78,7 @@ export class OpenAiService {
     this.logger.debug(`OpenAI API: chat/completions (model=${body.model})`);
 
     let lastError: Error | null = null;
+    const callStart = Date.now();
 
     for (let attempt = 0; attempt <= OpenAiService.MAX_RETRIES; attempt++) {
       const response = await fetch(`${this.baseUrl}/chat/completions`, {
@@ -110,7 +118,7 @@ export class OpenAiService {
 
       const choice = data.choices[0];
 
-      return {
+      const result: ChatCompletionResult = {
         message: choice.message,
         finishReason: choice.finish_reason as ChatCompletionResult['finishReason'],
         usage: {
@@ -119,6 +127,26 @@ export class OpenAiService {
           totalTokens: data.usage.total_tokens,
         },
       };
+
+      // Record API usage — fire-and-forget, never blocks the response
+      const ctx = this.apiUsageContext.getContext();
+      if (ctx) {
+        this.apiUsageService.record({
+          organizationId: ctx.organizationId,
+          projectId: ctx.projectId,
+          workflowRunId: ctx.workflowRunId,
+          stepKey: ctx.stepKey,
+          provider: 'openai',
+          endpoint: String(body.model),
+          tokensIn: result.usage.promptTokens,
+          tokensOut: result.usage.completionTokens,
+          costUsd: openAiCostUsd(String(body.model), result.usage.promptTokens, result.usage.completionTokens),
+          durationMs: Date.now() - callStart,
+          success: true,
+        });
+      }
+
+      return result;
     }
 
     // All retries exhausted

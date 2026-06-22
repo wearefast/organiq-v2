@@ -33,6 +33,7 @@ import { ScheduledWorkflowsModule } from './features/scheduled-workflows/schedul
 import { BillingModule } from './features/billing/billing.module';
 import { UserManagementModule } from './features/user-management/user-management.module';
 import { InternalModule } from './features/internal/internal.module';
+import { ApiUsageModule } from './features/api-usage/api-usage.module';
 import { validateEnv } from './shared/config/env.validation';
 
 function resolveBullRedisHost() {
@@ -103,6 +104,7 @@ function resolveEnvFilePaths() {
     BillingModule,
     UserManagementModule,
     InternalModule,
+    ApiUsageModule,
   ],
   providers: [
     // Enforce global rate limiting across all controllers.

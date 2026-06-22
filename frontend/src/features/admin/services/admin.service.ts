@@ -40,3 +40,92 @@ export async function addOrgCredits(orgId: string, payload: AddCreditsPayload): 
     body: JSON.stringify(payload),
   });
 }
+
+// ─── API Usage ────────────────────────────────────────────────
+
+export interface ProviderTotals {
+  provider: string;
+  calls: number;
+  tokensIn: number;
+  tokensOut: number;
+  costUsd: number;
+}
+
+export interface DailyTotal {
+  date: string;
+  provider: string;
+  calls: number;
+  costUsd: number;
+}
+
+export interface ApiUsageSummary {
+  totalCostUsd: number;
+  totalCalls: number;
+  byProvider: ProviderTotals[];
+  byDay: DailyTotal[];
+}
+
+export interface ProjectCost {
+  projectId: string;
+  projectName: string;
+  workspaceName: string;
+  runs: number;
+  calls: number;
+  costUsd: number;
+}
+
+export interface RunStepCost {
+  stepKey: string;
+  provider: string;
+  endpoint: string;
+  tokensIn: number | null;
+  tokensOut: number | null;
+  calls: number;
+  costUsd: number;
+  durationMs: number | null;
+  createdAt: string;
+}
+
+export async function getApiUsageSummary(params: {
+  orgId?: string;
+  from?: string;
+  to?: string;
+}): Promise<ApiUsageSummary> {
+  const qs = new URLSearchParams();
+  if (params.orgId) qs.set('orgId', params.orgId);
+  if (params.from) qs.set('from', params.from);
+  if (params.to) qs.set('to', params.to);
+  return apiFetch<ApiUsageSummary>(`/internal/api-usage/summary?${qs}`);
+}
+
+export async function getApiUsageByProject(params: {
+  orgId?: string;
+  from?: string;
+  to?: string;
+}): Promise<ProjectCost[]> {
+  const qs = new URLSearchParams();
+  if (params.orgId) qs.set('orgId', params.orgId);
+  if (params.from) qs.set('from', params.from);
+  if (params.to) qs.set('to', params.to);
+  return apiFetch<ProjectCost[]>(`/internal/api-usage/by-project?${qs}`);
+}
+
+export async function getApiUsageByRun(runId: string): Promise<RunStepCost[]> {
+  return apiFetch<RunStepCost[]>(`/internal/api-usage/by-run/${runId}`);
+}
+
+export async function downloadApiUsageCsv(params: {
+  orgId?: string;
+  from?: string;
+  to?: string;
+}): Promise<void> {
+  const qs = new URLSearchParams();
+  if (params.orgId) qs.set('orgId', params.orgId);
+  if (params.from) qs.set('from', params.from);
+  if (params.to) qs.set('to', params.to);
+
+  // Use window.open to trigger browser download (avoids CORS complexity with blob URLs)
+  const apiBase = process.env.NEXT_PUBLIC_API_URL ?? '';
+  window.open(`${apiBase}/internal/api-usage/export?${qs}`, '_blank');
+}
+

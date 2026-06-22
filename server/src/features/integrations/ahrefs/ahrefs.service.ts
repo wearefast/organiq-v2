@@ -1,6 +1,9 @@
 import { Injectable, Logger } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { withRetry } from '../../../shared/utils/retry';
+import { ApiUsageContextService } from '../../api-usage/api-usage-context.service';
+import { ApiUsageService } from '../../api-usage/api-usage.service';
+import { ahrefsCostUsd } from '../../api-usage/pricing.constants';
 
 interface AhrefsRequestOptions {
   endpoint: string;
@@ -13,7 +16,11 @@ export class AhrefsService {
   private readonly apiKey: string;
   private readonly baseUrl = 'https://api.ahrefs.com/v3';
 
-  constructor(private readonly config: ConfigService) {
+  constructor(
+    private readonly config: ConfigService,
+    private readonly apiUsageContext: ApiUsageContextService,
+    private readonly apiUsageService: ApiUsageService,
+  ) {
     this.apiKey = this.config.get<string>('AHREFS_API_KEY', '');
   }
 
@@ -197,6 +204,23 @@ export class AhrefsService {
         }
 
         this.logger.log(`Ahrefs ✓ GET ${endpoint} duration=${durationMs}ms`);
+
+        // Record API usage — fire-and-forget
+        const ctx = this.apiUsageContext.getContext();
+        if (ctx) {
+          this.apiUsageService.record({
+            organizationId: ctx.organizationId,
+            projectId: ctx.projectId,
+            workflowRunId: ctx.workflowRunId,
+            stepKey: ctx.stepKey,
+            provider: 'ahrefs',
+            endpoint,
+            costUsd: ahrefsCostUsd(endpoint),
+            durationMs,
+            success: true,
+          });
+        }
+
         return response.json();
       },
       { label: `Ahrefs ${endpoint}` },

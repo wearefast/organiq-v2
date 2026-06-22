@@ -1,12 +1,17 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import { ConfigService } from '@nestjs/config';
 import { AhrefsService } from './ahrefs.service';
+import { ApiUsageContextService } from '../../api-usage/api-usage-context.service';
+import { ApiUsageService } from '../../api-usage/api-usage.service';
 
 describe('AhrefsService', () => {
   const config = {
     get: (key: string, defaultValue?: string) =>
       key === 'AHREFS_API_KEY' ? 'test-ahrefs-key' : (defaultValue ?? ''),
   } as ConfigService;
+
+  const apiUsageContext = { getContext: () => undefined } as unknown as ApiUsageContextService;
+  const apiUsageService = { record: () => undefined } as unknown as ApiUsageService;
 
   beforeEach(() => {
     vi.restoreAllMocks();
@@ -23,7 +28,7 @@ describe('AhrefsService', () => {
     });
     vi.stubGlobal('fetch', fetchMock);
 
-    const service = new AhrefsService(config);
+    const service = new AhrefsService(config, apiUsageContext, apiUsageService);
     await service.getSerpOverview('mashreq bank global hq', 'AE');
 
     expect(fetchMock).toHaveBeenCalledTimes(1);

@@ -18,6 +18,7 @@ import { DataForSeoService } from '../integrations/dataforseo/dataforseo.service
 import { DlqService } from './dlq.service';
 import { ProjectIntelligenceService } from '../projects/project-intelligence.service';
 import { WorkflowLogger } from '../../shared/utils/workflow-logger';
+import { ApiUsageContextService } from '../api-usage/api-usage-context.service';
 import {
   workflowSteps,
   stepArtifacts,
@@ -61,6 +62,7 @@ export class WorkflowProcessor extends WorkerHost {
     private readonly skillService: SkillService,
     private readonly intelligenceService: ProjectIntelligenceService,
     private readonly dataforseo: DataForSeoService,
+    private readonly apiUsageContext: ApiUsageContextService,
   ) {
     super();
   }
@@ -75,6 +77,12 @@ export class WorkflowProcessor extends WorkerHost {
 
     wl.stepStarted();
     wl.log(`BullMQ jobId=${job.id} attempt=${job.attemptsMade + 1}/${job.opts?.attempts ?? 3}`);
+
+    // Establish AsyncLocalStorage context so all downstream integration service calls
+    // (Anthropic, Ahrefs, Serper, etc.) can log API usage without explicit parameter passing.
+    // projectId is patched into the mutable ctx object once the run record is loaded.
+    const ctx = { organizationId, workflowRunId, stepKey, projectId: undefined as string | undefined };
+    return this.apiUsageContext.run(ctx, async () => {
 
     const abortController = new AbortController();
     const abortTimer = setTimeout(() => {
@@ -194,6 +202,8 @@ export class WorkflowProcessor extends WorkerHost {
         where: eq(workflowRuns.id, workflowRunId),
       });
       if (!run) throw new Error(`Workflow run not found: ${workflowRunId}`);
+      // Patch projectId into the context so integration services log it with API usage entries
+      ctx.projectId = run.projectId;
 
       // Assemble project intelligence context
       const pisContext = await this.intelligenceService.assembleContext({
@@ -610,6 +620,8 @@ export class WorkflowProcessor extends WorkerHost {
     } finally {
       clearTimeout(abortTimer);
     }
+
+    }); // end apiUsageContext.run()
   }
 
   /**

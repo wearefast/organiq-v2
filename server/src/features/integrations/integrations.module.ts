@@ -7,6 +7,7 @@ import { OpenAiModule } from './openai/openai.module';
 import { PageSpeedModule } from './pagespeed/pagespeed.module';
 import { SerperModule } from './serper/serper.module';
 import { GscModule } from './gsc/gsc.module';
+import { PerplexityModule } from './perplexity/perplexity.module';
 
 @Module({
   imports: [
@@ -18,6 +19,7 @@ import { GscModule } from './gsc/gsc.module';
     PageSpeedModule,
     SerperModule,
     GscModule,
+    PerplexityModule,
   ],
   exports: [
     AhrefsModule,
@@ -28,6 +30,7 @@ import { GscModule } from './gsc/gsc.module';
     PageSpeedModule,
     SerperModule,
     GscModule,
+    PerplexityModule,
   ],
 })
 export class IntegrationsModule {}
