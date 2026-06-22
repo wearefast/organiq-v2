@@ -1,0 +1,1 @@
+ALTER TABLE "tracked_prompts" ADD COLUMN "competitors" jsonb DEFAULT '[]'::jsonb;

@@ -20,8 +20,6 @@ server/.env
 .DS_Store
 Thumbs.db
 
-# Drizzle
-server/drizzle/
 
 # Docker
 docker-data/

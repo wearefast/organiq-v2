@@ -1,0 +1,1 @@
+ALTER TABLE "step_artifacts" ADD COLUMN "metadata" jsonb;

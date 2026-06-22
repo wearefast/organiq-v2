@@ -1,0 +1,111 @@
+{
+  "version": "7",
+  "dialect": "postgresql",
+  "entries": [
+    {
+      "idx": 0,
+      "version": "7",
+      "when": 1778497857138,
+      "tag": "0000_init",
+      "breakpoints": true
+    },
+    {
+      "idx": 1,
+      "version": "7",
+      "when": 1778502339947,
+      "tag": "0001_clean_toad",
+      "breakpoints": true
+    },
+    {
+      "idx": 2,
+      "version": "7",
+      "when": 1778841600000,
+      "tag": "0002_add_missing_indexes",
+      "breakpoints": true
+    },
+    {
+      "idx": 3,
+      "version": "7",
+      "when": 1778748039534,
+      "tag": "0003_tiresome_johnny_blaze",
+      "breakpoints": true
+    },
+    {
+      "idx": 4,
+      "version": "7",
+      "when": 1779111756867,
+      "tag": "0004_add_dlq_table",
+      "breakpoints": true
+    },
+    {
+      "idx": 5,
+      "version": "7",
+      "when": 1779169280295,
+      "tag": "0005_add_artifact_metadata",
+      "breakpoints": true
+    },
+    {
+      "idx": 6,
+      "version": "7",
+      "when": 1779177207109,
+      "tag": "0006_brief_captain_universe",
+      "breakpoints": true
+    },
+    {
+      "idx": 7,
+      "version": "7",
+      "when": 1779178039799,
+      "tag": "0007_panoramic_mister_fear",
+      "breakpoints": true
+    },
+    {
+      "idx": 8,
+      "version": "7",
+      "when": 1779178869390,
+      "tag": "0008_bright_dorian_gray",
+      "breakpoints": true
+    },
+    {
+      "idx": 9,
+      "version": "7",
+      "when": 1779179462570,
+      "tag": "0009_violet_invaders",
+      "breakpoints": true
+    },
+    {
+      "idx": 10,
+      "version": "7",
+      "when": 1779180024127,
+      "tag": "0010_cooing_medusa",
+      "breakpoints": true
+    },
+    {
+      "idx": 11,
+      "version": "7",
+      "when": 1779180751911,
+      "tag": "0011_daily_speed",
+      "breakpoints": true
+    },
+    {
+      "idx": 12,
+      "version": "7",
+      "when": 1779181849584,
+      "tag": "0012_r8_r9_agents_workflows",
+      "breakpoints": true
+    },
+    {
+      "idx": 13,
+      "version": "7",
+      "when": 1779188064633,
+      "tag": "0013_r11_billing",
+      "breakpoints": true
+    },
+    {
+      "idx": 14,
+      "version": "7",
+      "when": 1782122303205,
+      "tag": "0014_special_caretaker",
+      "breakpoints": true
+    }
+  ]
+}
