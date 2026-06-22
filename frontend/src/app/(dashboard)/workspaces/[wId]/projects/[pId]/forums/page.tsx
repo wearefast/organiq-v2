@@ -51,6 +51,14 @@ function scoreColor(score: number): string {
   return 'text-zinc-400 bg-zinc-700/50';
 }
 
+function RedditLogo() {
+  return (
+    <svg className="h-5 w-5 text-orange-500" viewBox="0 0 24 24" fill="currentColor">
+      <path d="M12 0C5.37 0 0 5.37 0 12s5.37 12 12 12 12-5.37 12-12S18.63 0 12 0zm0 1c6.066 0 11 4.934 11 11s-4.934 11-11 11S1 18.066 1 12 5.934 1 12 1zm0 3c-4.418 0-8 3.582-8 8s3.582 8 8 8 8-3.582 8-8-3.582-8-8-8zm0 1c3.866 0 7 3.134 7 7s-3.134 7-7 7-7-3.134-7-7 3.134-7 7-7z" />
+    </svg>
+  );
+}
+
 // ─── Page ────────────────────────────────────────────────────
 
 export default function ForumsPage() {
@@ -166,11 +174,18 @@ export default function ForumsPage() {
     <div className="space-y-6 p-6">
       {/* Header */}
       <div className="flex items-start justify-between">
-        <div>
-          <h1 className="text-2xl font-bold text-white">Forum Intelligence</h1>
-          <p className="mt-1 text-sm text-zinc-400">
-            Automated Reddit monitoring — find and engage with discussions in your niche.
-          </p>
+        <div className="flex items-center gap-3">
+          <div>
+            <div className="flex items-center gap-2">
+              <h1 className="text-2xl font-bold text-white">Forum Intelligence</h1>
+              <div className="h-6 w-6 rounded-full bg-orange-500/10 flex items-center justify-center border border-orange-500/20">
+                <RedditLogo />
+              </div>
+            </div>
+            <p className="mt-1 text-sm text-zinc-400">
+              Automated Reddit monitoring — find and engage with discussions in your niche.
+            </p>
+          </div>
         </div>
         <button
           onClick={handleScan}

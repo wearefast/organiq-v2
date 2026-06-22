@@ -193,9 +193,19 @@
 
 /* ── Driver.js tour — z-index above all app chrome ───────────────────────────
    Sidebar is z-40 (40), Topbar is z-50 (50), TourProgress badge is z-[9999].
-   Override Driver.js defaults here so they're always on top.                  */
-.driver-overlay { z-index: 10000 !important; }
-.driver-popover { z-index: 10001 !important; }
+   Override Driver.js defaults here so they're always on top.
+   CRITICAL: Overlay must have pointer-events: none so clicks reach the popover. */
+.driver-overlay { 
+  z-index: 10000 !important; 
+  pointer-events: none !important; 
+}
+.driver-popover { 
+  z-index: 10001 !important; 
+  pointer-events: auto !important; 
+}
+.driver-popover * { 
+  pointer-events: auto !important; 
+}
 [data-theme="light"] .text-emerald-400 { color: #059669; }
 [data-theme="light"] .text-amber-400  { color: #b45309; }
 [data-theme="light"] .text-violet-400 { color: #7c3aed; }

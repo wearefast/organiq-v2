@@ -15,6 +15,7 @@ import {
   Workflow,
   Users,
   ShieldAlert,
+  MessageCircle,
   type LucideIcon,
 } from 'lucide-react';
 import { cn } from '@/shared/utils/cn';
@@ -57,6 +58,7 @@ const BOTTOM_ITEMS_BASE: NavItem[] = [
 //   Overview   — project dashboard
 //   Workflow   — 18-step strategy pipeline runs
 //   AI Search  — prompt visibility + LLM traffic  (sub-nav)
+//   Forum Intelligence — Reddit monitoring
 //   Analytics  — GSC keyword/page performance
 //   Technical  — LLM crawlability audit           (sub-nav)
 //   Agents     — on-demand chat + scheduled runs   (sub-nav)
@@ -86,6 +88,11 @@ function getProjectItems(wId: string, pId: string): NavItem[] {
         { href: `${base}/ai-search/traffic`,     label: 'LLM Traffic' },
         { href: `${base}/ai-search/llm-audit`,   label: 'LLM Audit' },
       ],
+    },
+    {
+      href: `${base}/forums`,
+      icon: MessageCircle,
+      label: 'Forum Intelligence',
     },
     {
       href: `${base}/analytics`,

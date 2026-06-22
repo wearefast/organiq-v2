@@ -50,18 +50,7 @@ jobs:
           key: ${{ secrets.EC2_SSH_KEY }}
           script: |
             aws ecr get-login-password --region ${{ env.AWS_REGION }} | docker login --username AWS --password-stdin ${{ secrets.ECR_REGISTRY }}
-
-            # Pull image while old container is still serving traffic (no downtime during pull)
             docker pull ${{ secrets.ECR_REGISTRY }}/${{ env.ECR_REPOSITORY }}:latest
-
-            # Run DB migrations in a one-off container — old server stays up during this step
-            docker run --rm \
-              --env-file /opt/organiq/.env \
-              ${{ secrets.ECR_REGISTRY }}/${{ env.ECR_REPOSITORY }}:latest \
-              npx drizzle-kit migrate
-            echo "Migrations complete"
-
-            # Hot-swap: image is pre-pulled so stop→start is near-instant (~1-2s downtime)
             docker stop organiq-server || true
             docker rm organiq-server || true
             docker run -d \
@@ -70,4 +59,7 @@ jobs:
               --env-file /opt/organiq/.env \
               -p 3002:3002 \
               ${{ secrets.ECR_REGISTRY }}/${{ env.ECR_REPOSITORY }}:latest
-            echo "Deployment complete"
+            echo "Waiting for container to be ready..."
+            sleep 10
+            docker exec organiq-server npx drizzle-kit migrate
+            echo "Migrations complete"
