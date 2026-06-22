@@ -12,9 +12,6 @@ out/
 .env.*.local
 server/.env
 
-# Documents
-docs/audit-action-plan.md
-
 # IDE
 .vscode/settings.json
 .idea/
