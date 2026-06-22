@@ -38,6 +38,7 @@ COPY server/src/agents/definitions ./src/agents/definitions
 # Copy drizzle config and migrations (needed for post-deploy migrations)
 COPY --from=builder /app/server/drizzle.config.ts ./
 COPY --from=builder /app/server/drizzle ./drizzle
+COPY --from=builder /app/server/scripts ./scripts
 
 EXPOSE 3002
 
