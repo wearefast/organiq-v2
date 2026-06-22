@@ -24,6 +24,7 @@ import {
   stepArtifacts,
   stepToolCalls,
   workflowRuns,
+  projects,
 } from '../../db/schema';
 
 interface StepJobData {
@@ -103,6 +104,20 @@ export class WorkflowProcessor extends WorkerHost {
         throw new Error(`Insufficient credits for step: ${stepKey} (requires ${agentDef.creditCost})`);
       }
 
+      // 2.5 Load workflow run to get projectId, then load project to get workspaceId
+      // (needed for both pipeline-only and agent paths to track workspace credit usage)
+      const run = await this.db.db.query.workflowRuns.findFirst({
+        where: eq(workflowRuns.id, workflowRunId),
+      });
+      if (!run) throw new Error(`Workflow run not found: ${workflowRunId}`);
+
+      const project = await this.db.db.query.projects.findFirst({
+        where: eq(projects.id, run.projectId),
+      });
+      if (!project) throw new Error(`Project not found: ${run.projectId}`);
+
+      const workspaceId = project.workspaceId;
+
       // 3. Emit step started
       this.workflowGateway.emitStepStarted(workflowRunId, stepKey);
 
@@ -159,6 +174,7 @@ export class WorkflowProcessor extends WorkerHost {
               description: `Pipeline: ${stepKey}`,
               workflowRunId,
               stepKey,
+              workspaceId,
             }, tx);
           }
         });
@@ -197,11 +213,8 @@ export class WorkflowProcessor extends WorkerHost {
       // Track pipeline output at outer scope so verification retries can re-use it
       let pipelineOutput: unknown = undefined;
 
-      // Load workflow run for projectId + targetKey (needed by AgentRuntime + PIS)
-      const run = await this.db.db.query.workflowRuns.findFirst({
-        where: eq(workflowRuns.id, workflowRunId),
-      });
-      if (!run) throw new Error(`Workflow run not found: ${workflowRunId}`);
+      // Note: run was already loaded earlier (step 2.5) for workspaceId access
+      // Reuse it here for projectId + targetKey (needed by AgentRuntime + PIS)
       // Patch projectId into the context so integration services log it with API usage entries
       ctx.projectId = run.projectId;
 
@@ -473,6 +486,7 @@ export class WorkflowProcessor extends WorkerHost {
           description: `Step: ${stepKey}`,
           workflowRunId,
           stepKey,
+          workspaceId,
         }, tx);
 
         // 11. Update step status
