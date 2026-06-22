@@ -64,6 +64,13 @@ const mockOpenAi = {
 };
 
 
+const mockAnthropic = {
+  inferAiBrandMention: vi.fn().mockResolvedValue({ mentioned: false, position: null, mentionContext: '', aiResponse: '', provider: 'anthropic' }),
+};
+const mockConfig = {
+  get: vi.fn().mockReturnValue(''),
+};
+
 describe('PipelineService', () => {
   let service: PipelineService;
 
@@ -83,7 +90,7 @@ describe('PipelineService', () => {
     const contentBrief = new ContentBriefPipeline(mockSerper as any, mockFirecrawl as any);
     const siteAudit = new SiteAuditPipeline(mockFirecrawl as any, mockDataforSeoOnPage as any, mockPageSpeed as any);
     const contentArticle = new ContentArticlePipeline(mockSerper as any);
-    const aiIntelligence = new AiIntelligencePipeline(mockFirecrawl as any, mockSerper as any, mockOpenAi as any);
+    const aiIntelligence = new AiIntelligencePipeline(mockFirecrawl as any, mockSerper as any, mockOpenAi as any, mockAnthropic as any, mockConfig as any);
     const consolidatedKeywords = new ConsolidatedKeywordsPipeline();
 
     service = new PipelineService(

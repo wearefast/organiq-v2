@@ -12,12 +12,17 @@ All evidence has been collected for you and is provided in `<pipeline_data>`. Re
 - `serpResults.best` — Serper results for `"best [category] [market]"` — use to assess SERP brand presence and featured snippet visibility
 - `serpResults.review` — Serper results for `"[brand] review"` — use to assess brand reputation signals in search
 - `serpResults.vs` — Serper results for `"[brand] vs [competitor]"` (null if no competitor identified) — use for comparison positioning
-- `aiMentions[]` — Results from 5 `openai_ai_inference` calls. Each item has:
-  - `query` — the exact question asked to OpenAI
+- `aiMentions[]` — Results from 5 natural brand queries, each tested against 3 AI platforms (OpenAI, Anthropic/Claude, Perplexity) — 15 total inference calls. Each item has:
+  - `query` — the exact question asked
   - `brand` — the brand name being tracked
-  - `result` — `{ query, mentioned, position, mentionContext, aiResponse }` (null if the call failed)
+  - `responses[]` — array of 3 platform results. Each has:
+    - `platform` — `'openai'` | `'anthropic'` | `'perplexity'`
+    - `mentioned` — boolean (ground truth from actual API call)
+    - `position` — `'featured'`|`'cited'`|`'listed'`|`'absent'` (or numeric rank for Anthropic)
+    - `mentionContext` — excerpt around the brand mention (null if absent)
+    - `fullResponseTruncated` — first 300 chars of the actual AI response
 
-**CRITICAL:** `aiMentions[]` entries correspond 1:1 to actual API results. The `mentioned` and `position` fields are ground truth. Do NOT extrapolate or estimate — if `result` is null, that query is unavailable data.
+**CRITICAL:** Every `responses[]` entry is a real API result. `mentioned` and `position` are ground truth. Do NOT extrapolate or estimate. If `fullResponseTruncated` is empty, that platform call failed — note it.
 
 **`metadata` structure:**
 - `brand`, `category`, `market` — extracted from business profile
@@ -28,11 +33,11 @@ All evidence has been collected for you and is provided in `<pipeline_data>`. Re
 ## NON-NEGOTIABLE CONSTRAINTS
 ═══════════════════════════════════════════════════════════════════════════════
 
-1. **Every `aiMentions[]` entry = one `aiMentions[].result` from `<pipeline_data>`.** Map them 1:1. No estimations. No fabrications.
+1. **Every `aiMentions[]` entry must map to real `responses[]` from `<pipeline_data>`.** Each response is from a real API call. No estimations. No fabrications.
 2. **Do NOT invent statistics, scores, or findings.** Every claim must trace to pipeline data.
 3. **Score conservatively.** High scores mean genuine, verified readiness — not aspirational potential.
 4. **If uncertain, say so.** Use "insufficient data" rather than guessing.
-5. **If `result` is null for an `aiMentions` entry**, record it as `mentioned: false, position: "absent"` and note data unavailability in findings.
+5. **For `brandPresence` scoring**, count across all 3 platforms: a query is "mentioned" if at least 1 platform confirms `mentioned: true`. Use cross-platform consensus as a stronger signal when 2+ platforms agree.
 
 ═══════════════════════════════════════════════════════════════════════════════
 ## ANALYSIS WORKFLOW
@@ -48,7 +53,7 @@ Evaluate the scraped homepage and key page:
 - Citability (quotable statements, data-backed claims, concise answer blocks)
 
 ### Phase 2: AI Visibility Assessment (aiMentions)
-Map each `aiMentions[]` entry to an `aiMentions` output row. Use `result.mentioned`, `result.position`, and `result.mentionContext` directly — do not re-interpret.
+For each `aiMentions[]` entry, review all 3 platform responses. Note which platforms mention the brand and at what position. Use `mentioned`, `position`, and `mentionContext` directly — do not re-interpret. If 2+ platforms agree, that is high-confidence evidence. If only 1 platform mentions the brand, note it as low-confidence.
 
 ### Phase 3: SERP & Competitive Context (serpResults)
 Evaluate brand visibility from the pre-fetched SERP data:
@@ -71,14 +76,14 @@ From the business profile (provided in context), identify 3-5 direct competitors
 | contentClarity | 25% | Heading hierarchy, scannable prose, direct answer blocks |
 | authoritySignals | 20% | E-E-A-T indicators, author pages, credentials, trust signals |
 | citabilityFormat | 15% | Quotable statements, data tables, bulleted lists, definitions |
-| brandPresence | 20% | Actual citation in AI responses (from openai_ai_inference results) |
+| brandPresence | 20% | Actual citation in AI responses across OpenAI, Claude, and Perplexity |
 
-**brandPresence scoring bands (evidence-based):**
-- **0–30**: Absent from all AI queries tested
-- **31–50**: Mentioned in exactly 1 query
-- **51–70**: Mentioned in 2–3 queries
-- **71–85**: Mentioned in most queries tested
-- **86–100**: Featured or cited prominently in all queries tested
+**brandPresence scoring bands (evidence-based, across all 3 platforms):**
+- **0–30**: Absent from all queries on all platforms tested
+- **31–50**: Mentioned in 1 query (any platform), or mentioned in multiple queries but only on 1 platform
+- **51–70**: Mentioned in 2–3 queries with at least 2-platform confirmation
+- **71–85**: Mentioned in most queries across 2+ platforms
+- **86–100**: Featured or cited prominently in all queries across all 3 platforms
 
 ═══════════════════════════════════════════════════════════════════════════════
 ## CONTEXT
@@ -109,8 +114,8 @@ return_output({ "data": { <your complete analysis JSON> } })
 Your `data` object MUST have EXACTLY these top-level keys: `aiReadinessScore`, `dimensions`, `aiMentions`, `opportunities`, `competitorComparison`, `summary`.
 
 **Do NOT** return `dimensions` as a flat `{ dimensionName: number }` map — each dimension MUST be an object with `score` (number 0–100) and `findings` (string array).
-**Do NOT** return `aiMentions` as a `{ category: [...] }` grouped object — it MUST be a flat array where each item has `query`, `mentioned` (boolean), `position`, and `context`.
-**Do NOT** fabricate or estimate `aiMentions` — each entry MUST correspond 1:1 to an actual `openai_ai_inference` tool result.
+**Do NOT** return `aiMentions` as a flat per-query array — each item MUST have a `query` string and a `responses` array (one entry per platform).
+**Do NOT** fabricate or estimate `aiMentions` — each response entry MUST correspond to actual pipeline data.
 
 ```json
 {
@@ -123,7 +128,14 @@ Your `data` object MUST have EXACTLY these top-level keys: `aiReadinessScore`, `
     "brandPresence": { "score": 0, "findings": [] }
   },
   "aiMentions": [
-    { "query": "", "mentioned": false, "position": "featured|cited|listed|absent", "context": null }
+    {
+      "query": "",
+      "responses": [
+        { "platform": "openai", "mentioned": false, "position": "featured|cited|listed|absent", "context": null, "fullResponse": "" },
+        { "platform": "anthropic", "mentioned": false, "position": "featured|cited|listed|absent", "context": null, "fullResponse": "" },
+        { "platform": "perplexity", "mentioned": false, "position": "featured|cited|listed|absent", "context": null, "fullResponse": "" }
+      ]
+    }
   ],
   "opportunities": [
     { "priority": "high|medium|low", "title": "", "description": "", "expectedImpact": "" }

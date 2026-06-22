@@ -1,15 +1,30 @@
-'use client';
+﻿'use client';
 
+import { useState } from 'react';
 import { InfoTip } from '@/shared/components';
+
+interface PlatformResponse {
+  platform: 'openai' | 'anthropic' | 'perplexity';
+  mentioned: boolean;
+  position: string | null;
+  context: string | null;
+  fullResponse?: string;
+}
+
+interface AiMentionEntry {
+  query: string;
+  // New multi-platform format
+  responses?: PlatformResponse[];
+  // Legacy flat format (backward compat)
+  mentioned?: boolean;
+  position?: string;
+  context?: string | null;
+}
 
 interface AiIntelligenceData {
   aiReadinessScore?: number;
   dimensions?: Record<string, unknown>;
-  aiMentions?: Record<string, unknown[]> | Array<{
-    query: string;
-    mentioned: boolean;
-    position: string;
-  }>;
+  aiMentions?: Record<string, unknown[]> | AiMentionEntry[];
   opportunities?: Array<string | {
     priority?: string;
     title?: string;
@@ -56,7 +71,7 @@ export function AiIntelligenceRenderer({ data }: { data: unknown }) {
             <span className="text-xl font-bold text-violet-400">{intel.aiReadinessScore}</span>
           </div>
           <div>
-            <p className="text-lg font-semibold text-zinc-100"><InfoTip tip="Likelihood your domain is cited by AI engines (0–100)">AI Readiness Score</InfoTip></p>
+            <p className="text-lg font-semibold text-zinc-100"><InfoTip tip="Likelihood your domain is cited by AI engines (0â€“100), averaged across OpenAI, Claude, and Perplexity">AI Readiness Score</InfoTip></p>
             <p className="text-sm text-zinc-400">
               {intel.aiReadinessScore >= 70 ? 'Well-positioned for AI search' :
                intel.aiReadinessScore >= 40 ? 'Moderate AI visibility' : 'Significant improvement needed'}
@@ -74,7 +89,7 @@ export function AiIntelligenceRenderer({ data }: { data: unknown }) {
             <DimensionRow label="Content Clarity" dim={findDimension(intel.dimensions, 'contentClarity')} tip="How clearly content answers questions" />
             <DimensionRow label="Authority Signals" dim={findDimension(intel.dimensions, 'authoritySignals')} tip="E-E-A-T and trust signals" />
             <DimensionRow label="Citability Format" dim={findDimension(intel.dimensions, 'citabilityFormat')} tip="Suitability for AI extraction & citation" />
-            <DimensionRow label="Brand Presence" dim={findDimension(intel.dimensions, 'brandPresence')} tip="Online brand visibility & mentions" />
+            <DimensionRow label="Brand Presence" dim={findDimension(intel.dimensions, 'brandPresence')} tip="Online brand visibility across OpenAI, Claude & Perplexity" />
           </div>
         </div>
       )}
@@ -83,17 +98,10 @@ export function AiIntelligenceRenderer({ data }: { data: unknown }) {
       {intel.aiMentions && (
         <div>
           <SectionLabel>Brand Mentions in AI Contexts</SectionLabel>
-          <div className="mt-2 space-y-1">
+          <div className="mt-2 space-y-3">
             {Array.isArray(intel.aiMentions)
               ? intel.aiMentions.map((mention, i) => (
-                  <div key={i} className="flex items-center justify-between rounded border border-zinc-800 bg-zinc-900/50 px-3 py-2">
-                    <span className="text-sm text-zinc-300">{mention.query}</span>
-                    <span className={`rounded px-2 py-0.5 text-[10px] font-medium ${
-                      mention.mentioned ? 'bg-green-500/20 text-green-400' : 'bg-zinc-700 text-zinc-500'
-                    }`}>
-                      {mention.position}
-                    </span>
-                  </div>
+                  <AiMentionCard key={i} mention={mention as AiMentionEntry} />
                 ))
               : Object.entries(intel.aiMentions).map(([category, items]) => (
                   <div key={category} className="rounded border border-zinc-800 bg-zinc-900/50 px-3 py-2">
@@ -102,7 +110,7 @@ export function AiIntelligenceRenderer({ data }: { data: unknown }) {
                     </p>
                     {Array.isArray(items) && items.map((item, j) => {
                       if (typeof item === 'string') {
-                        return <p key={j} className="text-sm text-zinc-300 ml-2">• {item}</p>;
+                        return <p key={j} className="text-sm text-zinc-300 ml-2">â€¢ {item}</p>;
                       }
                       const obj = item as Record<string, unknown>;
                       const title = (obj.title as string) ?? '';
@@ -165,6 +173,97 @@ export function AiIntelligenceRenderer({ data }: { data: unknown }) {
       )}
     </div>
   );
+}
+
+// â”€â”€â”€ AiMentionCard â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+
+const PLATFORM_LABELS: Record<string, { label: string; color: string }> = {
+  openai:     { label: 'OpenAI',     color: 'text-emerald-400' },
+  anthropic:  { label: 'Claude',     color: 'text-violet-400' },
+  perplexity: { label: 'Perplexity', color: 'text-sky-400' },
+};
+
+function AiMentionCard({ mention }: { mention: AiMentionEntry }) {
+  // New multi-platform format
+  if (mention.responses && mention.responses.length > 0) {
+    const mentionedCount = mention.responses.filter((r) => r.mentioned).length;
+    return (
+      <div className="rounded-lg border border-zinc-800 bg-zinc-900/50 overflow-hidden">
+        <div className="flex items-start justify-between gap-3 px-3 py-2 border-b border-zinc-800">
+          <span className="text-sm text-zinc-200 leading-snug">{mention.query}</span>
+          <span className="shrink-0 text-[10px] font-medium text-zinc-500">
+            {mentionedCount}/{mention.responses.length} platforms
+          </span>
+        </div>
+        <div className="divide-y divide-zinc-800/60">
+          {mention.responses.map((r) => (
+            <PlatformResponseRow key={r.platform} response={r} />
+          ))}
+        </div>
+      </div>
+    );
+  }
+
+  // Legacy flat format (backward compat)
+  return (
+    <div className="flex items-center justify-between rounded border border-zinc-800 bg-zinc-900/50 px-3 py-2">
+      <span className="text-sm text-zinc-300">{mention.query}</span>
+      <span className={`rounded px-2 py-0.5 text-[10px] font-medium ${
+        mention.mentioned ? 'bg-green-500/20 text-green-400' : 'bg-zinc-700 text-zinc-500'
+      }`}>
+        {mention.position ?? (mention.mentioned ? 'mentioned' : 'absent')}
+      </span>
+    </div>
+  );
+}
+
+function PlatformResponseRow({ response }: { response: PlatformResponse }) {
+  const [expanded, setExpanded] = useState(false);
+  const meta = PLATFORM_LABELS[response.platform] ?? { label: response.platform, color: 'text-zinc-400' };
+
+  return (
+    <div className="px-3 py-2">
+      <div className="flex items-start gap-2">
+        <span className={`shrink-0 w-20 text-[11px] font-semibold ${meta.color}`}>{meta.label}</span>
+        <div className="flex-1 min-w-0">
+          <div className="flex items-center gap-2">
+            <PositionBadge mentioned={response.mentioned} position={response.position} />
+            {response.context && (
+              <span className="text-xs text-zinc-400 truncate">{response.context}</span>
+            )}
+          </div>
+          {response.fullResponse && (
+            <div className="mt-1">
+              {expanded ? (
+                <p className="text-xs text-zinc-400 leading-relaxed whitespace-pre-wrap break-words">
+                  {response.fullResponse}
+                </p>
+              ) : null}
+              <button
+                onClick={() => setExpanded((v) => !v)}
+                className="mt-0.5 text-[10px] text-zinc-500 hover:text-zinc-300 transition-colors"
+              >
+                {expanded ? 'collapse' : 'read response â†“'}
+              </button>
+            </div>
+          )}
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function PositionBadge({ mentioned, position }: { mentioned: boolean; position: string | null }) {
+  if (!mentioned || !position || position === 'absent') {
+    return <span className="rounded px-2 py-0.5 text-[10px] font-medium bg-zinc-700 text-zinc-500">absent</span>;
+  }
+  const colors: Record<string, string> = {
+    featured: 'bg-green-500/20 text-green-400',
+    cited:    'bg-blue-500/20 text-blue-400',
+    listed:   'bg-yellow-500/20 text-yellow-400',
+  };
+  const colorClass = colors[position] ?? 'bg-violet-500/20 text-violet-400';
+  return <span className={`rounded px-2 py-0.5 text-[10px] font-medium ${colorClass}`}>{position}</span>;
 }
 
 function DimensionRow({ label, dim, tip }: { label: string; dim: NormalizedDimension | null; tip?: string }) {

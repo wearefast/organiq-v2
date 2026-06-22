@@ -1,8 +1,10 @@
 import { Injectable, Logger } from '@nestjs/common';
+import { ConfigService } from '@nestjs/config';
 import { Pipeline } from './pipeline.interface';
 import { FirecrawlService } from '../../integrations/firecrawl/firecrawl.service';
 import { SerperService } from '../../integrations/serper/serper.service';
 import { OpenAiService } from '../../integrations/openai/openai.service';
+import { AnthropicService } from '../../integrations/anthropic/anthropic.service';
 
 interface BusinessProfile {
   business_name?: string;
@@ -12,6 +14,14 @@ interface BusinessProfile {
   icp?: { description?: string; industries?: string[] };
   competitors?: Array<{ name: string; type?: string }>;
   sitemap_urls?: string[];
+}
+
+interface PlatformMentionResult {
+  platform: 'openai' | 'anthropic' | 'perplexity';
+  mentioned: boolean;
+  position: string | null;
+  mentionContext: string | null;
+  fullResponseTruncated: string;
 }
 
 /**
@@ -44,6 +54,8 @@ export class AiIntelligencePipeline implements Pipeline {
     private readonly firecrawl: FirecrawlService,
     private readonly serper: SerperService,
     private readonly openai: OpenAiService,
+    private readonly anthropic: AnthropicService,
+    private readonly config: ConfigService,
   ) {}
 
   async execute(context: Record<string, unknown>): Promise<unknown> {
@@ -132,15 +144,21 @@ export class AiIntelligencePipeline implements Pipeline {
     const usedHomepageFromBP = !!homepageFromBP;
     const usedSecondPageFromBP = !!secondPageFromBP;
 
-    // Serper + OpenAI calls always run fresh (brand/SERP context changes over time)
-    const [serpBestResult, serpReviewResult, serpVsResult, ...aiMentionResults] =
+    // Serper + multi-platform AI inference calls run fresh (brand/SERP context changes over time).
+    // Each of the 5 natural queries is sent to OpenAI, Anthropic (Claude), and Perplexity in
+    // parallel — 15 total inference calls interleaved as: openai_0, anthropic_0, perplexity_0, ...
+    const [serpBestResult, serpReviewResult, serpVsResult, ...allMentionResults] =
       await Promise.allSettled([
         this.serper.search({ query: `best ${category} ${market}`, num: 8 }),
         this.serper.search({ query: `${brand} review`, num: 5 }),
         firstCompetitor
           ? this.serper.search({ query: `${brand} vs ${firstCompetitor}`, num: 5 })
           : Promise.resolve(null),
-        ...aiQueries.map((q) => this.openai.inferAiBrandMention(q.query, q.brand)),
+        ...aiQueries.flatMap((q) => [
+          this.openai.inferAiBrandMention(q.query, q.brand),
+          this.anthropic.inferAiBrandMention(q.query, q.brand),
+          this.callPerplexity(q.query, q.brand),
+        ]),
       ]);
 
     const extract = <T>(result: PromiseSettledResult<T>, label: string): T | null => {
@@ -151,9 +169,45 @@ export class AiIntelligencePipeline implements Pipeline {
       return null;
     };
 
-    const aiMentions = aiMentionResults.map((r, i) =>
-      extract(r as PromiseSettledResult<unknown>, `openai_query_${i}`),
-    );
+    const normalizeMentionResult = (
+      raw: unknown,
+      platform: PlatformMentionResult['platform'],
+    ): PlatformMentionResult => {
+      if (!raw || typeof raw !== 'object') {
+        return { platform, mentioned: false, position: null, mentionContext: null, fullResponseTruncated: '' };
+      }
+      const r = raw as Record<string, unknown>;
+      const aiResponse = typeof r.aiResponse === 'string' ? r.aiResponse : '';
+      // Anthropic uses a numeric position (1–5); OpenAI & Perplexity use semantic strings.
+      const position = r.position != null ? String(r.position) : null;
+      return {
+        platform,
+        mentioned: Boolean(r.mentioned),
+        position: position === 'null' ? null : position,
+        mentionContext: typeof r.mentionContext === 'string' ? r.mentionContext : null,
+        fullResponseTruncated: aiResponse.slice(0, 300),
+      };
+    };
+
+    // Group results: allMentionResults is interleaved as [openai_0, anthropic_0, perplexity_0, openai_1, ...]
+    const aiMentions = aiQueries.map((q, i) => ({
+      query: q.query,
+      brand: q.brand,
+      responses: [
+        normalizeMentionResult(
+          extract(allMentionResults[i * 3] as PromiseSettledResult<unknown>, `openai_query_${i}`),
+          'openai',
+        ),
+        normalizeMentionResult(
+          extract(allMentionResults[i * 3 + 1] as PromiseSettledResult<unknown>, `anthropic_query_${i}`),
+          'anthropic',
+        ),
+        normalizeMentionResult(
+          extract(allMentionResults[i * 3 + 2] as PromiseSettledResult<unknown>, `perplexity_query_${i}`),
+          'perplexity',
+        ),
+      ],
+    }));
 
     const successfulApiCalls =
       (homepageScrapeResult.status === 'fulfilled' && !usedHomepageFromBP ? 1 : 0) +
@@ -161,10 +215,10 @@ export class AiIntelligencePipeline implements Pipeline {
       (serpBestResult.status === 'fulfilled' ? 1 : 0) +
       (serpReviewResult.status === 'fulfilled' ? 1 : 0) +
       (serpVsResult.status === 'fulfilled' ? 1 : 0) +
-      aiMentionResults.filter((r) => r.status === 'fulfilled').length;
+      allMentionResults.filter((r) => r.status === 'fulfilled').length;
 
     this.logger.log(
-      `ai-intelligence pipeline: done — ${successfulApiCalls} fresh API calls, ${errors.length} errors, ${Date.now() - start}ms`,
+      `ai-intelligence pipeline: done — ${successfulApiCalls} fresh API calls (3 platforms × 5 queries), ${errors.length} errors, ${Date.now() - start}ms`,
     );
 
     // Build scrapedPages: homepage + additional pages from business-profile (free),
@@ -195,11 +249,7 @@ export class AiIntelligencePipeline implements Pipeline {
           review: extract(serpReviewResult, 'serper_review'),
           vs: extract(serpVsResult, 'serper_vs'),
         },
-        aiMentions: aiMentions.map((result, i) => ({
-          query: aiQueries[i].query,
-          brand: aiQueries[i].brand,
-          result,
-        })),
+        aiMentions,
       },
       metadata: {
         domain,
@@ -209,10 +259,80 @@ export class AiIntelligencePipeline implements Pipeline {
         secondPageUrl,
         usedCachedPages: { homepage: usedHomepageFromBP, secondPage: usedSecondPageFromBP },
         aiQueriesRun: aiQueries.map((q) => q.query),
+        platforms: ['openai', 'anthropic', 'perplexity'],
         successfulApiCalls,
         durationMs: Date.now() - start,
         errors,
       },
     };
+  }
+
+  // ─── Perplexity inline call (mirrors OpenAI inferAiBrandMention shape) ─────
+
+  private async callPerplexity(query: string, brand: string): Promise<{
+    query: string;
+    mentioned: boolean;
+    position: 'featured' | 'cited' | 'listed' | 'absent';
+    mentionContext: string | null;
+    aiResponse: string;
+    provider: 'perplexity';
+  }> {
+    const apiKey = this.config.get<string>('PERPLEXITY_API_KEY', '');
+    if (!apiKey) throw new Error('PERPLEXITY_API_KEY is not configured');
+
+    const response = await fetch('https://api.perplexity.ai/chat/completions', {
+      method: 'POST',
+      headers: {
+        Authorization: `Bearer ${apiKey}`,
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify({
+        model: 'sonar',
+        messages: [
+          {
+            role: 'system',
+            content: 'You are a helpful assistant. Answer the user\'s question naturally and thoroughly.',
+          },
+          { role: 'user', content: query },
+        ],
+      }),
+      signal: AbortSignal.timeout(20_000),
+    });
+
+    if (!response.ok) {
+      const text = await response.text();
+      throw new Error(`Perplexity API ${response.status}: ${text}`);
+    }
+
+    const data = (await response.json()) as {
+      choices: Array<{ message: { content: string } }>;
+    };
+
+    const aiResponse = data.choices?.[0]?.message?.content ?? '';
+    const brandLower = brand.toLowerCase();
+    const responseLower = aiResponse.toLowerCase();
+    const mentioned = responseLower.includes(brandLower);
+
+    let position: 'featured' | 'cited' | 'listed' | 'absent' = 'absent';
+    let mentionContext: string | null = null;
+
+    if (mentioned) {
+      const idx = responseLower.indexOf(brandLower);
+      const start = Math.max(0, idx - 80);
+      const end = Math.min(aiResponse.length, idx + brand.length + 80);
+      mentionContext = `...${aiResponse.slice(start, end).trim()}...`;
+
+      const firstSentenceEnd = aiResponse.search(/[.!?]/);
+      const firstSentence = firstSentenceEnd > -1 ? aiResponse.slice(0, firstSentenceEnd) : aiResponse.slice(0, 120);
+      if (firstSentence.toLowerCase().includes(brandLower)) {
+        position = 'featured';
+      } else if (/[-•*]\s/.test(aiResponse.slice(Math.max(0, idx - 5), idx + 5))) {
+        position = 'listed';
+      } else {
+        position = 'cited';
+      }
+    }
+
+    return { query, mentioned, position, mentionContext, aiResponse, provider: 'perplexity' };
   }
 }

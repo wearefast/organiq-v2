@@ -3,6 +3,7 @@
 import { useState, useEffect, useCallback } from 'react';
 import { useParams } from 'next/navigation';
 import { useAuth } from '@clerk/nextjs';
+import { ExternalLink } from 'lucide-react';
 import { setAuthToken, apiFetch } from '@/shared/utils/api';
 
 // ─── Types ───────────────────────────────────────────────────
@@ -51,10 +52,34 @@ function scoreColor(score: number): string {
   return 'text-zinc-400 bg-zinc-700/50';
 }
 
+function formatRelativeTime(dateStr: string | null | undefined): string | null {
+  if (!dateStr) return null;
+  const d = new Date(dateStr);
+  if (isNaN(d.getTime())) return null;
+  
+  const now = new Date();
+  const secondsAgo = Math.floor((now.getTime() - d.getTime()) / 1000);
+  
+  if (secondsAgo < 60) return 'just now';
+  if (secondsAgo < 3600) return `${Math.floor(secondsAgo / 60)}m ago`;
+  if (secondsAgo < 86400) return `${Math.floor(secondsAgo / 3600)}h ago`;
+  if (secondsAgo < 604800) return `${Math.floor(secondsAgo / 86400)}d ago`;
+  if (secondsAgo < 2592000) return `${Math.floor(secondsAgo / 604800)}w ago`;
+  if (secondsAgo < 31536000) return `${Math.floor(secondsAgo / 2592000)}mo ago`;
+  return `${Math.floor(secondsAgo / 31536000)}y ago`;
+}
+
 function RedditLogo() {
   return (
     <svg className="h-5 w-5 text-orange-500" viewBox="0 0 24 24" fill="currentColor">
-      <path d="M12 0C5.37 0 0 5.37 0 12s5.37 12 12 12 12-5.37 12-12S18.63 0 12 0zm0 1c6.066 0 11 4.934 11 11s-4.934 11-11 11S1 18.066 1 12 5.934 1 12 1zm0 3c-4.418 0-8 3.582-8 8s3.582 8 8 8 8-3.582 8-8-3.582-8-8-8zm0 1c3.866 0 7 3.134 7 7s-3.134 7-7 7-7-3.134-7-7 3.134-7 7-7z" />
+      <circle cx="12" cy="12" r="10" fill="currentColor" />
+      <g fill="white">
+        <circle cx="9" cy="10" r="1.5" />
+        <circle cx="15" cy="10" r="1.5" />
+        <path d="M12 14c1.657 0 3-0.672 3-1.5S13.657 11 12 11s-3 0.672-3 1.5 1.343 1.5 3 1.5z" />
+        <path d="M7.5 9c-0.828 0-1.5 0.672-1.5 1.5S6.672 12 7.5 12 9 11.328 9 10.5 8.328 9 7.5 9z" />
+        <path d="M16.5 9c-0.828 0-1.5 0.672-1.5 1.5S15.672 12 16.5 12 18 11.328 18 10.5 17.328 9 16.5 9z" />
+      </g>
     </svg>
   );
 }
@@ -192,7 +217,7 @@ export default function ForumsPage() {
           disabled={scanning}
           className="rounded-lg bg-indigo-600 px-4 py-2 text-sm font-medium text-white hover:bg-indigo-500 disabled:opacity-40 shrink-0"
         >
-          {scanning ? 'Scanning…' : '🔄 Scan Now'}
+          {scanning ? 'Scanning…' : 'Scan Now'}
         </button>
       </div>
 
@@ -306,10 +331,6 @@ export default function ForumsPage() {
               <div className="flex items-start justify-between gap-3">
                 <div className="min-w-0 flex-1">
                   <div className="flex items-center gap-2 flex-wrap">
-                    {/* Score badge */}
-                    <span className={`text-[11px] font-bold px-2 py-0.5 rounded-full ${scoreColor(opp.score)}`}>
-                      {opp.score}
-                    </span>
                     {opp.subreddit && (
                       <span className="text-[11px] font-semibold text-indigo-400 bg-indigo-900/30 px-2 py-0.5 rounded-full">
                         r/{opp.subreddit}
@@ -340,32 +361,34 @@ export default function ForumsPage() {
                 </div>
 
                 <div className="flex shrink-0 flex-col items-end gap-2">
-                  {formatDate(opp.publishedDate) && (
-                    <span className="text-[11px] text-zinc-500 whitespace-nowrap">
-                      {formatDate(opp.publishedDate)}
+                  {/* Action buttons */}
+                  {(opp.status === 'new' || opp.status === 'seen') && (
+                    <div className="flex flex-col gap-1.5 items-end">
+                      <a
+                        href={opp.url}
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        className="inline-flex items-center gap-1 rounded px-2 py-1 text-[10px] font-medium bg-indigo-600 text-white hover:bg-indigo-500 transition"
+                        title="Reply on Reddit"
+                      >
+                        Reply Now
+                        <ExternalLink className="h-3 w-3" />
+                      </a>
+                      <button
+                        onClick={() => handleStatusUpdate(opp.id, 'dismissed')}
+                        className="rounded px-2 py-0.5 text-[10px] font-medium bg-zinc-700/50 text-zinc-400 hover:bg-zinc-700 transition"
+                        title="Dismiss"
+                      >
+                        ✕ Dismiss
+                      </button>
+                    </div>
+                  )}
+                  {/* Time posted */}
+                  {formatRelativeTime(opp.publishedDate) && (
+                    <span className="text-[10px] text-zinc-500 whitespace-nowrap mt-1">
+                      {formatRelativeTime(opp.publishedDate)}
                     </span>
                   )}
-                  {/* Action buttons */}
-                  <div className="flex gap-1">
-                    {(opp.status === 'new' || opp.status === 'seen') && (
-                      <>
-                        <button
-                          onClick={() => handleStatusUpdate(opp.id, 'replied')}
-                          className="rounded px-2 py-0.5 text-[10px] font-medium bg-green-900/30 text-green-400 hover:bg-green-900/50 transition"
-                          title="Mark as replied"
-                        >
-                          ✓ Replied
-                        </button>
-                        <button
-                          onClick={() => handleStatusUpdate(opp.id, 'dismissed')}
-                          className="rounded px-2 py-0.5 text-[10px] font-medium bg-zinc-700/50 text-zinc-400 hover:bg-zinc-700 transition"
-                          title="Dismiss"
-                        >
-                          ✕
-                        </button>
-                      </>
-                    )}
-                  </div>
                 </div>
               </div>
             </div>
