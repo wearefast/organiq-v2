@@ -85,8 +85,11 @@
 
 | Service | Env Variable | Purpose | Auth Method |
 |---------|-------------|---------|-------------|
-| **Anthropic** | `ANTHROPIC_API_KEY` | Primary agent LLM (Claude — Messages API with tool use) | Bearer token |
-| **OpenAI** | `OPENAI_API_KEY` | Image generation (gpt-image-2) | Bearer token |
+| **Anthropic** | `ANTHROPIC_API_KEY` | Primary agent LLM (Claude — Messages API with tool use) + Prompt Visibility Claude engine | Bearer token |
+| **OpenAI** | `OPENAI_API_KEY` | Image generation (gpt-image-2) + Prompt Visibility OpenAI engine | Bearer token |
+| **Perplexity** | `PERPLEXITY_API_KEY` | Prompt Visibility — Perplexity `sonar` model | Bearer token |
+| **Gemini** | `GEMINI_API_KEY` | Prompt Visibility — Gemini 1.5 Flash with `google_search_retrieval` | Bearer token |
+| **Bing (Copilot)** | `BING_SEARCH_API_KEY` | Prompt Visibility — Bing Web Search v7 proxy for Copilot engine | Ocp-Apim-Subscription-Key |
 | **Ahrefs v3** | `AHREFS_API_KEY` | Domain rating, organic keywords, backlinks, competing domains | Bearer token |
 | **DataForSEO** | `DATAFORSEO_LOGIN` / `DATAFORSEO_PASSWORD` | SERP results, keyword volume, on-page audit, backlinks | Basic auth |
 | **Serper.dev** | `SERPER_API_KEY` | Google SERP results (search, news, images) | X-API-KEY header |
@@ -116,8 +119,12 @@
 | `REDIS_URL` | Server | Redis connection string (`rediss://` with TLS in production) |
 | `CLERK_SECRET_KEY` | Server | Clerk backend API key |
 | `CLERK_WEBHOOK_SECRET` | Server | Svix webhook verification secret |
-| `ANTHROPIC_API_KEY` | Server | Anthropic API key (primary agent runtime) |
-| `OPENAI_API_KEY` | Server | OpenAI API key (image generation) |
+| `ANTHROPIC_API_KEY` | Server | Anthropic API key (primary agent runtime + prompt visibility Claude engine) |
+| `OPENAI_API_KEY` | Server | OpenAI API key (image generation + prompt visibility OpenAI engine) |
+| `PERPLEXITY_API_KEY` | Server | Perplexity API key (prompt visibility Perplexity engine) |
+| `GEMINI_API_KEY` | Server | Gemini API key (prompt visibility Gemini engine) |
+| `BING_SEARCH_API_KEY` | Server | Bing Web Search v7 key (prompt visibility Copilot/Bing engine) |
+| `SUPER_ADMIN_CLERK_IDS` | Server | Comma-separated Clerk user IDs for super-admin access to `/internal/*` routes |
 
 ### Optional
 
@@ -148,6 +155,8 @@
 | `NEXT_PUBLIC_CLERK_SIGN_UP_URL` | Clerk sign-up redirect |
 | `NEXT_PUBLIC_CLERK_AFTER_SIGN_IN_URL` | Post-login redirect |
 | `NEXT_PUBLIC_CLERK_AFTER_SIGN_UP_URL` | Post-signup redirect |
+
+> **Warning:** Do NOT expose `SUPER_ADMIN_CLERK_IDS` as a `NEXT_PUBLIC_` variable. See `docs/audit-action-plan.md` — exposing admin user IDs in the browser bundle is a known security finding.
 
 ---
 

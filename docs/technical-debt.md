@@ -24,3 +24,8 @@
 | 14 | Auth/Authz | `POST /workflows` accepts `organizationId` from request body — should derive from authenticated claim (`req.org.id`) to prevent credit theft via spoofed org ID | Phase 3 CTO review | High | Open |
 | 15 | Performance | Workflow processor fetches `workflowRuns` and `workflowSteps` in two separate queries — could be combined into a single join | Phase 3 CTO review | Low | Open |
 | 16 | Deprecated fields | `tier` and `managedAgentId` fields in agent.registry.ts / prompt.service.ts are `@deprecated` — remove once all .agent.md files use `executionType` | Codebase audit May 2026 | Low | Open |
+| 17 | Auth/Authz | `PlanLimitGuard` exists in `server/src/features/auth/` but is not applied to any controller — plan-based route restrictions are not enforced | Security audit June 2026 | High | Open |
+| 18 | Security | `NEXT_PUBLIC_SUPER_ADMIN_CLERK_IDS` exposes admin user IDs in the browser bundle if set as a `NEXT_PUBLIC_` env var — use server-side check only | Security audit June 2026 | High | Open |
+| 19 | Security | 11+ debug scripts (`server/*.js`) contain hardcoded `DATABASE_URL` connection strings — must not be committed; gitignore or remove | Security audit June 2026 | Critical | Open |
+| 20 | Security | `test-engines.js` committed to git with API keys — rotate and remove | Security audit June 2026 | Critical | Open |
+| 21 | Security | Slack webhook delivery in scheduled workflows is vulnerable to SSRF — no domain allowlist on delivery target URL | Security audit June 2026 | High | Open |

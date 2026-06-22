@@ -37,8 +37,31 @@ Base: `/projects/:projectId/prompts`
 ## How It Works
 
 1. User creates prompts (natural-language questions related to their niche)
-2. System queries multiple LLM engines (ChatGPT, Perplexity, Claude, Gemini, Copilot) with each prompt
+2. System queries 5 LLM engines with each prompt — **each engine is called 3 times**, and the longest successful response wins (majority vote)
 3. Parser service analyzes responses for brand mentions, citations, and ranking position
 4. Results stored with timestamp for historical tracking
 5. BullMQ processor runs checks on configured schedule (configurable hour)
 6. Dashboard shows visibility trends, engine breakdown, and prompt-level detail
+
+## LLM Engines
+
+All engines use web-search-capable models to ensure real-time information.
+
+| Engine | Model | API |
+|--------|-------|-----|
+| Perplexity | `sonar` | `api.perplexity.ai` |
+| OpenAI | `gpt-4o-mini-search-preview` | `api.openai.com` |
+| Gemini | `gemini-1.5-flash` with `google_search_retrieval` tool | `generativelanguage.googleapis.com` |
+| Claude | `claude-sonnet-4-6` with `web_search_20250305` beta header | `api.anthropic.com` |
+| Copilot | Bing Web Search v7 + Claude synthesis | `api.bing.microsoft.com` |
+
+## Required Environment Variables
+
+```
+OPENAI_API_KEY          # Existing — used for OpenAI engine
+ANTHROPIC_API_KEY       # Existing — used for Claude engine
+PERPLEXITY_API_KEY      # New — Perplexity sonar model
+GEMINI_API_KEY          # New — Gemini 1.5 Flash
+BING_SEARCH_API_KEY     # New — Bing Web Search v7 (Copilot engine)
+```
+

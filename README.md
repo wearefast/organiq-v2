@@ -22,9 +22,10 @@ Agent-led SEO/GEO/AEO strategy consultant operating system for agencies.
 | **Features** | [Reports](docs/features/reports.md) | PDF generation, templates, download flow |
 | **Features** | [Topical Maps](docs/features/topical-maps.md) | Pillar → cluster → keyword hierarchy |
 | **Features** | [Integrations](docs/features/integrations.md) | All 9 external services, retry logic, tool registry |
-| **Features** | [Auth & Orgs](docs/features/auth.md) | Clerk SSO, webhooks, idempotency |
-| **Features** | [Credits](docs/features/credits.md) | Credit system, ledger, debit flow |
+| **Features** | [Auth & Orgs](docs/features/auth.md) | Clerk SSO, guards, security hardening |
+| **Features** | [Credits](docs/features/credits.md) | Credit system, ledger, debit flow, workspace limits |
 | **Features** | [Billing](docs/features/billing.md) | Stripe subscriptions, credit packs, customer portal |
+| **Features** | [User Management](docs/features/user-management.md) | Members, invitations, access grants, workspace credit caps |
 | **Features** | [Audit](docs/features/audit.md) | Site audit (workflow step) + LLM audit overview |
 | **Features** | [LLM Crawlability Audit](docs/features/llm-crawlability-audit.md) | Standalone AI bot indexability audit — scoring, checks, API, UI |
 | **Features** | [LLM Traffic](docs/features/llm-traffic.md) | AI engine traffic tracking and analytics |
@@ -35,12 +36,13 @@ Agent-led SEO/GEO/AEO strategy consultant operating system for agencies.
 | **Changelog** | [Changelog](docs/changelog.md) | All fixes and updates with details |
 | **Planning** | [Implementation Plan](docs/implementation-plan.md) | Master task checklist (90 tasks, all complete) |
 | **Planning** | [Roadmap](docs/roadmap.md) | Product backlog and pending features |
-| **Planning** | [Technical Debt](docs/technical-debt.md) | Deferred work tracker (16 items, 4 resolved) |
+| **Planning** | [Technical Debt](docs/technical-debt.md) | Deferred work tracker (21 items, 5 resolved) |
 | **Debugging** | [Known Issues](docs/debugging/known-issues.md) | Tracked issues and resolutions |
 | **Debugging** | [Debugging Patterns](docs/debugging/patterns.md) | Debugging strategies and lessons learned |
 | **Decisions** | [Architecture Decisions v3](docs/decisions/architecture-decisions-v3.md) | 13 locked decisions (AD-1 through AD-13) |
 | **Decisions** | [Tech Decisions](docs/decisions/tech-decisions.md) | Architecture choices and rationale |
 | **Decisions** | [Engineering Process](docs/decisions/engineering-process.md) | 7-step workflow, anti-patterns |
+| **Security** | [Audit Action Plan](docs/audit-action-plan.md) | Security audit findings, score, remediation status |
 | **Audit** | [Architecture Snapshot](audit/architecture.md) | System state, topology, versioned tech stack |
 | **Audit** | [Agent Flow](audit/agent-flow.md) | Per-step execution model, context chains, API calls |
 | **Audit** | [Prompt Audit](audit/prompt-audit.md) | All prompts — execution model, tool availability, anti-hallucination status |

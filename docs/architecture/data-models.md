@@ -7,12 +7,14 @@ PostgreSQL 16 with Drizzle ORM. Schema defined in `server/src/db/schema.ts`.
 ## Entity Relationship Diagram
 
 ```
-organizations ─┬─ org_members ─── (user reference via Clerk ID)
+organizations ─┬─ org_members ─────────── access_grants
                ├─ credit_ledger
+               ├─ invitations
                ├─ subscriptions ─── (Stripe billing)
                ├─ purchases ─── (one-time credit packs)
                ├─ notifications
-               └─ workspaces ─── projects ─┬─ workflow_runs
+               └─ workspaces ─┬─ workspace_credit_limits
+                              └─ projects ─┬─ workflow_runs
                                             │       │
                                             │  workflow_steps
                                             │       │
@@ -24,6 +26,8 @@ organizations ─┬─ org_members ─── (user reference via Clerk ID)
                                             ├─ keywords ─── keyword_decay_alerts
                                             ├─ topical_maps
                                             ├─ content_pieces ─── content_images
+                                            ├─ forum_topics ─── forum_opportunities
+                                            ├─ project_assets
                                             ├─ reports
                                             ├─ agent_runs
                                             ├─ scheduled_workflows ─── workflow_run_history
@@ -55,7 +59,7 @@ organizations ─┬─ org_members ─── (user reference via Clerk ID)
 | id | uuid | PK |
 | organization_id | uuid | FK → organizations |
 | clerk_user_id | text | Clerk user reference |
-| role | enum | `owner`, `admin`, `member` |
+| role | enum | `owner`, `admin`, `user` (renamed from `member`) |
 | email | text | |
 | name | text | |
 | created_at | timestamp | |
@@ -66,6 +70,7 @@ organizations ─┬─ org_members ─── (user reference via Clerk ID)
 |--------|------|-------|
 | id | uuid | PK |
 | organization_id | uuid | FK → organizations |
+| workspace_id | uuid | FK → workspaces (nullable — for workspace-scoped debits) |
 | amount | integer | Positive = credit, negative = debit |
 | balance_after | integer | Running balance |
 | type | enum | `purchase`, `usage`, `refund`, `bonus` |
@@ -98,6 +103,8 @@ organizations ─┬─ org_members ─── (user reference via Clerk ID)
 | country | text | ISO country code |
 | language | text | ISO language code |
 | industry | text | For strategy templates |
+| business_profile | jsonb | Cached business profile data (nullable) |
+| business_profile_updated_at | timestamp | Nullable |
 | created_at | timestamp | |
 | updated_at | timestamp | |
 
@@ -251,7 +258,7 @@ organizations ─┬─ org_members ─── (user reference via Clerk ID)
 | Enum | Values |
 |------|--------|
 | `org_plan` | `starter`, `pro`, `agency`, `enterprise` |
-| `org_role` | `owner`, `admin`, `member` |
+| `org_role` | `owner`, `admin`, `user` (renamed from `member`) |
 | `credit_type` | `purchase`, `usage`, `refund`, `bonus` |
 | `workflow_status` | `draft`, `running`, `paused`, `completed`, `failed` |
 | `step_status` | `pending`, `running`, `completed`, `awaiting_approval`, `approved`, `revision_requested`, `rejected`, `failed`, `skipped` |
@@ -523,4 +530,115 @@ organizations ─┬─ org_members ─── (user reference via Clerk ID)
 - `llm_traffic_sessions`: indexed on `(project_id)`, `(source)`, `(created_at)`
 - `llm_audit_results`: indexed on `(project_id)`, `(platform)`, `(checked_at)`
 - `tracked_prompts`: indexed on `(project_id)`, `(is_active)`
+- `invitations`: indexed on `(organization_id)`, `(token)` unique, `(email)`
+- `access_grants`: compound unique on `(org_member_id, resource_type, resource_id)`
+- `workspace_credit_limits`: unique on `(workspace_id)`
 - All FK columns indexed
+
+---
+
+## User Management Tables
+
+### invitations
+
+| Column | Type | Notes |
+|--------|------|-------|
+| id | uuid | PK |
+| organization_id | uuid | FK → organizations |
+| email | text | Invitee email |
+| role | enum | `admin` or `user` |
+| token | text | `crypto.randomUUID()` — shared in invite link |
+| status | invitation_status enum | `pending`, `accepted`, `revoked`, `expired` |
+| expires_at | timestamp | 7 days from creation |
+| accepted_at | timestamp | Nullable |
+| clerk_invitation_id | text | Clerk's invitation ID (nullable) |
+| invited_by_user_id | text | Clerk user ID of inviter |
+| created_at | timestamp | |
+
+### access_grants
+
+| Column | Type | Notes |
+|--------|------|-------|
+| id | uuid | PK |
+| org_member_id | uuid | FK → org_members |
+| organization_id | uuid | FK → organizations |
+| resource_type | access_grant_type enum | `org`, `workspace`, `project` |
+| resource_id | uuid | FK to respective table depending on `resource_type` |
+| created_at | timestamp | |
+
+Unique constraint: `(org_member_id, resource_type, resource_id)`.  
+Admins and owners bypass access_grants checks — only regular `user` role members are restricted.
+
+### workspace_credit_limits
+
+| Column | Type | Notes |
+|--------|------|-------|
+| id | uuid | PK |
+| workspace_id | uuid | FK → workspaces (unique) |
+| organization_id | uuid | FK → organizations |
+| monthly_limit | integer | Max credits per month for this workspace |
+| current_month_usage | integer | Resets on 1st of each month via cron |
+| last_reset_at | timestamp | When usage was last reset |
+| created_at | timestamp | |
+| updated_at | timestamp | |
+
+---
+
+## Content Extended Tables
+
+### forum_topics
+
+| Column | Type | Notes |
+|--------|------|-------|
+| id | uuid | PK |
+| project_id | uuid | FK → projects |
+| organization_id | uuid | FK → organizations |
+| source | text | e.g., 'reddit' |
+| title | text | Thread title |
+| url | text | Source URL |
+| subreddit | text | Nullable |
+| content | text | Scraped content |
+| metadata | jsonb | Upvotes, comments, etc. |
+| status | forum_topic_status enum | `discovered`, `analyzed`, `converted` |
+| created_at | timestamp | |
+
+### forum_opportunities
+
+| Column | Type | Notes |
+|--------|------|-------|
+| id | uuid | PK |
+| forum_topic_id | uuid | FK → forum_topics |
+| project_id | uuid | FK → projects |
+| organization_id | uuid | FK → organizations |
+| opportunity_type | text | e.g., 'content_gap', 'pain_point' |
+| title | text | |
+| description | text | |
+| priority | forum_opportunity_priority enum | `low`, `medium`, `high` |
+| metadata | jsonb | AI-extracted details |
+| created_at | timestamp | |
+
+### project_assets
+
+| Column | Type | Notes |
+|--------|------|-------|
+| id | uuid | PK |
+| project_id | uuid | FK → projects |
+| organization_id | uuid | FK → organizations |
+| name | text | File name |
+| file_path | text | Storage path |
+| mime_type | text | |
+| size_bytes | integer | |
+| uploaded_by | text | Clerk user ID |
+| created_at | timestamp | |
+
+---
+
+## New Enums (added June 2026)
+
+| Enum | Values |
+|------|--------|
+| `invitation_status` | `pending`, `accepted`, `revoked`, `expired` |
+| `access_grant_type` | `org`, `workspace`, `project` |
+| `forum_topic_status` | `discovered`, `analyzed`, `converted` |
+| `forum_opportunity_priority` | `low`, `medium`, `high` |
+

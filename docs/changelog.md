@@ -28,21 +28,160 @@ All notable changes to the Pulse OS codebase, organized by audit and implementat
 ### CI/CD Pipeline
 
 - **Frontend**: Push to `main` → Vercel builds and deploys automatically. No manual steps.
-- **Backend**: Push to `main` touching `server/**` → GitHub Actions (`.github/workflows/deploy.yml`):
-  1. Build multi-stage Docker image (`server/Dockerfile`, Node 20-alpine)
-  2. Push to ECR as `organiq-server-prod:latest` + `:<git-sha>`
-  3. SSH to EC2 (`ec2-user`)
-  4. Pre-pull image (old container still serving)
-  5. Run `drizzle-kit migrate` in one-off container (migrations before cutover)
-  6. Hot-swap: stop + remove old container → start `organiq-server` (~1-2s downtime)
+- **Backend**: Push to `main` touching `server/**` → GitHub Actions (`.github/workflows/deploy.yml`) → build Docker image → push to ECR → SSH to EC2 → run migrations → hot-swap container (~1-2s downtime).
 
-### Documentation Updated
+---
 
-- `docs/infrastructure.md` — Rewritten from planning checklist to production operations reference
-- `docs/architecture/system-design.md` — Runtime topology updated with production URLs; Service Ports split into production + local
-- `docs/architecture/dependencies.md` — Infrastructure services updated to show production (RDS/ElastiCache), no localhost defaults
-- `README.md` — Production section added (URLs, deployment summary); Local Development section clarified
-- `.github/copilot-instructions.md` — Production environment section added with URLs and deploy pipeline; `infra/` noted as local-dev-only
+## [Security Hardening Phase 1 + Phase 2] — June 19–22, 2026
+
+**Comprehensive security audit (score 5.4/10) with two-phase hardening. See `docs/audit-action-plan.md` for full findings.**
+
+### Phase 1 — Auth/AuthZ Overhaul
+
+| File | Change |
+|------|--------|
+| `server/src/features/auth/access.guard.ts` | New: `AccessGuard` — granular resource-level guard using `access_grants` table |
+| `server/src/features/auth/access.service.ts` | New: `AccessService` — resolves grants for org/workspace/project resources |
+| `server/src/features/auth/admin-only.guard.ts` | New: `AdminOnlyGuard` — restricts to `admin` or `owner` roles |
+| `server/src/features/auth/decorators/` | New: `@ResourceAccess('workspace'|'project'|'org')` decorator |
+| `server/src/features/auth/auth.controller.ts` | Webhook verification now uses `timingSafeEqual` (constant-time); in-memory replay prevention (5-min TTL, 10-min cleanup) |
+| `server/src/features/auth/auth.service.ts` | idempotent org/member upserts preserved |
+
+### Phase 2 — HTTP Hardening
+
+| File | Change |
+|------|--------|
+| `server/src/main.ts` | Helmet installed: `frameguard: DENY`, CSP disabled (API-only server) |
+| `server/src/main.ts` | CORS origin tightened: only `FRONTEND_URL` + `localhost:3001` allowed |
+| `server/package.json` | Added `helmet` dependency |
+
+---
+
+## [User Management + Team Features] — June 19–22, 2026
+
+**New `user-management` module adds full team management: members, invitations, access grants, workspace credit limits.**
+
+### New API Endpoints (`server/src/features/user-management/`)
+
+| Method | Route | Description |
+|--------|-------|-------------|
+| `GET` | `orgs/:orgId/members` | List members with access grants (admin only) |
+| `DELETE` | `orgs/:orgId/members/:memberId` | Remove member (admin only) |
+| `PUT` | `orgs/:orgId/members/:memberId/access` | Replace member access grants (admin only) |
+| `GET` | `orgs/:orgId/members/me/access` | Get own access grants |
+| `GET` | `orgs/:orgId/invitations` | List pending invitations (admin only) |
+| `POST` | `orgs/:orgId/invitations` | Create + email invitation (admin only, throttled 10/60s) |
+| `DELETE` | `orgs/:orgId/invitations/:invitationId` | Revoke invitation (admin only) |
+| `GET` | `orgs/:orgId/workspaces/:workspaceId/credit-limit` | Get workspace monthly credit cap |
+| `PUT` | `orgs/:orgId/workspaces/:workspaceId/credit-limit` | Set workspace monthly credit cap |
+| `DELETE` | `orgs/:orgId/workspaces/:workspaceId/credit-limit` | Remove monthly cap |
+| `GET` | `invitations/:token` | Preview invitation (public) |
+| `POST` | `invitations/:token/accept` | Accept invitation (requires Clerk auth) |
+
+### New Database Tables (migrations 0021–0023)
+
+- `invitations` — Email invitations with `crypto.randomUUID()` token, 7-day expiry, `clerk_invitation_id`
+- `access_grants` — Discriminated-union grants (`org`/`workspace`/`project` scope) per member
+- `workspace_credit_limits` — Monthly credit cap per workspace with usage tracking + monthly reset cron
+- `org_role` enum — Added `'user'` value; renamed `'member'` → `'user'`
+
+### Frontend (`/settings/members`)
+
+New page at `/settings/members` (admin only). Features: members table with access editor modal, invitations table, workspace credit limits section. Non-admins redirected to `/settings`.
+
+---
+
+## [Internal Admin API] — June 19–22, 2026
+
+**New `internal` module for super-admin operations. Protected by `SUPER_ADMIN_CLERK_IDS` env var.**
+
+| Method | Route | Description |
+|--------|-------|-------------|
+| `POST` | `internal/orgs/:orgId/credits` | Add credits to an org (audited) |
+| `GET` | `internal/orgs/:orgId/credits` | Get balance + last 20 ledger entries |
+| `GET` | `internal/orgs` | List all orgs (cap 500) |
+| `GET` | `internal/orgs/:orgId` | Get single org detail |
+
+Frontend: `/admin` page (super-admin only).
+
+---
+
+## [Forum Intelligence Feature] — June 19–22, 2026
+
+**New content sub-feature: AI-driven forum/community content opportunity discovery.**
+
+| File | Purpose |
+|------|---------|
+| `server/src/features/content/forum-intelligence.service.ts` | DataForSEO Reddit SERP + AI analysis |
+| `server/src/features/content/forum-intelligence.processor.ts` | BullMQ processor |
+| `frontend/src/app/(dashboard)/.../content/forums/page.tsx` | Forum intelligence page |
+
+- Searches Reddit via DataForSEO `searchRedditThreads`; surfaces content opportunities from community discussions
+- Accessible via side nav under Content → Forums
+- New DB tables: `forum_topics`, `forum_opportunities` (migration 0019)
+
+---
+
+## [New Database Migrations (0016–0023)] — June 2026
+
+| Migration | Change |
+|-----------|--------|
+| `0016_project_business_profile.sql` | `business_profile jsonb` + `business_profile_updated_at` on `projects` |
+| `0017_project_intelligence.sql` | Project intelligence fields on `projects` |
+| `0018_prompt_visibility_response_text.sql` | Response text column on prompt visibility results |
+| `0019_forum_intelligence.sql` | `forum_topics` + `forum_opportunities` tables |
+| `0020_project_assets.sql` | `project_assets` table |
+| `0021_user_management.sql` | New enums: `invitation_status`, `access_grant_type`; added `'user'` to `org_role` |
+| `0022_user_management_tables.sql` | `invitations`, `access_grants`, `workspace_credit_limits`; `workspace_id` on `credit_ledger` |
+| `0023_clerk_invitation_id.sql` | `clerk_invitation_id` on `invitations` |
+
+---
+
+## [Prompt Visibility — Engine Overhaul] — June 2026
+
+**All 5 LLM engines now use web-search-capable models. Majority vote (3× per engine).**
+
+| Engine | Model |
+|--------|-------|
+| Perplexity | `sonar` (`api.perplexity.ai`) |
+| OpenAI | `gpt-4o-mini-search-preview` |
+| Gemini | `gemini-1.5-flash` with `google_search_retrieval` tool |
+| Claude | `claude-sonnet-4-6` with `web_search_20250305` beta |
+| Copilot | Bing Web Search v7 (`api.bing.microsoft.com`) |
+
+New required env vars: `PERPLEXITY_API_KEY`, `GEMINI_API_KEY`, `BING_SEARCH_API_KEY`.
+
+---
+
+## [UX Features — Help, Tour, Step Phases] — June 2026
+
+### Help System
+- Static help docs at `/help` with search, sidebar, and article views
+- `frontend/src/features/help/`
+
+### Guided Tour (Driver.js)
+- Auto-starts for new users with 0 workspaces
+- Tracked in `localStorage` (`pulse_tour_active`, `pulse_tour_completed_sections`, `pulse_tour_dismissed`)
+- Restartable from top bar
+- `frontend/src/features/tour/`
+
+### Workflow Step Phases + Estimated Durations
+- Each pipeline step now emits named sub-phases (e.g., "Fetching data…", "AI Analyzing…") via WebSocket
+- Step cards show real-time phase message during execution
+- Agent definitions include `estimatedDurationSec` for UI progress indication
+
+### Step Delete (workflow)
+- Users can delete individual workflow runs from the run list
+
+---
+
+## [Ahrefs Partial Restoration — Seed Keywords] — June 2026
+
+The seed-keywords pipeline was updated to use Ahrefs as the primary organic keyword source when DataForSEO Labs returns sparse results for the target domain. DataForSEO remains the primary for competitor discovery, backlinks, volume, and difficulty.
+
+| Pipeline | Change |
+|----------|--------|
+| `seed-keywords` | Added Ahrefs `getOrganicKeywords` as fallback enrichment path when DFS returns <5 results |
 
 ---
 

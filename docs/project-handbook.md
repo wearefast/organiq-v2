@@ -16,12 +16,20 @@ For comprehensive coverage, see the dedicated docs:
 | Workflows | [Workflows](features/workflows.md) | Agent pipeline, step states, dependency graph |
 | Keywords | [Keywords](features/keywords.md) | Keyword lifecycle, intent, funnel stages |
 | Content | [Content](features/content.md) | Briefs, articles, scoring framework |
+| Forum Intelligence | [Forum Intelligence](features/content.md#forum-intelligence) | Community discussion opportunity discovery |
 | Reports | [Reports](features/reports.md) | PDF generation, templates, download flow |
 | Topical Maps | [Topical Maps](features/topical-maps.md) | Pillar → cluster → keyword hierarchy |
-| Integrations | [Integrations](features/integrations.md) | 8 external services, retry logic, tool registry |
-| Auth | [Auth & Orgs](features/auth.md) | Clerk SSO, webhooks, idempotency |
-| Credits | [Credits](features/credits.md) | Credit system, ledger, debit flow |
+| Integrations | [Integrations](features/integrations.md) | External services, retry logic, tool registry |
+| Auth | [Auth & Orgs](features/auth.md) | Clerk SSO, guards, security hardening |
+| User Management | [User Management](features/user-management.md) | Members, invitations, access grants, workspace credit limits |
+| Credits | [Credits](features/credits.md) | Credit system, ledger, debit flow, workspace caps |
+| Prompt Visibility | [Prompt Visibility](features/prompt-visibility.md) | AI engine visibility tracking |
+| Scheduled Workflows | [Scheduled Workflows](features/scheduled-workflows.md) | Recurring agent runs, delivery |
+| LLM Traffic | [LLM Traffic](features/llm-traffic.md) | AI referral tracking |
+| Notifications | [Notifications](features/notifications.md) | In-app alerts, keyword decay |
+| Infrastructure | [Infrastructure](infrastructure.md) | Production ops, deployment, EC2, RDS |
 | Changelog | [Changelog](changelog.md) | All fixes and updates with evidence |
+| Security Audit | [Audit Action Plan](audit-action-plan.md) | Security findings and remediation status |
 
 ---
 
@@ -153,7 +161,11 @@ Pulse/
 │       │   ├── analytics/     LLM traffic, audit, visibility dashboards
 │       │   ├── billing/       Payment integration (Stripe)
 │       │   ├── content/       Content editor
-│       │   └── reports/       Report generation
+│       │   ├── reports/       Report generation
+│       │   ├── user-management/ Members, invitations, access editor, workspace limits
+│       │   ├── admin/         Super-admin org list + credits panel
+│       │   ├── help/          Static help articles, search, sidebar
+│       │   └── tour/          Driver.js guided onboarding tour
 │       └── shared/            Shared UI, hooks, utilities
 ├── server/                    NestJS 10 API + agent runtime
 │   └── src/
@@ -178,17 +190,17 @@ Pulse/
 │       │   ├── reports/
 │       │   └── scoring/
 │       ├── db/                Drizzle schema, client, seed
-│       ├── features/          Feature modules (18)
-│       │   ├── auth/          Clerk webhook + guard
+│       ├── features/          Feature modules (22)
+│       │   ├── auth/          Clerk webhook + guards (ClerkGuard, AdminOnly, Access, SuperAdmin)
 │       │   ├── billing/       Stripe subscriptions + credit packs
 │       │   ├── organizations/ Org CRUD + membership
-│       │   ├── credits/       Credit system
+│       │   ├── credits/       Credit system + workspace limits
 │       │   ├── workspaces/    Workspace CRUD
 │       │   ├── projects/      Project CRUD
 │       │   ├── workflows/     Orchestration, WebSocket, BullMQ
 │       │   ├── keywords/      Keyword ledger
 │       │   ├── topical-maps/  Topical map storage
-│       │   ├── content/       Content CRUD
+│       │   ├── content/       Content CRUD + forum intelligence
 │       │   ├── reports/       Report generation
 │       │   ├── integrations/  External API services
 │       │   ├── llm-audit/     LLM audit (AI indexability checks)
@@ -196,7 +208,9 @@ Pulse/
 │       │   ├── notifications/ In-app notifications (decay, workflow, system)
 │       │   ├── on-demand-agents/ Ad-hoc agent execution
 │       │   ├── prompt-visibility/ Brand mention tracking across AI engines
-│       │   └── scheduled-workflows/ Cron-based workflow scheduling + delivery
+│       │   ├── scheduled-workflows/ Cron-based workflow scheduling + delivery
+│       │   ├── user-management/ Members, invitations, access grants, workspace credit limits
+│       │   └── internal/      Super-admin API (credits, org list)
 │       │       ├── ahrefs/
 │       │       ├── dataforseo/
 │       │       ├── firecrawl/
@@ -206,8 +220,8 @@ Pulse/
 │       │       └── gsc/
 │       └── shared/            Database module, prompt service, health
 ├── docs/                      Documentation
-├── infra/                     Docker Compose
-└── .github/                   Copilot instructions
+├── infra/                     Docker Compose (LOCAL DEV ONLY)
+└── .github/                   CI/CD workflows + Copilot instructions
 ```
 
 ---

@@ -320,38 +320,74 @@ Base: `/projects/:projectId/keywords/decay`
 
 ---
 
-## Prompt Visibility
-
-Base: `/projects/:projectId/prompts`
-
-| Method | Path | Description |
-|--------|------|-------------|
-| `GET` | `/` | List tracked prompts |
-| `POST` | `/` | Create tracked prompt |
-| `GET` | `/:id/results` | Get visibility results for prompt |
-
----
-
-## Notifications
-
-Base: `/organizations/:organizationId/notifications`
-
-| Method | Path | Description |
-|--------|------|-------------|
-| `GET` | `/` | List notifications |
-| `PATCH` | `/:id/read` | Mark notification as read |
-
----
-
 ## Admin
 
 Base: `/admin`
 
+| Method | Path | Description | Auth |
+|--------|------|-------------|------|
+| `GET` | `/dlq` | List dead-letter queue failures | ClerkGuard |
+| `POST` | `/dlq/:id/replay` | Re-enqueue failed job | ClerkGuard |
+| `POST` | `/dlq/:id/dismiss` | Mark failure as resolved | ClerkGuard |
+
+---
+
+## User Management
+
+### Members
+
+Base: `/orgs/:orgId/members`
+
+| Method | Path | Description | Auth |
+|--------|------|-------------|------|
+| `GET` | `/` | List members with access grants | AdminOnly |
+| `DELETE` | `/:memberId` | Remove member from org | AdminOnly |
+| `PUT` | `/:memberId/access` | Replace member access grants | AdminOnly |
+| `GET` | `/me/access` | Get own access grants | ClerkGuard |
+
+### Invitations
+
+Base: `/orgs/:orgId/invitations`
+
+| Method | Path | Description | Auth |
+|--------|------|-------------|------|
+| `GET` | `/` | List pending invitations | AdminOnly |
+| `POST` | `/` | Create + send email invitation | AdminOnly (throttled 10/60s) |
+| `DELETE` | `/:invitationId` | Revoke an invitation | AdminOnly |
+
+### Workspace Credit Limits
+
+Base: `/orgs/:orgId/workspaces/:workspaceId/credit-limit`
+
+| Method | Path | Description | Auth |
+|--------|------|-------------|------|
+| `GET` | `/` | Get workspace monthly credit cap | AdminOnly |
+| `PUT` | `/` | Set workspace monthly credit cap | AdminOnly |
+| `DELETE` | `/` | Remove monthly cap | AdminOnly |
+
+### Invitation Acceptance (Public Flow)
+
+Base: `/invitations/:token`
+
+| Method | Path | Description | Auth |
+|--------|------|-------------|------|
+| `GET` | `/` | Preview invitation details | Public |
+| `POST` | `/accept` | Accept invitation and join org | ClerkGuard |
+
+---
+
+## Internal (Super-Admin)
+
+Base: `/internal`
+
+> All routes require `ClerkGuard` + `SuperAdminGuard` (Clerk user ID must be in `SUPER_ADMIN_CLERK_IDS` env var).
+
 | Method | Path | Description |
 |--------|------|-------------|
-| `GET` | `/dlq` | List dead-letter queue failures |
-| `POST` | `/dlq/:id/replay` | Re-enqueue failed job |
-| `POST` | `/dlq/:id/dismiss` | Mark failure as resolved |
+| `POST` | `/orgs/:orgId/credits` | Add credits to an org (audited) |
+| `GET` | `/orgs/:orgId/credits` | Get balance + last 20 ledger entries |
+| `GET` | `/orgs` | List all organizations (cap 500) |
+| `GET` | `/orgs/:orgId` | Get org detail |
 
 ---
 
@@ -363,6 +399,9 @@ Base: `/admin`
 | `/login` | Login | Clerk sign-in |
 | `/billing` | Billing | Plan cards, credit packs, portal |
 | `/settings` | Settings | Profile, org info, security |
+| `/settings/members` | Members | Team members, invitations, access grants (admin only) |
+| `/help` | Help | Help articles, search, sidebar |
+| `/admin` | Admin | Super-admin org list + credits (super-admin only) |
 | `/workspaces` | Workspaces | Workspace list (entry point) |
 | `/workspaces/:id/projects` | Projects | Project list within workspace |
 | `/workspaces/:wId/projects/:pId/overview` | Overview | Project dashboard |
@@ -371,6 +410,7 @@ Base: `/admin`
 | `/workspaces/:wId/projects/:pId/technical` | Technical | Technical SEO audit |
 | `/workspaces/:wId/projects/:pId/agents` | Agents | On-demand agent interface |
 | `/workspaces/:wId/projects/:pId/content` | Content | Content pieces list/editor |
+| `/workspaces/:wId/projects/:pId/content/forums` | Forums | Forum intelligence (community opportunity discovery) |
 | `/workspaces/:wId/projects/:pId/research` | Research | Keywords, topical maps |
 | `/workspaces/:wId/projects/:pId/settings` | Settings | Project settings |
 | `/workspaces/:wId/projects/:pId/keywords` | Keywords | Keyword management |
