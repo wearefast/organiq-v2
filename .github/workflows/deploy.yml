@@ -81,11 +81,6 @@ jobs:
               docker logs organiq-server || true
               exit 1
             fi
-            
-            echo "==> Seeding migration journal (ensures __drizzle_migrations table exists)..."
-            docker exec organiq-server node scripts/seed-migration-journal.js
-            echo "==> Running database migrations..."
-            docker exec organiq-server npx drizzle-kit migrate --config=drizzle.config.ts
-            echo "==> Migrations complete"
-            
+
+            echo "Deployment successful!"
             echo "Deployment successful!"
