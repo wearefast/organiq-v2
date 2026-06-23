@@ -7,10 +7,18 @@
  * Usage: node dist/migrate.js
  *
  * Seeding logic:
- * If __drizzle_migrations is empty, it means the production DB was set up
- * without the Drizzle migrator (e.g. via drizzle-kit push or manual SQL).
- * In that case, all current journal entries are seeded as already applied
- * so Drizzle only runs genuinely NEW migrations going forward.
+ * The production DB schema was applied manually before the Drizzle migrator
+ * was introduced. __drizzle_migrations may be empty OR partially filled
+ * (from a previous failed CI run that committed some rows before failing).
+ *
+ * For every journal entry whose hash is NOT yet in __drizzle_migrations, we
+ * insert it as "already applied". This is idempotent and handles all cases:
+ *   - Empty table: all entries seeded
+ *   - Partially filled (e.g. 0000-0013 recorded): only missing ones seeded
+ *   - Fully up to date: no-op
+ *
+ * Genuinely new migrations (future 0024+) won't be in the journal yet
+ * and will run normally via migrate().
  */
 import { drizzle } from 'drizzle-orm/node-postgres';
 import { migrate } from 'drizzle-orm/node-postgres/migrator';
@@ -19,7 +27,7 @@ import * as crypto from 'crypto';
 import * as fs from 'fs';
 import * as path from 'path';
 
-async function seedMigrationHistoryIfEmpty(pool: Pool, migrationsFolder: string) {
+async function seedAppliedMigrations(pool: Pool, migrationsFolder: string) {
   // Ensure the tracking table exists
   await pool.query(`
     CREATE TABLE IF NOT EXISTS "__drizzle_migrations" (
@@ -29,21 +37,15 @@ async function seedMigrationHistoryIfEmpty(pool: Pool, migrationsFolder: string)
     )
   `);
 
-  const { rows } = await pool.query('SELECT COUNT(*) AS count FROM "__drizzle_migrations"');
-  const count = parseInt(rows[0].count, 10);
-
-  if (count > 0) {
-    console.log(`Migration history exists (${count} entries). Skipping seed.`);
-    return;
-  }
-
-  // No history — DB was set up without the migrator. Seed all current journal
-  // entries as already applied so migrate() only runs genuinely new ones.
-  console.log('No migration history found. Seeding existing migrations as applied...');
+  // Collect hashes already recorded (may be 0, partial, or complete)
+  const { rows } = await pool.query('SELECT hash FROM "__drizzle_migrations"');
+  const knownHashes = new Set(rows.map((r: { hash: string }) => r.hash));
+  console.log(`Migration history: ${knownHashes.size} entries already recorded.`);
 
   const journalPath = path.join(migrationsFolder, 'meta', '_journal.json');
   const journal = JSON.parse(fs.readFileSync(journalPath, 'utf-8'));
 
+  let seeded = 0;
   for (const entry of journal.entries) {
     const sqlPath = path.join(migrationsFolder, `${entry.tag}.sql`);
     if (!fs.existsSync(sqlPath)) {
@@ -52,14 +54,22 @@ async function seedMigrationHistoryIfEmpty(pool: Pool, migrationsFolder: string)
     }
     const content = fs.readFileSync(sqlPath, 'utf-8');
     const hash = crypto.createHash('sha256').update(content).digest('hex');
+
+    if (knownHashes.has(hash)) continue; // already tracked, skip
+
     await pool.query(
       'INSERT INTO "__drizzle_migrations" (hash, created_at) VALUES ($1, $2)',
       [hash, entry.when],
     );
-    console.log(`  Seeded: ${entry.tag}`);
+    console.log(`  Seeded as applied: ${entry.tag}`);
+    seeded++;
   }
 
-  console.log('Seed complete. Future migrations will be tracked automatically.');
+  if (seeded > 0) {
+    console.log(`Seeded ${seeded} migration(s). Future migrations will be tracked automatically.`);
+  } else {
+    console.log('All journal entries already tracked. No seeding needed.');
+  }
 }
 
 async function runMigrations() {
@@ -77,7 +87,7 @@ async function runMigrations() {
 
   console.log(`Migrations folder: ${migrationsFolder}`);
 
-  await seedMigrationHistoryIfEmpty(pool, migrationsFolder);
+  await seedAppliedMigrations(pool, migrationsFolder);
 
   const db = drizzle(pool);
   console.log('Running pending migrations...');
