@@ -87,6 +87,9 @@ async function bootstrap() {
 }
 
 runMigrations()
+  .catch((err) => {
+    console.error('Migrations failed (non-fatal, continuing startup):', err);
+  })
   .then(() => bootstrap())
   .catch((err) => {
     console.error('Failed to start:', err);
