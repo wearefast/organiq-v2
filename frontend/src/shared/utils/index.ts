@@ -1,2 +1,2 @@
 export { cn } from './cn';
-export { apiFetch } from './api';
+export { apiFetch, ApiError } from './api';

@@ -4,6 +4,7 @@ export interface AdminOrg {
   id: string;
   name: string;
   slug: string;
+  plan: 'starter' | 'pro' | 'agency' | 'enterprise';
   creditsBalance: number;
   clerkOrgId: string;
   createdAt: string;
@@ -38,6 +39,13 @@ export async function addOrgCredits(orgId: string, payload: AddCreditsPayload): 
   return apiFetch<OrgCredits>(`/internal/orgs/${orgId}/credits`, {
     method: 'POST',
     body: JSON.stringify(payload),
+  });
+}
+
+export async function updateOrgPlan(orgId: string, plan: 'starter' | 'pro' | 'agency' | 'enterprise'): Promise<AdminOrg> {
+  return apiFetch<AdminOrg>(`/internal/orgs/${orgId}/plan`, {
+    method: 'PUT',
+    body: JSON.stringify({ plan }),
   });
 }
 

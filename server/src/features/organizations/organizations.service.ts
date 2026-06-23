@@ -32,6 +32,17 @@ export class OrganizationsService {
     return updated;
   }
 
+  async updatePlan(id: string, plan: 'starter' | 'pro' | 'agency' | 'enterprise') {
+    const [updated] = await this.db.db
+      .update(organizations)
+      .set({ plan, updatedAt: new Date() })
+      .where(eq(organizations.id, id))
+      .returning();
+
+    if (!updated) throw new NotFoundException('Organization not found');
+    return updated;
+  }
+
   async getMembers(organizationId: string) {
     return this.db.db.query.orgMembers.findMany({
       where: eq(orgMembers.organizationId, organizationId),
@@ -75,7 +86,7 @@ export class OrganizationsService {
    */
   async findAll(limit = 200) {
     return this.db.db.query.organizations.findMany({
-      columns: { id: true, name: true, slug: true, creditsBalance: true, clerkOrgId: true, createdAt: true },
+      columns: { id: true, name: true, slug: true, creditsBalance: true, clerkOrgId: true, plan: true, createdAt: true },
       orderBy: (o, { desc }) => [desc(o.createdAt)],
       limit,
     });

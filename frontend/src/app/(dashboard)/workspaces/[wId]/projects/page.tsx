@@ -4,9 +4,10 @@ import Link from 'next/link';
 import { useParams, useRouter } from 'next/navigation';
 import { useAuth } from '@clerk/nextjs';
 import { FormEvent, useEffect, useState } from 'react';
-import { apiFetch, setAuthToken } from '@/shared/utils/api';
+import { apiFetch, setAuthToken, ApiError } from '@/shared/utils/api';
 import { CountrySelect } from '@/shared/components/country-select';
 import { LanguageSelect } from '@/shared/components/language-select';
+import { PlanLimitAlert } from '@/shared/components/plan-limit-alert';
 import { getCountryByCode, getLanguageByCode } from '@/shared/utils/countries';
 
 interface Project {
@@ -44,7 +45,7 @@ export default function ProjectsPage() {
   const [industry, setIndustry] = useState('');
   const [loading, setLoading] = useState(true);
   const [submitting, setSubmitting] = useState(false);
-  const [error, setError] = useState<string | null>(null);
+  const [error, setError] = useState<{ message: string; isPlanLimit: boolean } | null>(null);
 
   useEffect(() => {
     if (!isLoaded) return;
@@ -73,7 +74,11 @@ export default function ProjectsPage() {
         }
       } catch (err) {
         if (active) {
-          setError(err instanceof Error ? err.message : 'Failed to load projects');
+          const isPlanLimit = err instanceof ApiError && err.statusCode === 403;
+          setError({
+            message: err instanceof Error ? err.message : 'Failed to load projects',
+            isPlanLimit,
+          });
         }
       } finally {
         if (active) {
@@ -91,7 +96,7 @@ export default function ProjectsPage() {
   async function handleCreateProject(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
     if (!workspace) {
-      setError('Workspace context is not available yet.');
+      setError({ message: 'Workspace context is not available yet.', isPlanLimit: false });
       return;
     }
 
@@ -99,12 +104,12 @@ export default function ProjectsPage() {
     const normalizedDomain = normalizeDomain(domain);
 
     if (!trimmedName) {
-      setError('Project name is required.');
+      setError({ message: 'Project name is required.', isPlanLimit: false });
       return;
     }
 
     if (!normalizedDomain) {
-      setError('Project domain is required.');
+      setError({ message: 'Project domain is required.', isPlanLimit: false });
       return;
     }
 
@@ -134,7 +139,11 @@ export default function ProjectsPage() {
       setShowForm(false);
       router.push(`/workspaces/${workspace.id}/projects/${created.id}/overview`);
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'Failed to create project');
+      const isPlanLimit = err instanceof ApiError && err.statusCode === 403;
+      setError({
+        message: err instanceof Error ? err.message : 'Failed to create project',
+        isPlanLimit,
+      });
     } finally {
       setSubmitting(false);
     }
@@ -188,7 +197,19 @@ export default function ProjectsPage() {
         </form>
       )}
 
-      {error && <p className="mb-6 text-sm text-red-400">{error}</p>}
+      {error && (
+        <div className="mb-6">
+          {error.isPlanLimit ? (
+            <PlanLimitAlert
+              message={error.message}
+              organizationId={workspace?.organizationId}
+              onDismiss={() => setError(null)}
+            />
+          ) : (
+            <p className="text-sm text-red-400">{error.message}</p>
+          )}
+        </div>
+      )}
 
       {loading ? (
         <div className="card py-16 text-center text-sm text-zinc-500">Loading projects...</div>

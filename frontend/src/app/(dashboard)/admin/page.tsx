@@ -2,17 +2,105 @@
 
 import { useState, useEffect, useCallback } from 'react';
 import { useAuth } from '@clerk/nextjs';
-import { ShieldAlert, Search, Plus, Loader2, ChevronDown, ChevronRight, RefreshCw } from 'lucide-react';
+import { ShieldAlert, Search, Plus, Loader2, ChevronDown, ChevronRight, RefreshCw, CheckCircle } from 'lucide-react';
 import { setAuthToken } from '@/shared/utils/api';
 import {
   listOrgs,
   getOrgCredits,
   addOrgCredits,
+  updateOrgPlan,
   type AdminOrg,
   type OrgCredits,
 } from '@/features/admin/services/admin.service';
 import { ApiCostsPanel } from '@/features/admin/components/api-costs-panel';
+// ─── Plan Panel ────────────────────────────────────────────────
 
+function PlanPanel({ org, onPlanChanged }: { org: AdminOrg; onPlanChanged?: () => void }) {
+  const [currentPlan, setCurrentPlan] = useState<'starter' | 'pro' | 'agency' | 'enterprise'>(org.plan);
+  const [selectedPlan, setSelectedPlan] = useState<'starter' | 'pro' | 'agency' | 'enterprise'>(org.plan);
+  const [updating, setUpdating] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  const [success, setSuccess] = useState(false);
+
+  const plans = [
+    { id: 'starter', label: 'Starter', description: '100 credits/month' },
+    { id: 'pro', label: 'Pro', description: '500 credits/month' },
+    { id: 'agency', label: 'Agency', description: '2000 credits/month' },
+    { id: 'enterprise', label: 'Enterprise', description: '10000 credits/month' },
+  ] as const;
+
+  async function handleUpdate() {
+    if (selectedPlan === currentPlan) {
+      setError('Please select a different plan');
+      return;
+    }
+
+    setUpdating(true);
+    setError(null);
+    setSuccess(false);
+
+    try {
+      await updateOrgPlan(org.id, selectedPlan);
+      setCurrentPlan(selectedPlan);
+      setSuccess(true);
+      if (onPlanChanged) onPlanChanged();
+      setTimeout(() => setSuccess(false), 3000);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Failed to update plan');
+    } finally {
+      setUpdating(false);
+    }
+  }
+
+  return (
+    <div className="space-y-4">
+      {/* Current Plan */}
+      <div className="flex items-center gap-3">
+        <span className="text-sm text-zinc-400">Current plan for <span className="font-medium text-white">{org.name}</span>:</span>
+        <span className="rounded-full bg-violet-900/40 px-3 py-1 text-sm font-medium text-violet-300 capitalize">{currentPlan}</span>
+      </div>
+
+      {/* Plan Selector */}
+      <div className="rounded-xl border border-zinc-700 bg-zinc-800/50 p-4 space-y-3">
+        <p className="text-xs font-semibold text-zinc-400 uppercase tracking-wide">Change Plan</p>
+        <div className="grid grid-cols-2 gap-2 sm:grid-cols-4">
+          {plans.map((plan) => (
+            <button
+              key={plan.id}
+              onClick={() => setSelectedPlan(plan.id as typeof selectedPlan)}
+              className={`relative rounded-lg border px-3 py-2 text-left transition-colors ${
+                selectedPlan === plan.id
+                  ? 'border-violet-500 bg-violet-900/30'
+                  : 'border-zinc-700 bg-zinc-900 hover:border-zinc-600'
+              }`}
+            >
+              <p className="text-xs font-medium text-white capitalize">{plan.label}</p>
+              <p className="text-[10px] text-zinc-500">{plan.description}</p>
+              {selectedPlan === plan.id && currentPlan === plan.id && (
+                <CheckCircle className="absolute right-1.5 top-1.5 h-3 w-3 text-green-400" />
+              )}
+              {selectedPlan === plan.id && currentPlan !== plan.id && (
+                <div className="absolute right-1.5 top-1.5 h-3 w-3 rounded-full border-2 border-violet-400" />
+              )}
+            </button>
+          ))}
+        </div>
+
+        {error && <p className="text-xs text-red-400">{error}</p>}
+        {success && <p className="text-xs text-green-400">Plan updated successfully</p>}
+
+        <button
+          onClick={handleUpdate}
+          disabled={updating || selectedPlan === currentPlan}
+          className="w-full flex items-center justify-center gap-2 rounded-lg bg-violet-600 px-4 py-2 text-sm font-medium text-white hover:bg-violet-500 disabled:opacity-50 disabled:cursor-not-allowed"
+        >
+          {updating ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : null}
+          {updating ? 'Updating…' : 'Update Plan'}
+        </button>
+      </div>
+    </div>
+  );
+}
 // ─── Credits Panel ────────────────────────────────────────────
 
 function CreditsPanel({ orgId, orgName }: { orgId: string; orgName: string }) {
@@ -178,7 +266,7 @@ function CreditsPanel({ orgId, orgName }: { orgId: string; orgName: string }) {
 
 // ─── Org Row ──────────────────────────────────────────────────
 
-function OrgRow({ org }: { org: AdminOrg }) {
+function OrgRow({ org, onOrgUpdated }: { org: AdminOrg; onOrgUpdated?: () => void }) {
   const [expanded, setExpanded] = useState(false);
 
   return (
@@ -196,17 +284,27 @@ function OrgRow({ org }: { org: AdminOrg }) {
           <p className="font-semibold text-white">{org.name}</p>
           <p className="text-xs text-zinc-500">{org.slug}</p>
         </div>
-        <div className="text-right">
-          <p className="text-sm font-medium text-zinc-200">{org.creditsBalance.toLocaleString()} credits</p>
-          <p className="text-xs text-zinc-600">
-            Joined {new Date(org.createdAt).toLocaleDateString()}
-          </p>
+        <div className="flex items-center gap-3 text-right">
+          <div>
+            <span className="inline-block rounded-full bg-violet-900/40 px-2 py-1 text-xs font-medium text-violet-300 capitalize mr-2">{org.plan}</span>
+            <p className="text-sm font-medium text-zinc-200">{org.creditsBalance.toLocaleString()} credits</p>
+            <p className="text-xs text-zinc-600">
+              Joined {new Date(org.createdAt).toLocaleDateString()}
+            </p>
+          </div>
         </div>
       </button>
 
       {expanded && (
-        <div className="border-t border-zinc-800 bg-zinc-900/50 px-5 py-4">
-          <CreditsPanel orgId={org.id} orgName={org.name} />
+        <div className="border-t border-zinc-800 bg-zinc-900/50 px-5 py-4 space-y-6">
+          <div>
+            <h3 className="mb-4 text-sm font-semibold text-white">Plan Management</h3>
+            <PlanPanel org={org} onPlanChanged={onOrgUpdated} />
+          </div>
+          <div className="border-t border-zinc-800 pt-4">
+            <h3 className="mb-4 text-sm font-semibold text-white">Credits Management</h3>
+            <CreditsPanel orgId={org.id} orgName={org.name} />
+          </div>
         </div>
       )}
     </div>
@@ -252,6 +350,15 @@ export default function AdminPage() {
     o.name.toLowerCase().includes(search.toLowerCase()) ||
     o.slug.toLowerCase().includes(search.toLowerCase()),
   );
+
+  const reloadOrgs = useCallback(async () => {
+    try {
+      const data = await listOrgs(500);
+      setOrgs(data);
+    } catch (err) {
+      console.error('Failed to reload orgs:', err);
+    }
+  }, []);
 
   if (loading && orgs.length === 0) return (
     <div className="flex items-center gap-2 p-6 text-sm text-zinc-500">
@@ -325,7 +432,7 @@ export default function AdminPage() {
             <div className="space-y-2">
               <p className="text-xs text-zinc-500">{filtered.length} organization{filtered.length !== 1 ? 's' : ''}</p>
               {filtered.map((org) => (
-                <OrgRow key={org.id} org={org} />
+                <OrgRow key={org.id} org={org} onOrgUpdated={reloadOrgs} />
               ))}
             </div>
           )}

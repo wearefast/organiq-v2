@@ -1,6 +1,38 @@
 const LOCAL_DEV_API_URL = 'http://localhost:3002';
 const LEGACY_LOCAL_DEV_API_URL_PATTERN = /^http:\/\/(localhost|127\.0\.0\.1):3005$/i;
 
+/**
+ * Structured API error with parsed message and status code.
+ * Backend throws exceptions that NestJS converts to JSON responses.
+ */
+export class ApiError extends Error {
+  readonly statusCode: number;
+  readonly message: string;
+  readonly errorType?: string;
+
+  constructor(statusCode: number, message: string, errorType?: string) {
+    super(message);
+    this.name = 'ApiError';
+    this.statusCode = statusCode;
+    this.message = message;
+    this.errorType = errorType;
+    Object.setPrototypeOf(this, ApiError.prototype);
+  }
+
+  static parse(statusCode: number, body: string): ApiError {
+    try {
+      const json = JSON.parse(body);
+      // NestJS error response format: { message, error, statusCode }
+      if (json.message && typeof json.message === 'string') {
+        return new ApiError(statusCode, json.message, json.error);
+      }
+    } catch {
+      // Fall back to raw body if not JSON
+    }
+    return new ApiError(statusCode, body);
+  }
+}
+
 // Module-level token store — set by AuthProvider on mount
 let _authToken: string | null = null;
 let _getTokenFn: (() => Promise<string | null>) | null = null;
@@ -93,7 +125,7 @@ export async function apiFetch<T>(path: string, init?: RequestInit): Promise<T> 
       });
       if (!retry.ok) {
         const body = await retry.text();
-        throw new Error(`API ${retry.status}: ${body}`);
+        throw ApiError.parse(retry.status, body);
       }
       if (retry.status === 204) return undefined as T;
       return retry.json() as Promise<T>;
@@ -102,7 +134,7 @@ export async function apiFetch<T>(path: string, init?: RequestInit): Promise<T> 
 
   if (!res.ok) {
     const body = await res.text();
-    throw new Error(`API ${res.status}: ${body}`);
+    throw ApiError.parse(res.status, body);
   }
 
   if (res.status === 204) return undefined as T;

@@ -1,4 +1,4 @@
-import { Controller, Post, Get, Query, Param, Body, UseGuards, HttpCode, HttpStatus, Req, Res, Logger } from '@nestjs/common';
+import { Controller, Post, Get, Query, Param, Body, UseGuards, HttpCode, HttpStatus, Req, Res, Logger, Put } from '@nestjs/common';
 import { ApiTags } from '@nestjs/swagger';
 import { Response } from 'express';
 import { ClerkGuard } from '../auth/clerk.guard';
@@ -7,6 +7,7 @@ import { CreditsService } from '../credits/credits.service';
 import { OrganizationsService } from '../organizations/organizations.service';
 import { ApiUsageService } from '../api-usage/api-usage.service';
 import { AddCreditsDto } from './dto/add-credits.dto';
+import { UpdateOrgPlanDto } from './dto/update-org-plan.dto';
 
 /**
  * Internal platform admin API.
@@ -85,6 +86,30 @@ export class InternalController {
   @Get('orgs/:orgId')
   getOrg(@Param('orgId') orgId: string) {
     return this.organizationsService.findById(orgId);
+  }
+
+  /**
+   * Update an organization's plan.
+   * Used by platform admins to upgrade/downgrade org subscriptions.
+   */
+  @Put('orgs/:orgId/plan')
+  @HttpCode(HttpStatus.OK)
+  async updateOrgPlan(
+    @Param('orgId') orgId: string,
+    @Body() dto: UpdateOrgPlanDto,
+    @Req() req: any,
+  ) {
+    const performedBy: string = req.user?.clerkUserId ?? 'unknown';
+    this.logger.log(
+      JSON.stringify({
+        event: 'super_admin_plan_change',
+        performedBy,
+        organizationId: orgId,
+        newPlan: dto.plan,
+      }),
+    );
+    const updated = await this.organizationsService.updatePlan(orgId, dto.plan);
+    return updated;
   }
 
   // ─── API Usage Endpoints ─────────────────────────────────
