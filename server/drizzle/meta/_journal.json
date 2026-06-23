@@ -113,6 +113,62 @@
       "when": 1782140199809,
       "tag": "0015_add_api_usage_logs",
       "breakpoints": true
+    },
+    {
+      "idx": 16,
+      "version": "7",
+      "when": 1782200000000,
+      "tag": "0016_project_business_profile",
+      "breakpoints": true
+    },
+    {
+      "idx": 17,
+      "version": "7",
+      "when": 1782220000000,
+      "tag": "0017_project_intelligence",
+      "breakpoints": true
+    },
+    {
+      "idx": 18,
+      "version": "7",
+      "when": 1782240000000,
+      "tag": "0018_prompt_visibility_response_text",
+      "breakpoints": true
+    },
+    {
+      "idx": 19,
+      "version": "7",
+      "when": 1782260000000,
+      "tag": "0019_forum_intelligence",
+      "breakpoints": true
+    },
+    {
+      "idx": 20,
+      "version": "7",
+      "when": 1782280000000,
+      "tag": "0020_project_assets",
+      "breakpoints": true
+    },
+    {
+      "idx": 21,
+      "version": "7",
+      "when": 1782300000000,
+      "tag": "0021_user_management",
+      "breakpoints": true
+    },
+    {
+      "idx": 22,
+      "version": "7",
+      "when": 1782320000000,
+      "tag": "0022_user_management_tables",
+      "breakpoints": true
+    },
+    {
+      "idx": 23,
+      "version": "7",
+      "when": 1782340000000,
+      "tag": "0023_clerk_invitation_id",
+      "breakpoints": true
     }
   ]
 }
