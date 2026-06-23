@@ -63,6 +63,7 @@ describe('OnDemandAgentsService', () => {
       mockIntelligenceService as any,
       new AgentRouterService(),
       mockContextRegistry as any,
+      { run: (_ctx: unknown, fn: () => unknown) => fn() } as any,
     );
   });
 

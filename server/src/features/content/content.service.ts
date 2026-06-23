@@ -1,9 +1,10 @@
 import { Injectable, Logger, NotFoundException, BadRequestException } from '@nestjs/common';
 import { eq, and, sql, desc, inArray } from 'drizzle-orm';
 import { DatabaseService } from '../../shared/database/database.service';
-import { contentPieces, contentImages, projectAssets } from '../../db/schema';
+import { contentPieces, contentImages, projectAssets, projects } from '../../db/schema';
 import { TopicalMapsService } from '../topical-maps/topical-maps.service';
 import { DataForSeoService } from '../integrations/dataforseo/dataforseo.service';
+import { ApiUsageContextService } from '../api-usage/api-usage-context.service';
 
 @Injectable()
 export class ContentService {
@@ -13,6 +14,7 @@ export class ContentService {
     private readonly db: DatabaseService,
     private readonly topicalMapsService: TopicalMapsService,
     private readonly dataForSeo: DataForSeoService,
+    private readonly apiUsageContext: ApiUsageContextService,
   ) {}
 
   async findAllByProject(projectId: string) {
@@ -324,9 +326,18 @@ export class ContentService {
       throw new BadRequestException('query is required');
     }
 
+    // Resolve organizationId from the project so API cost can be attributed
+    const project = await this.db.db.query.projects.findFirst({
+      where: eq(projects.id, projectId),
+      columns: { organizationId: true },
+    });
+    const organizationId = project?.organizationId;
+
     let items: Array<{ type?: string; title?: string; url?: string; description?: string; rank_absolute?: number; timestamp?: string }>;
     try {
-      items = await this.dataForSeo.searchRedditThreads(query, country);
+      items = await (organizationId
+        ? this.apiUsageContext.run({ organizationId, projectId }, () => this.dataForSeo.searchRedditThreads(query, country))
+        : this.dataForSeo.searchRedditThreads(query, country));
     } catch (error) {
       this.logger.error(`Forum search failed: ${error instanceof Error ? error.message : error}`);
       throw new BadRequestException(

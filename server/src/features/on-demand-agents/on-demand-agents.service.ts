@@ -6,6 +6,7 @@ import { CreditsService } from '../credits/credits.service';
 import { ProjectIntelligenceService } from '../projects/project-intelligence.service';
 import { AgentRouterService, AgentType, AGENT_CREDIT_COSTS, AGENT_TYPE_LABELS } from './agent-router.service';
 import { ContextBuilderRegistry } from './context-builders/context-builder.registry';
+import { ApiUsageContextService } from '../api-usage/api-usage-context.service';
 import { agentRuns } from '../../db/schema';
 
 export interface AgentRunRequest {
@@ -38,6 +39,7 @@ export class OnDemandAgentsService {
     private readonly intelligenceService: ProjectIntelligenceService,
     private readonly router: AgentRouterService,
     private readonly contextRegistry: ContextBuilderRegistry,
+    private readonly apiUsageContext: ApiUsageContextService,
   ) {}
 
   async run(request: AgentRunRequest): Promise<AgentRunResponse> {
@@ -76,7 +78,7 @@ export class OnDemandAgentsService {
       });
       const intelligenceXml = this.intelligenceService.renderContextXml(pisContext);
 
-      // Execute via AgentRuntime (structured output via return_output tool)
+      // Execute via AgentRuntime inside API usage context so Anthropic cost is tracked
       // 5-minute wall-clock timeout — prevents indefinite hangs on Anthropic API delays.
       const abortController = new AbortController();
       const abortTimer = setTimeout(() => {
@@ -86,18 +88,21 @@ export class OnDemandAgentsService {
 
       let result;
       try {
-        result = await this.agentRuntime.execute({
-          stepKey: `on-demand:${agentType}`,
-          projectId: request.projectId,
-          organizationId: request.organizationId,
-          systemPrompt: context.systemPrompt,
-          userPrompt: request.prompt,
-          allowedTools: [],
-          pipelineData: context.dataContext,
-          intelligenceContext: intelligenceXml || undefined,
-          maxIterations: 2,
-          signal: abortController.signal,
-        });
+        result = await this.apiUsageContext.run(
+          { organizationId: request.organizationId, projectId: request.projectId, stepKey: `on-demand:${agentType}` },
+          () => this.agentRuntime.execute({
+            stepKey: `on-demand:${agentType}`,
+            projectId: request.projectId,
+            organizationId: request.organizationId,
+            systemPrompt: context.systemPrompt,
+            userPrompt: request.prompt,
+            allowedTools: [],
+            pipelineData: context.dataContext,
+            intelligenceContext: intelligenceXml || undefined,
+            maxIterations: 2,
+            signal: abortController.signal,
+          }),
+        );
       } finally {
         clearTimeout(abortTimer);
       }

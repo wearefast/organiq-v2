@@ -10,6 +10,7 @@ import { FirecrawlService } from '../integrations/firecrawl/firecrawl.service';
 import { WebCrawlerService } from '../../shared/web-crawler/web-crawler.service';
 import { AhrefsService } from '../integrations/ahrefs/ahrefs.service';
 import { SerperService } from '../integrations/serper/serper.service';
+import { ApiUsageContextService } from '../api-usage/api-usage-context.service';
 import { projects } from '../../db/schema';
 const BUSINESS_PROFILE_CREDIT_COST = 30;
 const BUSINESS_PROFILE_PROMPT_PATH = 'discovery/business-profile.prompt.md';
@@ -30,6 +31,7 @@ export class BusinessProfileService {
     private readonly ahrefs: AhrefsService,
     private readonly serper: SerperService,
     private readonly config: ConfigService,
+    private readonly apiUsageContext: ApiUsageContextService,
   ) {}
 
   async getProfile(projectId: string, organizationId: string) {
@@ -45,6 +47,7 @@ export class BusinessProfileService {
   }
 
   async refresh(projectId: string, organizationId: string, forceRediscover = false) {
+    return this.apiUsageContext.run({ organizationId, projectId }, async () => {
     // 1. Ownership check
     const project = await this.db.db.query.projects.findFirst({
       where: and(eq(projects.id, projectId), eq(projects.organizationId, organizationId)),
@@ -232,6 +235,7 @@ export class BusinessProfileService {
       profile: updated.businessProfile,
       updatedAt: updated.businessProfileUpdatedAt,
     };
+    }); // end apiUsageContext.run()
   }
 
   /**
