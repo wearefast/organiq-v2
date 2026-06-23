@@ -3,12 +3,13 @@
 import { useEffect, useRef, useState } from 'react';
 import { useParams } from 'next/navigation';
 import { useAuth } from '@clerk/nextjs';
-import { setAuthToken } from '@/shared/utils/api';
+import { setAuthToken, apiFetch } from '@/shared/utils/api';
 import { BusinessProfileRenderer } from '@/features/workflow/renderers/business-profile';
 import {
   getBusinessProfile,
   refreshBusinessProfile,
   updateBusinessProfile,
+  updateProject,
 } from '@/features/projects/services/project.service';
 import type { BusinessProfile } from '@/features/projects/services/project.service';
 import { RefreshSuggestionsCard } from '@/features/projects/components/refresh-suggestions-card';
@@ -28,6 +29,13 @@ export default function OverviewPage() {
   const [error, setError] = useState<string | null>(null);
   const pollRef = useRef<ReturnType<typeof setInterval> | null>(null);
 
+  // Sitemap URL override state
+  const [customSitemapUrl, setCustomSitemapUrl] = useState('');
+  const [sitemapUrlDraft, setSitemapUrlDraft] = useState('');
+  const [sitemapUrlSaving, setSitemapUrlSaving] = useState(false);
+  const [sitemapUrlError, setSitemapUrlError] = useState<string | null>(null);
+  const [sitemapUrlSaved, setSitemapUrlSaved] = useState(false);
+
   // Stop polling helper
   const stopPolling = () => {
     if (pollRef.current !== null) {
@@ -41,9 +49,15 @@ export default function OverviewPage() {
     (async () => {
       try {
         setAuthToken(await getToken());
-        const data = await getBusinessProfile(params.pId);
-        setProfile(data.profile);
-        setUpdatedAt(data.updatedAt);
+        const [profileData, projectData] = await Promise.all([
+          getBusinessProfile(params.pId),
+          apiFetch<{ customSitemapUrl: string | null }>(`/projects/${params.pId}`),
+        ]);
+        setProfile(profileData.profile);
+        setUpdatedAt(profileData.updatedAt);
+        const saved = projectData.customSitemapUrl ?? '';
+        setCustomSitemapUrl(saved);
+        setSitemapUrlDraft(saved);
       } catch (err) {
         setError(err instanceof Error ? err.message : 'Failed to load business profile');
       } finally {
@@ -106,6 +120,28 @@ export default function OverviewPage() {
     // active ("Generating…") until the polling effect finds the new profile below.
   };
 
+  const handleSitemapUrlSave = async () => {
+    const trimmed = sitemapUrlDraft.trim();
+    if (trimmed && !/^https?:\/\/.+/.test(trimmed)) {
+      setSitemapUrlError('Must be a full URL starting with https://');
+      return;
+    }
+    setSitemapUrlSaving(true);
+    setSitemapUrlError(null);
+    setSitemapUrlSaved(false);
+    try {
+      setAuthToken(await getToken());
+      await updateProject(params.pId, { customSitemapUrl: trimmed || null });
+      setCustomSitemapUrl(trimmed);
+      setSitemapUrlSaved(true);
+      setTimeout(() => setSitemapUrlSaved(false), 3000);
+    } catch (err) {
+      setSitemapUrlError(err instanceof Error ? err.message : 'Failed to save');
+    } finally {
+      setSitemapUrlSaving(false);
+    }
+  };
+
   const handleEdit = () => {
     setDraftJson(JSON.stringify(profile, null, 2));
     setJsonError(null);
@@ -159,6 +195,48 @@ export default function OverviewPage() {
 
       <div data-tour="refresh-card">
         <RefreshSuggestionsCard projectId={params.pId} />
+      </div>
+
+      {/* Sitemap URL override */}
+      <div className="rounded-[20px] border border-zinc-800 bg-zinc-900/50 px-6 py-5">
+        <div className="mb-3">
+          <h2 className="text-sm font-semibold text-zinc-100">Sitemap URL</h2>
+          <p className="mt-0.5 text-xs text-zinc-500">
+            If the automatic sitemap discovery returns too few pages, paste your sitemap URL here.
+            It will be used as the primary source on the next analysis.
+          </p>
+        </div>
+        <div className="flex items-center gap-3">
+          <input
+            type="url"
+            value={sitemapUrlDraft}
+            onChange={(e) => { setSitemapUrlDraft(e.target.value); setSitemapUrlError(null); setSitemapUrlSaved(false); }}
+            placeholder="https://example.com/sitemap.xml"
+            className="h-9 flex-1 rounded-lg border border-zinc-700 bg-zinc-950 px-3 text-sm text-zinc-100 outline-none placeholder:text-zinc-600 transition-colors focus:border-sky-500/60"
+          />
+          <button
+            onClick={handleSitemapUrlSave}
+            disabled={sitemapUrlSaving || sitemapUrlDraft === customSitemapUrl}
+            className="h-9 shrink-0 rounded-lg bg-zinc-800 px-4 text-xs font-medium text-zinc-300 transition-colors hover:bg-zinc-700 disabled:cursor-not-allowed disabled:opacity-40"
+          >
+            {sitemapUrlSaving ? 'Saving…' : sitemapUrlSaved ? 'Saved ✓' : 'Save'}
+          </button>
+        </div>
+        {sitemapUrlError && (
+          <p className="mt-2 text-xs text-red-400">{sitemapUrlError}</p>
+        )}
+        {customSitemapUrl && (
+          <p className="mt-2 text-xs text-zinc-500">
+            Active: <span className="font-mono text-zinc-400">{customSitemapUrl}</span>
+            {' · '}
+            <button
+              onClick={() => { setSitemapUrlDraft(''); setCustomSitemapUrl(''); updateProject(params.pId, { customSitemapUrl: null }).catch(() => {}); }}
+              className="text-zinc-500 underline hover:text-zinc-300"
+            >
+              Clear
+            </button>
+          </p>
+        )}
       </div>
 
       <div data-tour="business-profile" className="rounded-[24px] border border-zinc-800 bg-zinc-900/50">

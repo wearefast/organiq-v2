@@ -57,6 +57,16 @@ export async function updateBusinessProfile(
   });
 }
 
+export async function updateProject(
+  projectId: string,
+  data: { customSitemapUrl?: string | null },
+): Promise<void> {
+  await apiFetch(`/projects/${projectId}`, {
+    method: 'PATCH',
+    body: JSON.stringify(data),
+  });
+}
+
 export async function getRefreshSuggestions(projectId: string): Promise<RefreshSuggestion[]> {
   return apiFetch<RefreshSuggestion[]>(`/projects/${projectId}/intelligence/refresh-suggestions`);
 }

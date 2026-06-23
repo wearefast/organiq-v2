@@ -29,6 +29,12 @@ export class CreateProjectDto {
   @IsString()
   @MaxLength(100)
   industry?: string;
+
+  @IsOptional()
+  @IsString()
+  @MaxLength(2048)
+  @IsUrl({ require_tld: true, require_protocol: true }, { message: 'customSitemapUrl must be a valid URL' })
+  customSitemapUrl?: string;
 }
 
 export class UpdateProjectDto {
@@ -56,4 +62,10 @@ export class UpdateProjectDto {
   @IsString()
   @MaxLength(100)
   industry?: string;
+
+  @IsOptional()
+  @IsString()
+  @MaxLength(2048)
+  @IsUrl({ require_tld: true, require_protocol: true }, { message: 'customSitemapUrl must be a valid URL' })
+  customSitemapUrl?: string | null;
 }

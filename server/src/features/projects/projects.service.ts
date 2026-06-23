@@ -62,7 +62,7 @@ export class ProjectsService {
   async update(
     id: string,
     organizationId: string,
-    data: { name?: string; domain?: string; country?: string; language?: string; industry?: string },
+    data: { name?: string; domain?: string; country?: string; language?: string; industry?: string; customSitemapUrl?: string | null },
   ) {
     const sanitized = data.domain ? { ...data, domain: sanitizeDomain(data.domain) } : data;
     const [updated] = await this.db.db
@@ -72,11 +72,12 @@ export class ProjectsService {
       .returning();
     if (!updated) throw new NotFoundException('Project not found');
 
-    // Re-discover sitemap when domain or locale changes
-    if (data.domain || data.country || data.language) {
+    // Re-discover sitemap when domain, locale, or custom sitemap URL changes
+    if (data.domain || data.country || data.language || 'customSitemapUrl' in data) {
       this.discoverAndStoreSitemap(updated.id, updated.domain, {
         country: updated.country ?? undefined,
         language: updated.language ?? undefined,
+        customSitemapUrl: updated.customSitemapUrl ?? undefined,
       }).catch((err) =>
         this.logger.warn(`Sitemap re-discovery failed for project ${updated.id}: ${err.message}`),
       );
@@ -94,6 +95,7 @@ export class ProjectsService {
     await this.discoverAndStoreSitemap(project.id, project.domain, {
       country: project.country ?? undefined,
       language: project.language ?? undefined,
+      customSitemapUrl: project.customSitemapUrl ?? undefined,
     });
     return this.findById(id, organizationId);
   }
@@ -107,10 +109,10 @@ export class ProjectsService {
   async discoverAndStoreSitemap(
     projectId: string,
     domain: string,
-    hints?: { country?: string; language?: string },
+    hints?: { country?: string; language?: string; customSitemapUrl?: string },
   ): Promise<void> {
     const siteUrl = `https://${domain}`;
-    this.logger.log(`Discovering sitemap for ${domain} (country=${hints?.country ?? 'none'}, lang=${hints?.language ?? 'none'})`);
+    this.logger.log(`Discovering sitemap for ${domain} (country=${hints?.country ?? 'none'}, lang=${hints?.language ?? 'none'}, customSitemapUrl=${hints?.customSitemapUrl ?? 'none'})`);
     const { pageUrls } = await this.webCrawler.discoverSitePages(siteUrl, 100, hints);
     await this.db.db
       .update(projects)

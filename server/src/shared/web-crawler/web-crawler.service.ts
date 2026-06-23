@@ -99,17 +99,22 @@ export class WebCrawlerService {
   async discoverSitePages(
     siteUrl: string,
     limit = 25,
-    hints?: { country?: string; language?: string },
+    hints?: { country?: string; language?: string; customSitemapUrl?: string },
   ): Promise<SiteDiscoveryResult> {
     await this.validateUrlSafety(siteUrl);
 
     const origin = new URL(siteUrl).origin;
 
+    // Validate and SSRF-check the custom sitemap URL if provided
+    if (hints?.customSitemapUrl) {
+      await this.validateUrlSafety(hints.customSitemapUrl);
+    }
+
     // Fetch robots.txt — we need this before building the probe list
     const robotsTxt = await this.fetchText(`${origin}/robots.txt`);
     const robotsSitemapUrls = this.extractRobotsSitemapUrls(robotsTxt, origin);
 
-    // Build ordered probe list: locale-specific paths first → robots.txt → standard
+    // Build ordered probe list: custom URL first → locale-specific → robots.txt → standard
     const probeList = this.buildSitemapProbeList(origin, robotsSitemapUrls, hints);
 
     let lastXml = '';
@@ -164,9 +169,14 @@ export class WebCrawlerService {
   private buildSitemapProbeList(
     origin: string,
     robotsSitemapUrls: string[],
-    hints?: { country?: string; language?: string },
+    hints?: { country?: string; language?: string; customSitemapUrl?: string },
   ): string[] {
     const probes: string[] = [];
+
+    // User-supplied sitemap URL — always probed first, bypasses all auto-detection
+    if (hints?.customSitemapUrl) {
+      probes.push(hints.customSitemapUrl);
+    }
 
     if (hints?.country && hints?.language) {
       const country = hints.country.toLowerCase();
@@ -256,6 +266,7 @@ export class WebCrawlerService {
       if (topScore > 0) {
         // Fetch ALL children tied at the top score — e.g. uae/en + uae/ar for country=AE
         const topMatches = scored.filter((s) => s.score === topScore).map((s) => s.url);
+        const remainingChildren = scored.filter((s) => s.score < topScore).map((s) => s.url);
         this.logger.debug(
           `Best child sitemaps (score ${topScore}): ${topMatches.join(', ')}`,
         );
@@ -265,7 +276,24 @@ export class WebCrawlerService {
           merged.push(...this.parseSitemapUrls(xml, origin, limit));
           if (merged.length >= limit) break;
         }
-        return merged.slice(0, limit);
+
+        // If the locale-specific child sitemaps yielded very few pages (e.g. only a
+        // "pages" sitemap was scored, while blog/products sitemaps had score 0),
+        // supplement with pages from the remaining children until we hit the limit.
+        if (merged.length < Math.min(20, limit) && remainingChildren.length > 0) {
+          this.logger.debug(
+            `Only ${merged.length} pages from top-scored children — supplementing from ${remainingChildren.length} remaining child sitemaps`,
+          );
+          const supplementXmls = await Promise.all(
+            remainingChildren.slice(0, 10).map((u) => this.fetchText(u)),
+          );
+          for (const xml of supplementXmls) {
+            merged.push(...this.parseSitemapUrls(xml, origin, limit - merged.length));
+            if (merged.length >= limit) break;
+          }
+        }
+
+        return [...new Set(merged)].slice(0, limit);
       }
 
       // No locale match in index — merge pages from first N child sitemaps

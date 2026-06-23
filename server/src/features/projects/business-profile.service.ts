@@ -71,10 +71,11 @@ export class BusinessProfileService {
     if (sitemapUrls.length === 0 || forceRediscover) {
       try {
         const siteUrl = domain.startsWith('http') ? domain : `https://${domain}`;
-        this.logger.log(`Discovering sitemap for ${domain} (country=${project.country ?? 'none'}, lang=${project.language ?? 'none'})`);
+        this.logger.log(`Discovering sitemap for ${domain} (country=${project.country ?? 'none'}, lang=${project.language ?? 'none'}, customSitemapUrl=${project.customSitemapUrl ?? 'none'})`);
         const { pageUrls } = await this.webCrawler.discoverSitePages(siteUrl, 100, {
           country: project.country ?? undefined,
           language: project.language ?? undefined,
+          customSitemapUrl: project.customSitemapUrl ?? undefined,
         });
         sitemapUrls = pageUrls;
         await this.db.db
