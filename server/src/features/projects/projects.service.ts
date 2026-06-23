@@ -111,7 +111,7 @@ export class ProjectsService {
   ): Promise<void> {
     const siteUrl = `https://${domain}`;
     this.logger.log(`Discovering sitemap for ${domain} (country=${hints?.country ?? 'none'}, lang=${hints?.language ?? 'none'})`);
-    const { pageUrls } = await this.webCrawler.discoverSitePages(siteUrl, 25, hints);
+    const { pageUrls } = await this.webCrawler.discoverSitePages(siteUrl, 100, hints);
     await this.db.db
       .update(projects)
       .set({ sitemapUrls: pageUrls, sitemapDiscoveredAt: new Date(), updatedAt: new Date() })

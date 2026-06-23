@@ -1,5 +1,7 @@
 import { Controller, Get, Post, Patch, Delete, Param, Body, UseGuards, Req, Query, Logger } from '@nestjs/common';
 import { ApiTags, ApiBearerAuth } from '@nestjs/swagger';
+import { InjectQueue } from '@nestjs/bullmq';
+import { Queue } from 'bullmq';
 import { ProjectsService } from './projects.service';
 import { BusinessProfileService } from './business-profile.service';
 import { ProjectIntelligenceService } from './project-intelligence.service';
@@ -21,6 +23,7 @@ export class ProjectsController {
     private readonly businessProfileService: BusinessProfileService,
     private readonly intelligenceService: ProjectIntelligenceService,
     private readonly accessService: AccessService,
+    @InjectQueue('business-profile') private readonly businessProfileQueue: Queue,
   ) {}
 
   @Get('workspace/:workspaceId')
@@ -53,9 +56,12 @@ export class ProjectsController {
   @PlanLimit('projects')
   async create(@Body() body: CreateProjectDto) {
     const project = await this.projectsService.create(body);
-    // Fire-and-forget: generate business profile immediately after project creation
-    this.businessProfileService.refresh(project.id, body.organizationId).catch((err: Error) =>
-      this.logger.warn(`Auto business profile failed for project ${project.id}: ${err.message}`),
+    // Queue business profile generation in background
+    await this.businessProfileQueue.add('refresh', {
+      projectId: project.id,
+      organizationId: body.organizationId,
+    }).catch((err: Error) =>
+      this.logger.warn(`Failed to queue business profile for project ${project.id}: ${err.message}`),
     );
     return project;
   }
@@ -86,7 +92,7 @@ export class ProjectsController {
 
   @Post(':id/business-profile/refresh')
   async refreshBusinessProfile(@Param('id') id: string, @Req() req: any) {
-    return this.businessProfileService.refresh(id, req.org.id);
+    return this.businessProfileService.refresh(id, req.org.id, true);
   }
 
   @Patch(':id/business-profile')

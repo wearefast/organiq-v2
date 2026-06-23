@@ -44,7 +44,7 @@ export class BusinessProfileService {
     };
   }
 
-  async refresh(projectId: string, organizationId: string) {
+  async refresh(projectId: string, organizationId: string, forceRediscover = false) {
     // 1. Ownership check
     const project = await this.db.db.query.projects.findFirst({
       where: and(eq(projects.id, projectId), eq(projects.organizationId, organizationId)),
@@ -64,26 +64,29 @@ export class BusinessProfileService {
     const baseUrl = domain.startsWith('http') ? domain.replace(/\/$/, '') : `https://${domain}`;
     this.logger.log(`Refreshing business profile for ${baseUrl}`);
 
-    // Always re-discover sitemap on a refresh — ensures locale-correct URLs are used
-    // and clears any stale data from before locale-aware discovery was in place.
+    // Re-discover sitemap only when the project has none yet (first profile generation)
+    // or when explicitly refreshing. On project creation, ProjectsService.discoverAndStoreSitemap
+    // runs concurrently with limit=100 — re-running here with a second write would race.
     let sitemapUrls = project.sitemapUrls ?? [];
-    try {
-      const siteUrl = domain.startsWith('http') ? domain : `https://${domain}`;
-      this.logger.log(`Re-discovering sitemap for ${domain} (country=${project.country ?? 'none'}, lang=${project.language ?? 'none'})`);
-      const { pageUrls } = await this.webCrawler.discoverSitePages(siteUrl, 100, {
-        country: project.country ?? undefined,
-        language: project.language ?? undefined,
-      });
-      sitemapUrls = pageUrls;
-      // Persist updated URLs so the project record stays current
-      await this.db.db
-        .update(projects)
-        .set({ sitemapUrls: pageUrls, sitemapDiscoveredAt: new Date(), updatedAt: new Date() })
-        .where(and(eq(projects.id, projectId), eq(projects.organizationId, organizationId)));
-      this.logger.log(`Sitemap refreshed: ${pageUrls.length} pages for project ${projectId}`);
-    } catch (err) {
-      this.logger.warn(`Sitemap discovery failed for ${domain}: ${(err as Error).message}`);
-      // Fall back to whatever was cached — better than nothing
+    if (sitemapUrls.length === 0 || forceRediscover) {
+      try {
+        const siteUrl = domain.startsWith('http') ? domain : `https://${domain}`;
+        this.logger.log(`Discovering sitemap for ${domain} (country=${project.country ?? 'none'}, lang=${project.language ?? 'none'})`);
+        const { pageUrls } = await this.webCrawler.discoverSitePages(siteUrl, 100, {
+          country: project.country ?? undefined,
+          language: project.language ?? undefined,
+        });
+        sitemapUrls = pageUrls;
+        await this.db.db
+          .update(projects)
+          .set({ sitemapUrls: pageUrls, sitemapDiscoveredAt: new Date(), updatedAt: new Date() })
+          .where(and(eq(projects.id, projectId), eq(projects.organizationId, organizationId)));
+        this.logger.log(`Sitemap discovered: ${pageUrls.length} pages for project ${projectId}`);
+      } catch (err) {
+        this.logger.warn(`Sitemap discovery failed for ${domain}: ${(err as Error).message}`);
+      }
+    } else {
+      this.logger.log(`Using existing sitemap with ${sitemapUrls.length} URLs for project ${projectId}`);
     }
 
     const keyPages = [baseUrl, `${baseUrl}/about`, `${baseUrl}/services`, `${baseUrl}/about-us`, `${baseUrl}/contact`, `${baseUrl}/how-to`, `${baseUrl}/faq`];
