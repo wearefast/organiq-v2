@@ -237,7 +237,7 @@ export function SideNav() {
   const projectMatch = pathname.match(/\/workspaces\/([^/]+)\/projects\/([^/]+)/);
   const projectItems = projectMatch ? getProjectItems(projectMatch[1], projectMatch[2]) : [];
   const profileReady = useBusinessProfileReady(projectMatch?.[2]);
-  const { membership } = useOrganization();
+  const { membership, organization } = useOrganization();
   const { user } = useUser();
   const isAdmin = membership?.role === 'org:admin' || membership?.role === 'org:owner';
   // CVE-005: Use server-side admin check — never rely on NEXT_PUBLIC_SUPER_ADMIN_CLERK_IDS
@@ -290,6 +290,12 @@ export function SideNav() {
       </nav>
 
       <div className="flex flex-col gap-1 border-t border-zinc-800 px-2 py-3">
+        {organization?.name && (
+          <div className="mb-2 px-2 py-2">
+            <p className="text-[11px] font-semibold uppercase tracking-wide text-zinc-500">Organization</p>
+            <p className="mt-1 truncate text-sm font-medium text-zinc-300">{organization.name}</p>
+          </div>
+        )}
         {superAdmin && (
           <NavLink
             item={{ href: '/admin', icon: ShieldAlert, label: 'Platform Admin' }}
