@@ -57,6 +57,12 @@ jobs:
             
             echo "Pulling latest image..."
             docker pull ${{ secrets.ECR_REGISTRY }}/${{ env.ECR_REPOSITORY }}:latest
+
+            echo "Running database migrations..."
+            docker run --rm \
+              --env-file /opt/organiq/.env \
+              ${{ secrets.ECR_REGISTRY }}/${{ env.ECR_REPOSITORY }}:latest \
+              node dist/migrate.js
             
             echo "Stopping and removing old container..."
             docker stop organiq-server 2>/dev/null || true

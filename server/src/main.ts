@@ -3,24 +3,7 @@ import { ValidationPipe } from '@nestjs/common';
 import { SwaggerModule, DocumentBuilder } from '@nestjs/swagger';
 import { Logger } from 'nestjs-pino';
 import helmet from 'helmet';
-import { drizzle } from 'drizzle-orm/node-postgres';
-import { migrate } from 'drizzle-orm/node-postgres/migrator';
-import { Pool } from 'pg';
-import * as path from 'path';
 import { AppModule } from './app.module';
-
-async function runMigrations() {
-  const connectionString = process.env.DATABASE_URL || 'postgresql://pulse:pulse@localhost:5433/pulse_v2';
-  const isRds = connectionString.includes('rds.amazonaws.com');
-  const ssl = isRds ? { rejectUnauthorized: false } : undefined;
-  const pool = new Pool({ connectionString, ssl });
-  const db = drizzle(pool);
-  const migrationsFolder = path.join(__dirname, '..', 'drizzle');
-  console.log(`Running migrations from ${migrationsFolder}...`);
-  await migrate(db, { migrationsFolder });
-  await pool.end();
-  console.log('Migrations complete.');
-}
 
 async function bootstrap() {
   const app = await NestFactory.create(AppModule, { bufferLogs: true, rawBody: true });
@@ -86,13 +69,8 @@ async function bootstrap() {
   }
 }
 
-runMigrations()
-  .catch((err) => {
-    console.error('Migrations failed (non-fatal, continuing startup):', err);
-  })
-  .then(() => bootstrap())
-  .catch((err) => {
-    console.error('Failed to start:', err);
-    process.exit(1);
-  });
+bootstrap().catch((err) => {
+  console.error('Failed to start:', err);
+  process.exit(1);
+});
 
