@@ -199,72 +199,6 @@ export default function OverviewPage() {
         <RefreshSuggestionsCard projectId={params.pId} />
       </div>
 
-      {/* Sitemap URL override */}
-      <div className="rounded-[20px] border border-zinc-800 bg-zinc-900/50 px-6 py-5">
-        <div className="flex items-center justify-between">
-          <div>
-            <h2 className="text-sm font-semibold text-zinc-100">Sitemap URL</h2>
-            {!editingSitemapUrl && (
-              <p className="mt-0.5 text-xs text-zinc-500">
-                {customSitemapUrl
-                  ? <><span className="font-mono text-zinc-400">{customSitemapUrl}</span>{sitemapUrlSaved && <span className="ml-2 text-emerald-400">Saved ✓</span>}</>
-                  : 'No custom sitemap set — using auto-discovery.'}
-              </p>
-            )}
-          </div>
-          {!editingSitemapUrl && (
-            <button
-              onClick={() => { setSitemapUrlDraft(customSitemapUrl); setSitemapUrlError(null); setEditingSitemapUrl(true); }}
-              className="rounded-lg bg-zinc-800 px-3 py-1.5 text-xs font-medium text-zinc-300 transition-colors hover:bg-zinc-700"
-            >
-              Edit
-            </button>
-          )}
-        </div>
-
-        {editingSitemapUrl && (
-          <div className="mt-3 space-y-2">
-            <p className="text-xs text-zinc-500">
-              Paste your sitemap URL below. It will be used as the primary source on the next analysis.
-            </p>
-            <div className="flex items-center gap-3">
-              <input
-                type="url"
-                value={sitemapUrlDraft}
-                onChange={(e) => { setSitemapUrlDraft(e.target.value); setSitemapUrlError(null); }}
-                placeholder="https://example.com/sitemap.xml"
-                autoFocus
-                className="h-9 flex-1 rounded-lg border border-zinc-700 bg-zinc-950 px-3 text-sm text-zinc-100 outline-none placeholder:text-zinc-600 transition-colors focus:border-sky-500/60"
-              />
-              <button
-                onClick={handleSitemapUrlSave}
-                disabled={sitemapUrlSaving}
-                className="h-9 shrink-0 rounded-lg bg-sky-500/10 px-4 text-xs font-medium text-sky-400 transition-colors hover:bg-sky-500/20 disabled:cursor-not-allowed disabled:opacity-40"
-              >
-                {sitemapUrlSaving ? 'Saving…' : 'Save'}
-              </button>
-              <button
-                onClick={() => { setEditingSitemapUrl(false); setSitemapUrlError(null); }}
-                className="h-9 shrink-0 rounded-lg bg-zinc-800 px-4 text-xs font-medium text-zinc-400 transition-colors hover:bg-zinc-700"
-              >
-                Cancel
-              </button>
-            </div>
-            {sitemapUrlError && (
-              <p className="text-xs text-red-400">{sitemapUrlError}</p>
-            )}
-            {customSitemapUrl && (
-              <button
-                onClick={() => { setSitemapUrlDraft(''); setCustomSitemapUrl(''); setEditingSitemapUrl(false); updateProject(params.pId, { customSitemapUrl: null }).catch(() => {}); }}
-                className="text-xs text-zinc-500 underline hover:text-zinc-300"
-              >
-                Clear custom URL
-              </button>
-            )}
-          </div>
-        )}
-      </div>
-
       <div data-tour="business-profile" className="rounded-[24px] border border-zinc-800 bg-zinc-900/50">
         <div className="flex items-center justify-between border-b border-zinc-800 px-6 py-4">
           <div>
@@ -352,7 +286,20 @@ export default function OverviewPage() {
               />
             </div>
           ) : profile ? (
-            <BusinessProfileRenderer data={profile} />
+            <BusinessProfileRenderer
+              data={profile}
+              customSitemapUrl={customSitemapUrl}
+              editingSitemapUrl={editingSitemapUrl}
+              sitemapUrlDraft={sitemapUrlDraft}
+              sitemapUrlSaving={sitemapUrlSaving}
+              sitemapUrlError={sitemapUrlError}
+              sitemapUrlSaved={sitemapUrlSaved}
+              onEditSitemapUrl={() => { setSitemapUrlDraft(customSitemapUrl); setSitemapUrlError(null); setEditingSitemapUrl(true); }}
+              onSaveSitemapUrl={handleSitemapUrlSave}
+              onCancelEditSitemapUrl={() => { setEditingSitemapUrl(false); setSitemapUrlError(null); }}
+              onChangeSitemapUrlDraft={(val) => { setSitemapUrlDraft(val); setSitemapUrlError(null); }}
+              onClearSitemapUrl={() => { setSitemapUrlDraft(''); setCustomSitemapUrl(''); setEditingSitemapUrl(false); updateProject(params.pId, { customSitemapUrl: null }).catch(() => {}); }}
+            />
           ) : (
             <div className="flex flex-col items-center gap-4 py-10 text-center">
               <div className="rounded-full bg-zinc-800 p-4">

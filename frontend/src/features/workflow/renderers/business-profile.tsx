@@ -67,7 +67,33 @@ interface BusinessProfileData {
   [key: string]: unknown;
 }
 
-export function BusinessProfileRenderer({ data }: { data: unknown }) {
+export function BusinessProfileRenderer({
+  data,
+  customSitemapUrl,
+  editingSitemapUrl,
+  sitemapUrlDraft,
+  sitemapUrlSaving,
+  sitemapUrlError,
+  sitemapUrlSaved,
+  onEditSitemapUrl,
+  onSaveSitemapUrl,
+  onCancelEditSitemapUrl,
+  onChangeSitemapUrlDraft,
+  onClearSitemapUrl,
+}: {
+  data: unknown;
+  customSitemapUrl?: string | null;
+  editingSitemapUrl?: boolean;
+  sitemapUrlDraft?: string;
+  sitemapUrlSaving?: boolean;
+  sitemapUrlError?: string | null;
+  sitemapUrlSaved?: boolean;
+  onEditSitemapUrl?: () => void;
+  onSaveSitemapUrl?: () => void;
+  onCancelEditSitemapUrl?: () => void;
+  onChangeSitemapUrlDraft?: (val: string) => void;
+  onClearSitemapUrl?: () => void;
+}) {
   const profile = data as BusinessProfileData;
 
   if (!profile || typeof profile !== 'object') {
@@ -396,7 +422,22 @@ export function BusinessProfileRenderer({ data }: { data: unknown }) {
         </Panel>
       )}
 
-      {sitemapUrls.length > 0 && <SitemapSection urls={sitemapUrls} />}
+      {sitemapUrls.length > 0 && (
+        <SitemapSection
+          urls={sitemapUrls}
+          customSitemapUrl={customSitemapUrl}
+          editingSitemapUrl={editingSitemapUrl}
+          sitemapUrlDraft={sitemapUrlDraft}
+          sitemapUrlSaving={sitemapUrlSaving}
+          sitemapUrlError={sitemapUrlError}
+          sitemapUrlSaved={sitemapUrlSaved}
+          onEditSitemapUrl={onEditSitemapUrl}
+          onSaveSitemapUrl={onSaveSitemapUrl}
+          onCancelEditSitemapUrl={onCancelEditSitemapUrl}
+          onChangeSitemapUrlDraft={onChangeSitemapUrlDraft}
+          onClearSitemapUrl={onClearSitemapUrl}
+        />
+      )}
 
       {remainingFields.length > 0 && (
         <Panel title="Raw extracted signals" subtitle="Fields returned by the agent not yet promoted into the main layout. Trigger a profile refresh to see new sections.">
@@ -720,7 +761,33 @@ function AnalystNotesBlock({ value }: { value: string }) {
   );
 }
 
-function SitemapSection({ urls }: { urls: string[] }) {
+function SitemapSection({
+  urls,
+  customSitemapUrl,
+  editingSitemapUrl,
+  sitemapUrlDraft,
+  sitemapUrlSaving,
+  sitemapUrlError,
+  sitemapUrlSaved,
+  onEditSitemapUrl,
+  onSaveSitemapUrl,
+  onCancelEditSitemapUrl,
+  onChangeSitemapUrlDraft,
+  onClearSitemapUrl,
+}: {
+  urls: string[];
+  customSitemapUrl?: string | null;
+  editingSitemapUrl?: boolean;
+  sitemapUrlDraft?: string;
+  sitemapUrlSaving?: boolean;
+  sitemapUrlError?: string | null;
+  sitemapUrlSaved?: boolean;
+  onEditSitemapUrl?: () => void;
+  onSaveSitemapUrl?: () => void;
+  onCancelEditSitemapUrl?: () => void;
+  onChangeSitemapUrlDraft?: (val: string) => void;
+  onClearSitemapUrl?: () => void;
+}) {
   const [expanded, setExpanded] = useState(false);
   const PREVIEW_COUNT = 8;
   const visible = expanded ? urls : urls.slice(0, PREVIEW_COUNT);
@@ -730,6 +797,71 @@ function SitemapSection({ urls }: { urls: string[] }) {
       title={`Sitemap · ${urls.length} pages`}
       subtitle="URL inventory discovered from the site's sitemap — passed to the agent as context."
     >
+      {/* Custom Sitemap URL Edit Card */}
+      {onEditSitemapUrl && (
+        <div className="mb-4 rounded-lg border border-zinc-800 bg-zinc-900/50 p-3.5">
+          <div className="flex items-center justify-between">
+            <div className="flex-1">
+              <h3 className="text-xs font-medium text-zinc-300">Custom Sitemap URL</h3>
+              {!editingSitemapUrl && (
+                <p className="mt-1 text-xs text-zinc-500">
+                  {customSitemapUrl
+                    ? <><span className="font-mono text-zinc-400">{customSitemapUrl}</span>{sitemapUrlSaved && <span className="ml-2 text-emerald-400">✓</span>}</> 
+                    : 'Auto-discovery active'}
+                </p>
+              )}
+            </div>
+            {!editingSitemapUrl && (
+              <button
+                onClick={onEditSitemapUrl}
+                className="ml-2 rounded-md bg-zinc-800 px-2.5 py-1 text-xs font-medium text-zinc-300 transition-colors hover:bg-zinc-700"
+              >
+                Edit
+              </button>
+            )}
+          </div>
+
+          {editingSitemapUrl && (
+            <div className="mt-3 space-y-2">
+              <div className="flex items-center gap-2">
+                <input
+                  type="url"
+                  value={sitemapUrlDraft || ''}
+                  onChange={(e) => onChangeSitemapUrlDraft?.(e.target.value)}
+                  placeholder="https://example.com/sitemap.xml"
+                  autoFocus
+                  className="h-8 flex-1 rounded-md border border-zinc-700 bg-zinc-950 px-2.5 text-xs text-zinc-100 outline-none placeholder:text-zinc-600 transition-colors focus:border-sky-500/60"
+                />
+                <button
+                  onClick={onSaveSitemapUrl}
+                  disabled={sitemapUrlSaving}
+                  className="h-8 shrink-0 rounded-md bg-sky-500/10 px-3 text-xs font-medium text-sky-400 transition-colors hover:bg-sky-500/20 disabled:cursor-not-allowed disabled:opacity-40"
+                >
+                  {sitemapUrlSaving ? '...' : 'Save'}
+                </button>
+                <button
+                  onClick={onCancelEditSitemapUrl}
+                  className="h-8 shrink-0 rounded-md bg-zinc-800 px-3 text-xs font-medium text-zinc-400 transition-colors hover:bg-zinc-700"
+                >
+                  Cancel
+                </button>
+              </div>
+              {sitemapUrlError && (
+                <p className="text-xs text-red-400">{sitemapUrlError}</p>
+              )}
+              {customSitemapUrl && (
+                <button
+                  onClick={onClearSitemapUrl}
+                  className="text-xs text-zinc-500 underline hover:text-zinc-300"
+                >
+                  Clear custom URL
+                </button>
+              )}
+            </div>
+          )}
+        </div>
+      )}
+
       <div className="grid gap-1 sm:grid-cols-2">
         {visible.map((url) => (
           <a
