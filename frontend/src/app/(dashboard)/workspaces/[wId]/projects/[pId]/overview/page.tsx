@@ -54,17 +54,19 @@ export default function OverviewPage() {
   }, [params.pId, isSignedIn, getToken]);
 
   // When profile is still null after initial load, poll every 5s for the
-  // background-generated profile (triggered automatically on project creation).
+  // background-generated profile (triggered automatically on project creation
+  // or after a manual refresh which queues a background job).
   useEffect(() => {
     if (loading || profile !== null || !params.pId || !isSignedIn) return;
 
-    const MAX_POLLS = 24; // 2 minutes max
+    const MAX_POLLS = 36; // 3 minutes max (background refresh can take ~120s)
     let count = 0;
 
     pollRef.current = setInterval(async () => {
       count += 1;
       if (count > MAX_POLLS) {
         stopPolling();
+        setRefreshing(false);
         return;
       }
       try {
@@ -72,6 +74,7 @@ export default function OverviewPage() {
         if (data.profile) {
           setProfile(data.profile);
           setUpdatedAt(data.updatedAt);
+          setRefreshing(false);
           stopPolling();
         }
       } catch {
@@ -88,15 +91,19 @@ export default function OverviewPage() {
     setError(null);
     try {
       setAuthToken(await getToken());
-      const data = await refreshBusinessProfile(params.pId);
-      setProfile(data.profile);
-      setUpdatedAt(data.updatedAt);
+      // Refresh is queued server-side and returns immediately with the current profile.
+      // Clear the local profile so the polling effect re-activates and picks up the
+      // new profile once the background job completes (~60-120s).
+      await refreshBusinessProfile(params.pId);
+      setProfile(null);
+      setUpdatedAt(null);
       setEditing(false);
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Business profile refresh failed');
-    } finally {
       setRefreshing(false);
     }
+    // Note: setRefreshing(false) is intentionally omitted here — the spinner stays
+    // active ("Generating…") until the polling effect finds the new profile below.
   };
 
   const handleEdit = () => {

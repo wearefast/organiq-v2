@@ -468,6 +468,19 @@ export class WebCrawlerService {
         .filter((s) => s.score >= threshold)
         .sort((a, b) => b.score - a.score)
         .map((s) => s.url);
+
+      // If locale filtering is too aggressive (e.g. only 2 locale-prefixed pages on an
+      // otherwise un-localized site), supplement with non-penalized root pages so the
+      // business profile has enough content to analyse.
+      if (filtered.length < Math.min(10, limit)) {
+        const supplementary = scored
+          .filter((s) => s.score >= 0 && s.score < threshold)
+          .sort((a, b) => b.score - a.score)
+          .map((s) => s.url);
+        const combined = [...new Set([...filtered, ...supplementary])];
+        return combined.slice(0, limit);
+      }
+
       return filtered.slice(0, limit);
     }
 

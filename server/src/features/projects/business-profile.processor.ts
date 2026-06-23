@@ -14,8 +14,8 @@ export class BusinessProfileProcessor extends WorkerHost {
   async process(job: Job): Promise<void> {
     switch (job.name) {
       case 'refresh':
-        this.logger.log(`Refreshing business profile for project ${job.data.projectId}`);
-        await this.service.refresh(job.data.projectId, job.data.organizationId);
+        this.logger.log(`Refreshing business profile for project ${job.data.projectId} (forceRediscover=${job.data.forceRediscover ?? false})`);
+        await this.service.refresh(job.data.projectId, job.data.organizationId, job.data.forceRediscover ?? false);
         this.logger.log(`Business profile refreshed for project ${job.data.projectId}`);
         break;
       default:

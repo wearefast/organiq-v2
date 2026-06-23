@@ -92,7 +92,17 @@ export class ProjectsController {
 
   @Post(':id/business-profile/refresh')
   async refreshBusinessProfile(@Param('id') id: string, @Req() req: any) {
-    return this.businessProfileService.refresh(id, req.org.id, true);
+    // Queue in background — the scraping+LLM pipeline takes 60-180s, far too long
+    // for a synchronous HTTP response. Return the current profile immediately;
+    // the frontend polls until the new profile appears.
+    await this.businessProfileQueue.add('refresh', {
+      projectId: id,
+      organizationId: req.org.id,
+      forceRediscover: true,
+    }).catch((err: Error) =>
+      this.logger.warn(`Failed to queue business profile refresh for ${id}: ${err.message}`),
+    );
+    return this.businessProfileService.getProfile(id, req.org.id);
   }
 
   @Patch(':id/business-profile')
