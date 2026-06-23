@@ -80,6 +80,7 @@ export function BusinessProfileRenderer({
   onCancelEditSitemapUrl,
   onChangeSitemapUrlDraft,
   onClearSitemapUrl,
+  onSaveCompetitors,
 }: {
   data: unknown;
   customSitemapUrl?: string | null;
@@ -93,8 +94,12 @@ export function BusinessProfileRenderer({
   onCancelEditSitemapUrl?: () => void;
   onChangeSitemapUrlDraft?: (val: string) => void;
   onClearSitemapUrl?: () => void;
+  onSaveCompetitors?: (list: string[]) => Promise<void>;
 }) {
   const profile = data as BusinessProfileData;
+  const [editingCompetitors, setEditingCompetitors] = useState(false);
+  const [competitorDraft, setCompetitorDraft] = useState<string[]>([]);
+  const [savingCompetitors, setSavingCompetitors] = useState(false);
 
   if (!profile || typeof profile !== 'object') {
     return <p className="text-sm text-zinc-500">No profile data available.</p>;
@@ -344,13 +349,111 @@ export function BusinessProfileRenderer({
 
         {/* Right: competitive intelligence + social */}
         <div className="space-y-5">
-          {competitors.length > 0 && (
-            <Panel title="Competitor landscape" subtitle="Named alternatives with authority and content signals.">
-              <div className="grid grid-cols-2 gap-2">
-                {competitors.map((c, i) => (
-                  <CompetitorCard key={i} competitor={c} />
-                ))}
-              </div>
+          {(competitors.length > 0 || onSaveCompetitors) && (
+            <Panel
+              title="Competitor landscape"
+              subtitle={editingCompetitors ? undefined : (competitors.length === 0 ? 'No competitors added yet.' : 'Named alternatives with authority and content signals.')}
+              action={
+                onSaveCompetitors && !editingCompetitors ? (
+                  <button
+                    onClick={() => {
+                      const draft = competitors.map((c) =>
+                        c.url ? `${c.name} - ${c.url}` : c.name,
+                      );
+                      while (draft.length < 1) draft.push('');
+                      setCompetitorDraft(draft);
+                      setEditingCompetitors(true);
+                    }}
+                    className="rounded-lg bg-zinc-800 px-2.5 py-1 text-xs font-medium text-zinc-300 transition-colors hover:bg-zinc-700"
+                  >
+                    Edit
+                  </button>
+                ) : undefined
+              }
+            >
+              {editingCompetitors ? (
+                <div className="space-y-3">
+                  <div className="space-y-2">
+                    {competitorDraft.map((val, i) => (
+                      <div key={i} className="flex items-center gap-2">
+                        <input
+                          value={val}
+                          onChange={(e) =>
+                            setCompetitorDraft((d) =>
+                              d.map((v, idx) => (idx === i ? e.target.value : v)),
+                            )
+                          }
+                          placeholder="BrandName - domain.com"
+                          className="h-9 flex-1 rounded-lg border border-zinc-700 bg-zinc-950 px-3 text-sm text-zinc-100 outline-none focus:border-sky-500/50"
+                        />
+                        {competitorDraft.length > 1 && (
+                          <button
+                            type="button"
+                            onClick={() =>
+                              setCompetitorDraft((d) => d.filter((_, idx) => idx !== i))
+                            }
+                            className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg border border-zinc-700 text-zinc-500 transition-colors hover:border-zinc-600 hover:text-zinc-300"
+                            aria-label="Remove competitor"
+                          >
+                            ×
+                          </button>
+                        )}
+                      </div>
+                    ))}
+                  </div>
+                  {competitorDraft.length < 10 && (
+                    <button
+                      type="button"
+                      onClick={() => setCompetitorDraft((d) => [...d, ''])}
+                      className="text-xs text-sky-400 transition-colors hover:text-sky-300"
+                    >
+                      + Add competitor
+                    </button>
+                  )}
+                  <div className="flex items-center gap-2 pt-1">
+                    <button
+                      type="button"
+                      onClick={() => { setEditingCompetitors(false); setSavingCompetitors(false); }}
+                      disabled={savingCompetitors}
+                      className="rounded-lg bg-zinc-800 px-3 py-1.5 text-xs font-medium text-zinc-300 transition-colors hover:bg-zinc-700 disabled:opacity-50"
+                    >
+                      Cancel
+                    </button>
+                    <button
+                      type="button"
+                      onClick={async () => {
+                        const filtered = competitorDraft.map((s) => s.trim()).filter(Boolean);
+                        setSavingCompetitors(true);
+                        try {
+                          await onSaveCompetitors!(filtered);
+                          setEditingCompetitors(false);
+                        } finally {
+                          setSavingCompetitors(false);
+                        }
+                      }}
+                      disabled={savingCompetitors}
+                      className="flex items-center gap-2 rounded-lg bg-sky-500 px-3 py-1.5 text-xs font-medium text-white transition-colors hover:bg-sky-400 disabled:opacity-50"
+                    >
+                      {savingCompetitors ? (
+                        <>
+                          <span className="inline-block h-3 w-3 animate-spin rounded-full border border-white/60 border-t-transparent" />
+                          Saving…
+                        </>
+                      ) : (
+                        'Save'
+                      )}
+                    </button>
+                  </div>
+                </div>
+              ) : competitors.length > 0 ? (
+                <div className="grid grid-cols-2 gap-2">
+                  {competitors.map((c, i) => (
+                    <CompetitorCard key={i} competitor={c} />
+                  ))}
+                </div>
+              ) : (
+                <p className="text-sm text-zinc-500">Click Edit to add competitors.</p>
+              )}
             </Panel>
           )}
 
@@ -467,17 +570,22 @@ function MetricCard({ label, value }: { label: string; value: string }) {
 function Panel({
   title,
   subtitle,
+  action,
   children,
 }: {
   title: string;
   subtitle?: string;
+  action?: React.ReactNode;
   children: React.ReactNode;
 }) {
   return (
     <section className="rounded-[24px] border border-zinc-800 bg-zinc-900/50 p-5 sm:p-6">
-      <div className="mb-4">
-        <p className="text-[11px] font-semibold uppercase tracking-[0.24em] text-zinc-500">{title}</p>
-        {subtitle && <p className="mt-1 text-sm text-zinc-400">{subtitle}</p>}
+      <div className="mb-4 flex items-start justify-between gap-3">
+        <div>
+          <p className="text-[11px] font-semibold uppercase tracking-[0.24em] text-zinc-500">{title}</p>
+          {subtitle && <p className="mt-1 text-sm text-zinc-400">{subtitle}</p>}
+        </div>
+        {action && <div className="shrink-0">{action}</div>}
       </div>
       {children}
     </section>

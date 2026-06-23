@@ -258,7 +258,7 @@ export function SideNav() {
 
   return (
     <aside className="group fixed left-0 top-topbar z-40 flex h-[calc(100vh-48px)] w-sidenav flex-col border-r border-zinc-800 bg-sidebar transition-[width] duration-200 hover:w-sidenav-expanded">
-      <nav className="flex flex-1 flex-col gap-1 overflow-y-auto px-2 pt-3">
+      <nav className="flex flex-1 flex-col gap-1 overflow-y-auto px-2 pt-3 scrollbar-thin-dark">
         <WorkspaceDropdown />
         {NAV_ITEMS.map((item) => (
           <NavLink key={item.href} item={item} pathname={pathname} />
@@ -289,7 +289,7 @@ export function SideNav() {
         )}
       </nav>
 
-      <div className="flex flex-col gap-1 border-t border-zinc-800 px-2 py-3">
+      <div className="flex flex-col gap-1 overflow-hidden border-t border-zinc-800 px-2 py-3">
         {organization?.name && (
           <div className="mb-2 px-2 py-2">
             <p className="text-[11px] font-semibold uppercase tracking-wide text-zinc-500">Organization</p>

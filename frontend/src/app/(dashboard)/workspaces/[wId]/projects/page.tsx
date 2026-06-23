@@ -46,6 +46,17 @@ export default function ProjectsPage() {
   const [loading, setLoading] = useState(true);
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState<{ message: string; isPlanLimit: boolean } | null>(null);
+  const [competitors, setCompetitors] = useState<string[]>(['', '']);
+
+  function addCompetitor() {
+    if (competitors.length < 10) setCompetitors((c) => [...c, '']);
+  }
+  function removeCompetitor(idx: number) {
+    setCompetitors((c) => c.filter((_, i) => i !== idx));
+  }
+  function updateCompetitor(idx: number, val: string) {
+    setCompetitors((c) => c.map((v, i) => (i === idx ? val : v)));
+  }
 
   useEffect(() => {
     if (!isLoaded) return;
@@ -127,6 +138,7 @@ export default function ProjectsPage() {
           country: country.trim() || 'US',
           language: language.trim() || 'en',
           industry: industry.trim() || undefined,
+          ...((() => { const f = competitors.map((c) => c.trim()).filter(Boolean); return f.length >= 2 ? { directCompetitors: f } : {}; })()),
         }),
       });
 
@@ -136,6 +148,7 @@ export default function ProjectsPage() {
       setCountry('US');
       setLanguage('en');
       setIndustry('');
+      setCompetitors(['', '']);
       setShowForm(false);
       router.push(`/workspaces/${workspace.id}/projects/${created.id}/overview`);
     } catch (err) {
@@ -186,6 +199,39 @@ export default function ProjectsPage() {
               <span>Industry</span>
               <input value={industry} onChange={(event) => setIndustry(event.target.value)} placeholder="Footwear" className="h-11 w-full rounded-md border border-zinc-700 bg-zinc-900 px-3 text-sm text-zinc-100 outline-none transition-colors focus:border-rose-500" />
             </label>
+            <div className="col-span-full space-y-2 text-sm text-zinc-300">
+              <div className="flex items-center justify-between">
+                <span>Direct Competitors <span className="text-zinc-500 font-normal">(optional — min 2)</span></span>
+                {competitors.length < 10 && (
+                  <button type="button" onClick={addCompetitor} className="text-xs text-rose-400 hover:text-rose-300 transition-colors">
+                    + Add
+                  </button>
+                )}
+              </div>
+              <div className="space-y-2">
+                {competitors.map((val, i) => (
+                  <div key={i} className="flex items-center gap-2">
+                    <input
+                      value={val}
+                      onChange={(e) => updateCompetitor(i, e.target.value)}
+                      placeholder="competitor.com"
+                      className="h-9 flex-1 rounded-md border border-zinc-700 bg-zinc-900 px-3 text-sm text-zinc-100 outline-none transition-colors focus:border-rose-500"
+                    />
+                    {competitors.length > 2 && (
+                      <button
+                        type="button"
+                        onClick={() => removeCompetitor(i)}
+                        className="flex h-9 w-9 shrink-0 items-center justify-center rounded-md border border-zinc-700 text-zinc-500 transition-colors hover:border-zinc-600 hover:text-zinc-300"
+                        aria-label="Remove competitor"
+                      >
+                        ×
+                      </button>
+                    )}
+                  </div>
+                ))}
+              </div>
+              <p className="text-xs text-zinc-500">Provide at least 2 to override AI competitor discovery when the Business Profile is generated.</p>
+            </div>
           </div>
 
           <div className="flex items-center justify-between gap-3">

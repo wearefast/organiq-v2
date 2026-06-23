@@ -194,13 +194,17 @@ export class BusinessProfileService {
       project.name;
     const cleanBrand = rawBrand.replace(/[\s\-_]+\d+$/, '').trim() || rawBrand;
 
-    const discoveredCompetitors = await this.discoverCompetitors(
-      cleanBrand,
-      project.country,
-      project.industry ?? (profileOutput.industry as string) ?? '',
-      profileOutput,
-      this.config.get<string>('OPENAI_API_KEY') ?? '',
-    );
+    const userCompetitors = project.directCompetitors ?? [];
+    const discoveredCompetitors =
+      userCompetitors.length >= 2
+        ? userCompetitors
+        : await this.discoverCompetitors(
+            cleanBrand,
+            project.country,
+            project.industry ?? (profileOutput.industry as string) ?? '',
+            profileOutput,
+            this.config.get<string>('OPENAI_API_KEY') ?? '',
+          );
 
     const profileWithCompetitors: Record<string, unknown> = {
       ...profileOutput,

@@ -121,6 +121,24 @@ export default function OverviewPage() {
     // active ("Generating…") until the polling effect finds the new profile below.
   };
 
+  const handleSaveCompetitors = async (list: string[]) => {
+    if (!profile) return;
+    try {
+      setAuthToken(await getToken());
+      // Persist both: the profile output (immediate display) and the generation seed
+      // (so future Refresh runs keep the user-specified competitors)
+      const [profileData] = await Promise.all([
+        updateBusinessProfile(params.pId, { ...profile, competitors: list }),
+        updateProject(params.pId, { directCompetitors: list.length > 0 ? list : null }),
+      ]);
+      setProfile(profileData.profile);
+      setUpdatedAt(profileData.updatedAt);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Failed to save competitors');
+      throw err; // re-throw so the renderer keeps the edit form open
+    }
+  };
+
   const handleSitemapUrlSave = async () => {
     const trimmed = sitemapUrlDraft.trim();
     if (trimmed && !/^https?:\/\/.+/.test(trimmed)) {
@@ -299,6 +317,7 @@ export default function OverviewPage() {
               onCancelEditSitemapUrl={() => { setEditingSitemapUrl(false); setSitemapUrlError(null); }}
               onChangeSitemapUrlDraft={(val) => { setSitemapUrlDraft(val); setSitemapUrlError(null); }}
               onClearSitemapUrl={() => { setSitemapUrlDraft(''); setCustomSitemapUrl(''); setEditingSitemapUrl(false); updateProject(params.pId, { customSitemapUrl: null }).catch(() => {}); }}
+              onSaveCompetitors={handleSaveCompetitors}
             />
           ) : (
             <div className="flex flex-col items-center gap-4 py-10 text-center">

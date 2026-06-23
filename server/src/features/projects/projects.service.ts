@@ -42,6 +42,7 @@ export class ProjectsService {
     country?: string;
     language?: string;
     industry?: string;
+    directCompetitors?: string[];
   }) {
     const [project] = await this.db.db
       .insert(projects)
@@ -62,7 +63,7 @@ export class ProjectsService {
   async update(
     id: string,
     organizationId: string,
-    data: { name?: string; domain?: string; country?: string; language?: string; industry?: string; customSitemapUrl?: string | null },
+    data: { name?: string; domain?: string; country?: string; language?: string; industry?: string; customSitemapUrl?: string | null; directCompetitors?: string[] | null },
   ) {
     const sanitized = data.domain ? { ...data, domain: sanitizeDomain(data.domain) } : data;
     const [updated] = await this.db.db

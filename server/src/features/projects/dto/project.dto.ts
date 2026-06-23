@@ -1,4 +1,4 @@
-import { IsString, IsOptional, MaxLength, IsUUID, IsUrl } from 'class-validator';
+import { IsString, IsOptional, MaxLength, IsUUID, IsUrl, IsArray, ArrayMaxSize } from 'class-validator';
 
 export class CreateProjectDto {
   @IsUUID()
@@ -29,6 +29,13 @@ export class CreateProjectDto {
   @IsString()
   @MaxLength(100)
   industry?: string;
+
+  @IsOptional()
+  @IsArray()
+  @IsString({ each: true })
+  @MaxLength(200, { each: true })
+  @ArrayMaxSize(10)
+  directCompetitors?: string[];
 
   @IsOptional()
   @IsString()
@@ -62,6 +69,13 @@ export class UpdateProjectDto {
   @IsString()
   @MaxLength(100)
   industry?: string;
+
+  @IsOptional()
+  @IsArray()
+  @IsString({ each: true })
+  @MaxLength(200, { each: true })
+  @ArrayMaxSize(10)
+  directCompetitors?: string[] | null;
 
   @IsOptional()
   @IsString()

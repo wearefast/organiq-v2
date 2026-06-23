@@ -59,7 +59,7 @@ export async function updateBusinessProfile(
 
 export async function updateProject(
   projectId: string,
-  data: { customSitemapUrl?: string | null },
+  data: { customSitemapUrl?: string | null; directCompetitors?: string[] | null },
 ): Promise<void> {
   await apiFetch(`/projects/${projectId}`, {
     method: 'PATCH',

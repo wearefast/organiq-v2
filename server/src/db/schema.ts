@@ -337,6 +337,8 @@ export const projects = pgTable(
     country: text('country').default('US').notNull(),
     language: text('language').default('en').notNull(),
     industry: text('industry'),
+    /** User-supplied direct competitors — when provided (≥ 2), AI competitor discovery is skipped during profile generation */
+    directCompetitors: text('direct_competitors').array(),
     /** User-supplied sitemap URL — when set, this is probed first before auto-discovery */
     customSitemapUrl: text('custom_sitemap_url'),
     /** Page URLs discovered from the site's sitemap.xml — populated on project create/domain-update */

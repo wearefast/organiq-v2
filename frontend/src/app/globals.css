@@ -244,3 +244,11 @@
 
 /* ── Ring / outline ──────────────────────────────────────────────────────── */
 [data-theme="light"] .ring-zinc-800 { --tw-ring-color: #e4e4e7; }
+
+/* ── Thin scrollbar (sidebar nav) ───────────────────────────────────────── */
+.scrollbar-thin-dark::-webkit-scrollbar              { width: 3px; }
+.scrollbar-thin-dark::-webkit-scrollbar-track        { background: transparent; }
+.scrollbar-thin-dark::-webkit-scrollbar-thumb        { background: var(--border); border-radius: 9999px; }
+.scrollbar-thin-dark::-webkit-scrollbar-thumb:hover  { background: var(--text-muted); }
+[data-theme="light"] .scrollbar-thin-dark::-webkit-scrollbar-thumb { background: #d4d4d8; }
+[data-theme="light"] .scrollbar-thin-dark::-webkit-scrollbar-thumb:hover { background: #a1a1aa; }
