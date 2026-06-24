@@ -32,15 +32,15 @@ Pulse integrates with 9 external services for SEO data, web scraping, AI process
 
 ### Ahrefs v3 (`server/src/features/integrations/ahrefs/ahrefs.service.ts`)
 
-Ahrefs is used for **SERP overview lookups** (`serp-niche-map` pipeline) and **organic page fetching** (`method01-competitor-pages`, `phase1-baseline` pipelines). Keyword volume, difficulty, competitor discovery, and backlink analysis have been migrated to DataForSEO.
+Ahrefs is used for **SERP overview lookups** (`serp-niche-map` pipeline), **organic page fetching** (`method01-competitor-pages`, `phase1-baseline`), and **competitor domain metrics** (`competitor-metrics` pipeline). Keyword volume, difficulty, and competitor discovery (domain overlap) use DataForSEO.
 
 | Method | Description | Pipeline |
 |--------|-------------|----------|
 | `getSerpOverview(keyword, country)` | Top-10 SERP positions with per-URL metrics | `serp-niche-map` |
 | `getOrganicPages(domain, country, limit)` | Top-performing pages with traffic/keyword data | `method01-competitor-pages`, `phase1-baseline` |
-| `getDomainRating(domain)` | Domain authority score (0–100) | Agent tool only |
-| `getOrganicKeywords(domain, country, limit)` | Organic keyword rankings | Agent tool only |
-| `getBacklinksStats(domain)` | Backlink profile summary | Agent tool only |
+| `getDomainRating(domain)` | Domain authority score (0–100) | `competitor-metrics`, agent tool |
+| `getOrganicKeywords(domain, country, limit)` | Organic keyword rankings | `competitor-metrics`, `seed-keywords` (fallback), agent tool |
+| `getBacklinksStats(domain)` | Backlink profile summary | `competitor-metrics`, agent tool |
 | `getCompetingDomains(domain, country, limit)` | Organic competitor domains | Agent tool only |
 | `getKeywordDifficulty(keywords[], country)` | KD scores | Agent tool only |
 | `getKeywordVolume(keywords[], country)` | Search volume data | Agent tool only |
@@ -56,7 +56,7 @@ Ahrefs is used for **SERP overview lookups** (`serp-niche-map` pipeline) and **o
 
 ### DataForSEO (`server/src/features/integrations/dataforseo/dataforseo.service.ts`)
 
-DataForSEO is the **primary data source** for keyword intelligence, competitor discovery, backlink analysis, and on-page audits. All pipeline stages for keyword/competitor data now use DataForSEO; Ahrefs is retained only for SERP overview and organic page lookups.
+DataForSEO is the **primary data source** for keyword intelligence, competitor discovery (domain overlap), backlink analysis, and on-page audits. Ahrefs is retained for SERP overview, organic page lookups, and competitor-level domain metrics.
 
 | Method | Description |
 |--------|-------------|
@@ -79,7 +79,7 @@ DataForSEO is the **primary data source** for keyword intelligence, competitor d
 - **Timeout**: 30s per request (on-page tasks poll with 15s intervals up to 3 min)
 - **Retry**: 3 attempts with exponential backoff
 - **Location mapping**: Built-in `LOCATION_MAP` resolves ISO codes (e.g., `us` → `United States`, `ae` → `United Arab Emirates`) for all 50+ countries
-- **Pipeline usage**: `competitor-buckets`, `competitor-metrics`, `seed-keywords`, `search-demand`, `method03-content-gap`, `business-profile`, `site-audit`
+- **Pipeline usage**: `competitor-buckets`, `seed-keywords`, `search-demand`, `method03-content-gap`, `business-profile`, `site-audit` (note: `competitor-metrics` was reverted to Ahrefs v3 — see Ahrefs section)
 
 ### Serper.dev (`server/src/features/integrations/serper/serper.service.ts`)
 
@@ -157,6 +157,15 @@ DataForSEO is the **primary data source** for keyword intelligence, competitor d
 - **Auth**: JWT verification via `CLERK_SECRET_KEY`, Svix webhook verification via `CLERK_WEBHOOK_SECRET`
 - **Webhook events handled**: `organization.created`, `organizationMembership.created`
 - **Idempotency**: `onConflictDoNothing()` on both org and member inserts
+
+### Perplexity (`server/src/features/integrations/perplexity/perplexity.service.ts`)
+
+**Status: Scaffolded — not yet wired to prompt visibility engine.** Service exists and is cost-tracked; integration with the prompt-visibility pipeline is pending.
+
+- **API**: `https://api.perplexity.ai/chat/completions`
+- **Model**: `sonar` (web-search capable)
+- **Auth**: Bearer token via `PERPLEXITY_API_KEY`
+- **Cost tracking**: Instrumented (tokens + USD cost logged to `api_usage_logs`)
 
 ## Shared Retry Utility
 

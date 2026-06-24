@@ -10,11 +10,12 @@ PostgreSQL 16 with Drizzle ORM. Schema defined in `server/src/db/schema.ts`.
 organizations ─┬─ org_members ─────────── access_grants
                ├─ credit_ledger
                ├─ invitations
+               ├─ api_usage_logs
                ├─ subscriptions ─── (Stripe billing)
                ├─ purchases ─── (one-time credit packs)
                ├─ notifications
                └─ workspaces ─┬─ workspace_credit_limits
-                              └─ projects ─┬─ workflow_runs
+                              └─ projects ─┬─ workflow_runs ─── api_usage_logs
                                             │       │
                                             │  workflow_steps
                                             │       │
@@ -105,6 +106,8 @@ organizations ─┬─ org_members ─────────── access_gra
 | industry | text | For strategy templates |
 | business_profile | jsonb | Cached business profile data (nullable) |
 | business_profile_updated_at | timestamp | Nullable |
+| direct_competitors | text[] | User-specified competitor domains (nullable) |
+| custom_sitemap_url | text | Override for automatic sitemap discovery (nullable) |
 | created_at | timestamp | |
 | updated_at | timestamp | |
 
@@ -326,6 +329,27 @@ organizations ─┬─ org_members ─────────── access_gra
 | duration_ms | integer | Execution time |
 | created_at | timestamp | |
 
+### api_usage_logs
+
+Records cost and token usage for every outbound API call. Populated via `ApiUsageContextService` (AsyncLocalStorage) so no explicit threading required.
+
+| Column | Type | Notes |
+|--------|------|-------|
+| id | uuid | PK |
+| organization_id | uuid | FK → organizations |
+| project_id | uuid | FK → projects (nullable) |
+| workflow_run_id | uuid | FK → workflow_runs (nullable, SET NULL on delete) |
+| step_key | text | Pipeline step key (nullable) |
+| provider | text | `anthropic`, `openai`, `ahrefs`, `dataforseo`, `serper`, `firecrawl`, `pagespeed`, `perplexity` |
+| endpoint | text | Specific API endpoint or model name |
+| tokens_in | integer | Input tokens (LLM calls only, nullable) |
+| tokens_out | integer | Output tokens (LLM calls only, nullable) |
+| request_count | integer | Default 1 |
+| cost_usd | numeric(10,6) | USD cost of this call |
+| duration_ms | integer | Nullable |
+| success | boolean | Default true |
+| created_at | timestamp | |
+
 ### scheduled_workflows
 
 | Column | Type | Notes |
@@ -530,6 +554,7 @@ organizations ─┬─ org_members ─────────── access_gra
 - `llm_traffic_sessions`: indexed on `(project_id)`, `(source)`, `(created_at)`
 - `llm_audit_results`: indexed on `(project_id)`, `(platform)`, `(checked_at)`
 - `tracked_prompts`: indexed on `(project_id)`, `(is_active)`
+- `api_usage_logs`: compound on `(organization_id, created_at)`, `(project_id, created_at)`, `(workflow_run_id, step_key)`
 - `invitations`: indexed on `(organization_id)`, `(token)` unique, `(email)`
 - `access_grants`: compound unique on `(org_member_id, resource_type, resource_id)`
 - `workspace_credit_limits`: unique on `(workspace_id)`

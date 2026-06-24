@@ -4,7 +4,101 @@ All notable changes to the Pulse OS codebase, organized by audit and implementat
 
 ---
 
-## [Production Launch — AWS + Vercel] — June 19, 2026
+## [API Cost Tracking + Competitor Fields + AI Readiness] — June 22-24, 2026
+
+### API Cost Tracking Dashboard
+
+Full API spend tracking across all integration providers. Every outbound API call is instrumented, costed, and queryable.
+
+**New module: `server/src/features/api-usage/`**
+
+| File | Purpose |
+|------|---------|
+| `api-usage.service.ts` | Logs costs, queries summaries by org/project/run/day |
+| `api-usage-context.service.ts` | AsyncLocalStorage context — propagates orgId/projectId/runId to integration services |
+| `pricing.constants.ts` | Hardcoded price tables per provider/model (update + redeploy to change rates) |
+
+**Instrumented providers:** Anthropic, OpenAI, Ahrefs, DataForSEO, Serper, Firecrawl, PageSpeed  
+**Scaffolded (not yet active):** Perplexity (`integrations/perplexity/perplexity.service.ts`)
+
+AsyncLocalStorage context is injected at 4 entry points:
+- `WorkflowProcessor` — covers all 18 pipeline steps
+- `BusinessProfileService.refresh()` — business profile generation
+- `OnDemandAgentsService.run()` — on-demand agent chat
+- `ContentService.searchForumThreads()` — forum intelligence (DataForSEO Reddit SERP)
+
+**Admin dashboard panel** (`frontend/src/features/admin/components/api-costs-panel.tsx`):
+- Total cost / calls summary with date range filter
+- Cost breakdown by provider
+- Cost breakdown by project
+- Per-run drill-down
+- CSV export
+
+**New migration:** `0015_add_api_usage_logs.sql` — `api_usage_logs` table
+
+**New internal API endpoint:** `GET internal/api-usage` (admin-only cost dashboard data)
+
+---
+
+### AI Readiness Pipeline (ai-intelligence)
+
+The `ai-intelligence` pipeline (`server/src/features/workflows/pipelines/ai-intelligence.pipeline.ts`) was extended to assess AI readiness of project content:
+- Integrates with Anthropic for brand mention detection across AI search engines
+- Updated `prompts/intelligence/ai-intelligence.prompt.md` with expanded evaluation criteria
+- Frontend renderer `workflow/renderers/ai-intelligence.tsx` updated with richer display
+
+---
+
+### Project: Direct Competitors + Custom Sitemap URL
+
+New project-level fields added by users during project setup:
+
+| Field | Purpose |
+|-------|---------|
+| `direct_competitors` | `text[]` — user-specified competitor domains for analysis |
+| `custom_sitemap_url` | `text` — override automatic sitemap discovery with a specific URL |
+
+- **Migration:** `0024_add_direct_competitors.sql`
+- Backend: `projects.dto.ts` updated; `business-profile.service.ts` consumes `direct_competitors`
+- Frontend: Project creation/settings forms updated; overview page displays competitors
+
+---
+
+### competitor-metrics Pipeline — Migrated Back to Ahrefs v3
+
+The `competitor-metrics` pipeline was reverted from DataForSEO back to Ahrefs v3.
+
+| Metric | Ahrefs method |
+|--------|--------------|
+| Domain Rating | `getDomainRating` → `domain_rating.domain_rating` |
+| Referring Domains | `getBacklinksStats` → `metrics.live_refdomains` |
+| Organic Keywords | `getOrganicKeywords` (count) |
+| Monthly Traffic | `getOrganicKeywords` (traffic sum) |
+
+DataForSEO was abandoned for this pipeline due to an expired subscription causing zero-value returns. Error handling uses `Promise.allSettled` per competitor.
+
+---
+
+### Admin Panel: Org Plan Upgrade/Downgrade
+
+Super-admins can now change any org's subscription plan directly from the `/admin` dashboard.
+
+- **New endpoint:** `PUT internal/orgs/:orgId/plan` (SuperAdminGuard) — accepts `{ plan: 'starter'|'pro'|'agency'|'enterprise' }`
+- `OrganizationsService.updatePlan()` updates `organizations.plan`
+- Frontend: Plan badge on org row, plan selector in expanded org detail
+
+---
+
+### Other Fixes (June 22-24)
+
+- `seed-keywords` pipeline: fixed token budget issue; increased max output tokens; DataForSEO service rewrite for volume/KD accuracy
+- `0025_improve_refresh_suggestions_index.sql` — replaces single-column index on `refresh_suggestions` with compound `(project_id, organization_id)` index
+- Guided tour: fixed "Got it" button issue in onboarding flow
+- Business profile processor improvements
+
+---
+
+
 
 **Pulse OS (Rank Organiq) is live in production.**
 

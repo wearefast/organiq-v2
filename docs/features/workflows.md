@@ -150,7 +150,7 @@ Steps are classified into 3 execution tiers:
 
 | Tier | Provider | Description | Examples |
 |------|----------|-------------|----------|
-| Tier 1 | Pipeline (code) | No LLM — direct API calls + data transform | competitor-metrics, search-demand, method01-03 |
+| Tier 1 | Pipeline (code) | No LLM — direct API calls + data transform | competitor-metrics, search-demand, method01-03, ai-intelligence |
 | Tier 2 | Local AgentRuntime (thinking) | Single-shot with extended thinking, no tools | consolidated-keywords, verdict-strategy, topical-map |
 | Tier 3 | Local AgentRuntime (tools) | Agent execution with tool-calling capabilities | phase1-baseline, seed-keywords, content-brief, content-article, site-audit |
 
@@ -260,7 +260,8 @@ Located in `server/src/features/workflows/pipelines/`:
 |----------|----------|-----------|-------------|
 | BusinessProfilePipeline | business-profile | Firecrawl ×4 + DataForSEO `getBacklinksSummary` | Scrapes homepage + 3 pages; enriches with DataForSEO backlink/domain metrics. |
 | CompetitorBucketsPipeline | competitor-buckets | DataForSEO `getCompetitorsDomain` + Serper ×3 | Discovers competitors via DataForSEO Labs keyword overlap, corroborates with SERP. |
-| CompetitorMetricsPipeline | competitor-metrics | DataForSEO `getBacklinksSummary` + `getRankedKeywords` × N competitors | Batch competitor backlinks + organic rankings via DataForSEO. Reads target DR from `context['business-profile']` (no duplicate call). |
+| CompetitorMetricsPipeline | competitor-metrics | Ahrefs `getDomainRating` + `getBacklinksStats` + `getOrganicKeywords` × N competitors | Batch competitor DR/backlinks/keyword count via Ahrefs v3. Uses `Promise.allSettled` per competitor. (Reverted from DataForSEO June 2026 due to expired subscription.) |
+| AiIntelligencePipeline | ai-intelligence | Firecrawl ×2 + OpenAI (AI inference) ×5 + Serper ×3 + 1 LLM reasoning call | Phase 1: scrapes homepage + key page. Phase 2: AI visibility test via 5 templated brand-mention queries. Phase 3: SERP context ("best [category]", "[brand] review", "[brand] vs [competitor]"). Final LLM pass produces `aiReadinessScore` + `aiMentions`. Replaced previous agent-with-tools loop. |
 | SeedKeywordsPipeline | seed-keywords | DataForSEO `getRankedKeywords` (domain + fallback competitors) + `getKeywordSuggestions` | Fetches organic footprint via DataForSEO Labs; expands with suggestions (batched 5/group). |
 | SearchDemandPipeline | search-demand | DataForSEO `getKeywordSearchVolume` + `getBulkKeywordDifficulty` | Volume + difficulty batch enrichment via DataForSEO Labs (batched 50/chunk). |
 | Phase1BaselinePipeline | phase1-baseline | 0–1 Ahrefs calls | Reads organic keywords from `context['seed-keywords']` if available (0 Ahrefs calls). Always calls Ahrefs `getOrganicPages` (1 call). |

@@ -20,8 +20,7 @@ For comprehensive coverage, see the dedicated docs:
 | Reports | [Reports](features/reports.md) | PDF generation, templates, download flow |
 | Topical Maps | [Topical Maps](features/topical-maps.md) | Pillar → cluster → keyword hierarchy |
 | Integrations | [Integrations](features/integrations.md) | External services, retry logic, tool registry |
-| Auth | [Auth & Orgs](features/auth.md) | Clerk SSO, guards, security hardening |
-| User Management | [User Management](features/user-management.md) | Members, invitations, access grants, workspace credit limits |
+| Auth | [Auth & Orgs](features/auth.md) | Clerk SSO, guards, security hardening || API Cost Tracking | [API Usage](features/api-usage.md) | Per-provider cost logging, admin dashboard, CSV export || User Management | [User Management](features/user-management.md) | Members, invitations, access grants, workspace credit limits |
 | Credits | [Credits](features/credits.md) | Credit system, ledger, debit flow, workspace caps |
 | Prompt Visibility | [Prompt Visibility](features/prompt-visibility.md) | AI engine visibility tracking |
 | Scheduled Workflows | [Scheduled Workflows](features/scheduled-workflows.md) | Recurring agent runs, delivery |
@@ -190,18 +189,19 @@ Pulse/
 │       │   ├── reports/
 │       │   └── scoring/
 │       ├── db/                Drizzle schema, client, seed
-│       ├── features/          Feature modules (22)
+│       ├── features/          Feature modules (23)
 │       │   ├── auth/          Clerk webhook + guards (ClerkGuard, AdminOnly, Access, SuperAdmin)
 │       │   ├── billing/       Stripe subscriptions + credit packs
 │       │   ├── organizations/ Org CRUD + membership
 │       │   ├── credits/       Credit system + workspace limits
 │       │   ├── workspaces/    Workspace CRUD
-│       │   ├── projects/      Project CRUD
+│       │   ├── projects/      Project CRUD + business profile
 │       │   ├── workflows/     Orchestration, WebSocket, BullMQ
 │       │   ├── keywords/      Keyword ledger
 │       │   ├── topical-maps/  Topical map storage
 │       │   ├── content/       Content CRUD + forum intelligence
 │       │   ├── reports/       Report generation
+│       │   ├── api-usage/     API cost tracking (AsyncLocalStorage, pricing constants)
 │       │   ├── integrations/  External API services
 │       │   ├── llm-audit/     LLM audit (AI indexability checks)
 │       │   ├── llm-traffic/   LLM traffic session tracking + stats
@@ -210,7 +210,7 @@ Pulse/
 │       │   ├── prompt-visibility/ Brand mention tracking across AI engines
 │       │   ├── scheduled-workflows/ Cron-based workflow scheduling + delivery
 │       │   ├── user-management/ Members, invitations, access grants, workspace credit limits
-│       │   └── internal/      Super-admin API (credits, org list)
+│       │   └── internal/      Super-admin API (credits, org list, plan change, cost dashboard)
 │       │       ├── ahrefs/
 │       │       ├── dataforseo/
 │       │       ├── firecrawl/

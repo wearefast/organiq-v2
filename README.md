@@ -26,6 +26,7 @@ Agent-led SEO/GEO/AEO strategy consultant operating system for agencies.
 | **Features** | [Credits](docs/features/credits.md) | Credit system, ledger, debit flow, workspace limits |
 | **Features** | [Billing](docs/features/billing.md) | Stripe subscriptions, credit packs, customer portal |
 | **Features** | [User Management](docs/features/user-management.md) | Members, invitations, access grants, workspace credit caps |
+| **Features** | [API Cost Tracking](docs/features/api-usage.md) | Per-provider spend logging, admin dashboard, CSV export |
 | **Features** | [Audit](docs/features/audit.md) | Site audit (workflow step) + LLM audit overview |
 | **Features** | [LLM Crawlability Audit](docs/features/llm-crawlability-audit.md) | Standalone AI bot indexability audit — scoring, checks, API, UI |
 | **Features** | [LLM Traffic](docs/features/llm-traffic.md) | AI engine traffic tracking and analytics |

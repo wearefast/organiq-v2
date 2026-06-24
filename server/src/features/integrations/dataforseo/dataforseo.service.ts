@@ -251,9 +251,10 @@ export class DataForSeoService {
         }
       }
 
-      // Parse difficulty response: tasks[0].result[].keyword, keyword_difficulty
+      // Parse difficulty response: tasks[0].result[0].items[].keyword, keyword_difficulty
+      // bulk_keyword_difficulty wraps items one level deeper than search_volume
       const difficultyMap = new Map<string, number>();
-      const diffItems = (difficultyResp as any)?.tasks?.[0]?.result ?? [];
+      const diffItems = (difficultyResp as any)?.tasks?.[0]?.result?.[0]?.items ?? [];
       for (const item of diffItems) {
         if (item.keyword) {
           difficultyMap.set(item.keyword.toLowerCase(), item.keyword_difficulty ?? null);

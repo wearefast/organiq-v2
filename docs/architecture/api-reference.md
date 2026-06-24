@@ -386,8 +386,13 @@ Base: `/internal`
 |--------|------|-------------|
 | `POST` | `/orgs/:orgId/credits` | Add credits to an org (audited) |
 | `GET` | `/orgs/:orgId/credits` | Get balance + last 20 ledger entries |
-| `GET` | `/orgs` | List all organizations (cap 500) |
+| `GET` | `/orgs` | List all organizations (cap 500) — includes plan field |
 | `GET` | `/orgs/:orgId` | Get org detail |
+| `PUT` | `/orgs/:orgId/plan` | Change org subscription plan (`starter`\|`pro`\|`agency`\|`enterprise`) |
+| `GET` | `/api-usage` | API cost summary (`?orgId`, `?from`, `?to`) |
+| `GET` | `/api-usage/by-project` | Cost breakdown by project |
+| `GET` | `/api-usage/by-run/:runId` | Cost breakdown for a specific workflow run |
+| `GET` | `/api-usage/export` | CSV export of cost data |
 
 ---
 
