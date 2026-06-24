@@ -44,6 +44,15 @@ UI (component) → State (hook/context) → API call (service) → Server (contr
 
 List ALL files involved, even ones you won't change. You need to know the full picture.
 
+**For every store or table your change touches, explicitly answer:**
+- Who writes to it? (which function, at which point in execution)
+- Who reads from it? (which consumer — frontend, downstream pipeline step, etc.)
+- Is there more than one store? If yes, which one does the affected consumer actually read?
+
+If you are adding post-processing (enrichment, transformation, filtering) you MUST identify the exact line where the data is persisted and confirm your post-processing runs BEFORE that line — not after.
+
+> **Lesson (2026-06-24):** `stepArtifacts` (frontend reads `artifacts[0].data`) and `workflowContext` (pipeline downstream reads) are two separate stores in this codebase. Enrichment placed after the transaction only reached `workflowContext`, not the artifact the frontend renders. Always map both stores before writing enrichment code.
+
 ### STEP 4: ROOT CAUSE ANALYSIS
 
 Identify the EXACT cause. You must provide **evidence**, not assertions.
@@ -96,9 +105,11 @@ After every change, confirm:
 - [ ] `tsc --noEmit` passes (both frontend and server if applicable)
 - [ ] All imports resolve
 - [ ] No unused variables introduced
-- [ ] The original issue is fixed
+- [ ] The original issue is fixed — validate at the **consumer**, not the writer. If the bug was "UI shows wrong data", confirm the UI-facing store contains the correct data, not just that the code runs without errors.
 - [ ] No existing flows are broken
 - [ ] If API/schema/architecture changed → relevant `docs/` file updated
+
+**Verification must be end-to-end.** A fix that passes TypeScript but writes to the wrong store is still a broken fix. If you cannot verify the consumer directly (e.g., requires a live run), state this explicitly and flag it as unverified.
 
 ---
 
@@ -137,6 +148,8 @@ These apply at all times, in addition to the workflow above.
 - Proceed when the requirement is ambiguous
 - Ignore the impact of your change on other features
 - Skip the workflow because the fix "looks simple"
+- Place post-processing code based on proximity to related code — place it based on data flow. Ask: does the consumer read from the store BEFORE or AFTER this point in execution?
+- Accept "the step completed successfully" as proof that a fix worked. Verify the specific data the consumer actually reads.
 
 ---
 
