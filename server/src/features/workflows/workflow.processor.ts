@@ -435,6 +435,30 @@ export class WorkflowProcessor extends WorkerHost {
 
       if (!step) throw new Error(`Step record not found: ${stepKey}`);
 
+      // Guard BEFORE transaction: if output is null the agent hit max_tokens before
+      // calling return_output. Throwing here means credits are NOT yet deducted and
+      // the step is NOT yet marked awaiting_approval, so BullMQ can safely retry.
+      if (result.output == null) {
+        throw new Error(
+          `Agent returned null output for step "${stepKey}" — likely hit max_tokens mid-generation. BullMQ will retry.`,
+        );
+      }
+
+      // Enrich seed-keywords with Volume + KD BEFORE the transaction so the artifact
+      // saved to the DB (and rendered by the frontend via artifacts[0].data) already
+      // contains the metrics. Placing this after the transaction would only update
+      // workflowContext (used by downstream steps), NOT the artifact the UI displays.
+      if (stepKey === 'seed-keywords' && result.output && typeof result.output === 'object') {
+        const skOutput = result.output as Record<string, unknown>;
+        const seedKeywords = (skOutput.seedKeywords ?? []) as Array<{ keyword: string; [key: string]: unknown }>;
+        if (Array.isArray(seedKeywords) && seedKeywords.length > 0) {
+          const country = context?.country as string || 'us';
+          const language = context?.language as string || 'en';
+          const enriched = await this.dataforseo.enrichKeywordsWithMetrics(seedKeywords, country, language);
+          result.output = { ...skOutput, seedKeywords: enriched };
+        }
+      }
+
       // 7-12. Persist artifacts, debit credits, and update status in a single transaction
       await this.db.db.transaction(async (tx) => {
         // 7. Compute next artifact version
@@ -517,32 +541,12 @@ export class WorkflowProcessor extends WorkerHost {
       // For content-images, strip raw base64 blobs before persisting — the binary
       // data is materialized into the content_images table by WorkflowMaterializerService.
       // Storing 15–30 MB of base64 in workflow_context/JSONB is unnecessary and slow.
-      //
-      // Guard: if output is null the agent hit max_tokens before calling return_output.
-      // Throw so BullMQ retries the step rather than silently storing awaiting_approval
-      // with no data, which would leave downstream steps with no context to read.
-      if (result.output == null) {
-        throw new Error(
-          `Agent returned null output for step "${stepKey}" — likely hit max_tokens mid-generation. BullMQ will retry.`,
-        );
-      }
-
-      let contextValue =
+      // result.output is already enriched (seed-keywords Volume/KD added above), so the
+      // same enriched value propagates to both the artifact and workflowContext.
+      const contextValue =
         stepKey === 'content-images'
           ? this.stripImagesBase64(result.output)
           : result.output;
-
-      // Enrich seed-keywords with volume and difficulty from DataForSEO
-      if (stepKey === 'seed-keywords' && contextValue && typeof contextValue === 'object') {
-        const output = contextValue as Record<string, unknown>;
-        const seedKeywords = (output.seedKeywords ?? []) as Array<{ keyword: string; [key: string]: unknown }>;
-        if (Array.isArray(seedKeywords) && seedKeywords.length > 0) {
-          const country = context?.country as string || 'us';
-          const language = context?.language as string || 'en';
-          const enriched = await this.dataforseo.enrichKeywordsWithMetrics(seedKeywords, country, language);
-          contextValue = { ...output, seedKeywords: enriched };
-        }
-      }
 
       await this.workflowService.setContext(workflowRunId, stepKey, contextValue);
 
