@@ -35,6 +35,7 @@ import { AhrefsModule } from '../integrations/ahrefs/ahrefs.module';
 import { DataForSeoModule } from '../integrations/dataforseo/dataforseo.module';
 import { IntegrationsModule } from '../integrations/integrations.module';
 import { ProjectsModule } from '../projects/projects.module';
+import { PromptVisibilityModule } from '../prompt-visibility/prompt-visibility.module';
 
 /**
  * Dependency direction: WorkflowsModule → feature modules (Keywords, TopicalMaps, Content).
@@ -59,6 +60,7 @@ import { ProjectsModule } from '../projects/projects.module';
     DataForSeoModule,
     IntegrationsModule,
     ProjectsModule,
+    PromptVisibilityModule,
   ],
   controllers: [WorkflowController, DlqController],
   providers: [

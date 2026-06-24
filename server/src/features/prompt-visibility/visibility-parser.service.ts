@@ -259,7 +259,7 @@ export class VisibilityParserService {
    * Basic keyword-based sentiment detection.
    * A more advanced version would use an LLM call.
    */
-  private analyzeSentiment(excerpt: string): 'positive' | 'neutral' | 'negative' {
+  analyzeSentiment(excerpt: string): 'positive' | 'neutral' | 'negative' {
     const lower = excerpt.toLowerCase();
 
     const positiveSignals = [

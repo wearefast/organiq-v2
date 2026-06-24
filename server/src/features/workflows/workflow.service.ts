@@ -472,6 +472,7 @@ export class WorkflowService implements OnModuleInit, OnApplicationBootstrap {
     await this.setContext(runId, 'language', project.language);
     await this.setContext(runId, 'industry', project.industry ?? '');
     await this.setContext(runId, 'business-profile', project.businessProfile);
+    await this.setContext(runId, 'projectId', project.id);
 
     // Enqueue the first step(s) — those with no dependencies
     const enqueued = await this.enqueuePendingSteps(runId);

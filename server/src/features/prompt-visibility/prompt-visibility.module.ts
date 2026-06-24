@@ -22,7 +22,7 @@ import { VisibilityParserService } from './visibility-parser.service';
     EngineQueryService,
     VisibilityParserService,
   ],
-  exports: [PromptVisibilityService],
+  exports: [PromptVisibilityService, VisibilityParserService],
 })
 export class PromptVisibilityModule implements OnModuleInit {
   private readonly logger = new Logger(PromptVisibilityModule.name);

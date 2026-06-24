@@ -71,6 +71,14 @@ const mockConfig = {
   get: vi.fn().mockReturnValue(''),
 };
 
+const mockVisibilityParser = {
+  analyzeSentiment: vi.fn().mockReturnValue('neutral'),
+};
+const mockPromptVisibility = {
+  getPrompts: vi.fn().mockResolvedValue([]),
+  createPrompt: vi.fn().mockResolvedValue({}),
+};
+
 describe('PipelineService', () => {
   let service: PipelineService;
 
@@ -90,7 +98,7 @@ describe('PipelineService', () => {
     const contentBrief = new ContentBriefPipeline(mockSerper as any, mockFirecrawl as any);
     const siteAudit = new SiteAuditPipeline(mockFirecrawl as any, mockDataforSeoOnPage as any, mockPageSpeed as any);
     const contentArticle = new ContentArticlePipeline(mockSerper as any);
-    const aiIntelligence = new AiIntelligencePipeline(mockFirecrawl as any, mockSerper as any, mockOpenAi as any, mockAnthropic as any, mockConfig as any);
+    const aiIntelligence = new AiIntelligencePipeline(mockFirecrawl as any, mockSerper as any, mockOpenAi as any, mockAnthropic as any, mockConfig as any, mockVisibilityParser as any, mockPromptVisibility as any);
     const consolidatedKeywords = new ConsolidatedKeywordsPipeline();
 
     service = new PipelineService(

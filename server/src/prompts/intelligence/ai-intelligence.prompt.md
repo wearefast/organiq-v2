@@ -20,7 +20,8 @@ All evidence has been collected for you and is provided in `<pipeline_data>`. Re
     - `mentioned` — boolean (ground truth from actual API call)
     - `position` — `'featured'`|`'cited'`|`'listed'`|`'absent'` (or numeric rank for Anthropic)
     - `mentionContext` — excerpt around the brand mention (null if absent)
-    - `fullResponseTruncated` — first 300 chars of the actual AI response
+    - `fullResponseTruncated` — first 1500 chars of the actual AI response
+    - `sentiment` — `'positive'` | `'neutral'` | `'negative'` | `null` — keyword-based sentiment detection (null when brand is absent)
 
 **CRITICAL:** Every `responses[]` entry is a real API result. `mentioned` and `position` are ground truth. Do NOT extrapolate or estimate. If `fullResponseTruncated` is empty, that platform call failed — note it.
 
@@ -116,6 +117,7 @@ Your `data` object MUST have EXACTLY these top-level keys: `aiReadinessScore`, `
 **Do NOT** return `dimensions` as a flat `{ dimensionName: number }` map — each dimension MUST be an object with `score` (number 0–100) and `findings` (string array).
 **Do NOT** return `aiMentions` as a flat per-query array — each item MUST have a `query` string and a `responses` array (one entry per platform).
 **Do NOT** fabricate or estimate `aiMentions` — each response entry MUST correspond to actual pipeline data.
+**For each response**, copy `sentiment` and `fullResponseTruncated` from rawData verbatim into `sentiment` and `fullResponse` — do NOT recompute or summarize them.
 
 ```json
 {
@@ -131,9 +133,9 @@ Your `data` object MUST have EXACTLY these top-level keys: `aiReadinessScore`, `
     {
       "query": "",
       "responses": [
-        { "platform": "openai", "mentioned": false, "position": "featured|cited|listed|absent", "context": null, "fullResponse": "" },
-        { "platform": "anthropic", "mentioned": false, "position": "featured|cited|listed|absent", "context": null, "fullResponse": "" },
-        { "platform": "perplexity", "mentioned": false, "position": "featured|cited|listed|absent", "context": null, "fullResponse": "" }
+        { "platform": "openai", "mentioned": false, "position": "featured|cited|listed|absent", "context": null, "fullResponse": "", "sentiment": "positive|neutral|negative|null" },
+        { "platform": "anthropic", "mentioned": false, "position": "featured|cited|listed|absent", "context": null, "fullResponse": "", "sentiment": "positive|neutral|negative|null" },
+        { "platform": "perplexity", "mentioned": false, "position": "featured|cited|listed|absent", "context": null, "fullResponse": "", "sentiment": "positive|neutral|negative|null" }
       ]
     }
   ],

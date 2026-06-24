@@ -5,6 +5,8 @@ import { FirecrawlService } from '../../integrations/firecrawl/firecrawl.service
 import { SerperService } from '../../integrations/serper/serper.service';
 import { OpenAiService } from '../../integrations/openai/openai.service';
 import { AnthropicService } from '../../integrations/anthropic/anthropic.service';
+import { VisibilityParserService } from '../../prompt-visibility/visibility-parser.service';
+import { PromptVisibilityService } from '../../prompt-visibility/prompt-visibility.service';
 
 interface BusinessProfile {
   business_name?: string;
@@ -22,6 +24,7 @@ interface PlatformMentionResult {
   position: string | null;
   mentionContext: string | null;
   fullResponseTruncated: string;
+  sentiment: 'positive' | 'neutral' | 'negative' | null;
 }
 
 /**
@@ -56,6 +59,8 @@ export class AiIntelligencePipeline implements Pipeline {
     private readonly openai: OpenAiService,
     private readonly anthropic: AnthropicService,
     private readonly config: ConfigService,
+    private readonly visibilityParser: VisibilityParserService,
+    private readonly promptVisibility: PromptVisibilityService,
   ) {}
 
   async execute(context: Record<string, unknown>): Promise<unknown> {
@@ -110,6 +115,15 @@ export class AiIntelligencePipeline implements Pipeline {
       query: q,
       brand,
     }));
+
+    // Seed the generated queries to Prompt Visibility so they run on the daily schedule.
+    // Non-blocking — failures are logged but do not interrupt pipeline execution.
+    const projectId = context.projectId as string | undefined;
+    if (projectId) {
+      this.seedPromptsToVisibility(projectId, naturalQueries, bp.competitors?.map((c) => c.name) ?? []).catch(
+        (err: Error) => this.logger.warn(`ai-intelligence: prompt seeding failed — ${err.message}`),
+      );
+    }
 
     // business-profile pipeline already scraped homepage + /about + /services + /about-us.
     // Reuse those pages instead of re-scraping — they are exactly the high-value pages
@@ -174,18 +188,24 @@ export class AiIntelligencePipeline implements Pipeline {
       platform: PlatformMentionResult['platform'],
     ): PlatformMentionResult => {
       if (!raw || typeof raw !== 'object') {
-        return { platform, mentioned: false, position: null, mentionContext: null, fullResponseTruncated: '' };
+        return { platform, mentioned: false, position: null, mentionContext: null, fullResponseTruncated: '', sentiment: null };
       }
       const r = raw as Record<string, unknown>;
       const aiResponse = typeof r.aiResponse === 'string' ? r.aiResponse : '';
       // Anthropic uses a numeric position (1–5); OpenAI & Perplexity use semantic strings.
       const position = r.position != null ? String(r.position) : null;
+      const mentioned = Boolean(r.mentioned);
+      const mentionContext = typeof r.mentionContext === 'string' ? r.mentionContext : null;
+      const sentiment = mentioned
+        ? this.visibilityParser.analyzeSentiment(mentionContext ?? aiResponse.slice(0, 300))
+        : null;
       return {
         platform,
-        mentioned: Boolean(r.mentioned),
+        mentioned,
         position: position === 'null' ? null : position,
-        mentionContext: typeof r.mentionContext === 'string' ? r.mentionContext : null,
-        fullResponseTruncated: aiResponse.slice(0, 300),
+        mentionContext,
+        fullResponseTruncated: aiResponse.slice(0, 1500),
+        sentiment,
       };
     };
 
@@ -334,5 +354,31 @@ export class AiIntelligencePipeline implements Pipeline {
     }
 
     return { query, mentioned, position, mentionContext, aiResponse, provider: 'perplexity' };
+  }
+
+  // ─── Prompt Visibility seeding ────────────────────────────────────────────
+
+  private async seedPromptsToVisibility(
+    projectId: string,
+    queries: string[],
+    competitors: string[],
+  ): Promise<void> {
+    const existing = await this.promptVisibility.getPrompts(projectId);
+    const existingTexts = new Set(existing.map((p) => p.promptText));
+
+    for (const query of queries) {
+      if (existingTexts.has(query)) continue;
+      await this.promptVisibility.createPrompt(projectId, {
+        promptText: query,
+        intentStage: 'awareness',
+        engines: ['openai', 'claude', 'perplexity'],
+        competitors,
+      });
+    }
+
+    const newCount = queries.filter((q) => !existingTexts.has(q)).length;
+    if (newCount > 0) {
+      this.logger.log(`ai-intelligence: seeded ${newCount} new queries to Prompt Visibility (project ${projectId})`);
+    }
   }
 }
