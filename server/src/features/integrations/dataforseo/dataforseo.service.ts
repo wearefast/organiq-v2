@@ -125,8 +125,8 @@ export class DataForSeoService {
   }
 
   async getKeywordDifficulty(keywords: string[], location: string = 'United States', language: string = 'en') {
-    return this.post('/keywords_data/google_ads/search_volume/live', [
-      { keywords, location_name: this.resolveLocation(location), language_code: language, calculate_relevance: true },
+    return this.post('/dataforseo_labs/google/bulk_keyword_difficulty/live', [
+      { keywords, location_name: this.resolveLocation(location), language_code: language },
     ]);
   }
 
