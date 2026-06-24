@@ -24,22 +24,12 @@ export class SerpNicheMapPipeline implements Pipeline {
     const country = (context.country as string) || 'us';
     const start = Date.now();
 
-    // Extract seed keywords from prior step output
+    // Extract seed keywords from prior step agent output
     const seedCtx = context['seed-keywords'] as {
       seedKeywords?: Array<{ keyword: string }>;
-      rawData?: { organicKeywords?: { keywords?: Array<{ keyword: string }> }; seedTerms?: string[] };
     } | undefined;
 
-    // Support both old schema (seedKeywords[]) and new pipeline schema (rawData.seedTerms)
-    let seedKeywords: string[] = [];
-    if (seedCtx?.seedKeywords) {
-      seedKeywords = seedCtx.seedKeywords.map((k) => k.keyword).filter(Boolean);
-    } else if (seedCtx?.rawData?.seedTerms) {
-      seedKeywords = seedCtx.rawData.seedTerms.filter(Boolean);
-    } else if (seedCtx?.rawData?.organicKeywords) {
-      const kwData = seedCtx.rawData.organicKeywords as { keywords?: Array<{ keyword: string }> };
-      seedKeywords = (kwData.keywords ?? []).map((k) => k.keyword).filter(Boolean);
-    }
+    const seedKeywords: string[] = (seedCtx?.seedKeywords ?? []).map((k) => k.keyword).filter(Boolean);
 
     // Cap at 20: niche segment quality does not improve meaningfully past 20 well-chosen
     // seeds. Seeds beyond 20 are typically long-tail variants of already-represented intents.

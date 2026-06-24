@@ -27,14 +27,17 @@ const COUNTRY_TO_LOCATION: Record<string, string> = {
 };
 
 /**
- * V7 Pipeline: Seed Keywords
- * Fetches seed keywords via DataForSEO ranked keywords + keyword suggestions.
- * Returns raw API responses for agent analysis — NO analysis logic here.
+ * V8 Pipeline: Seed Keywords — Competitor-Gap Discovery
  *
- * Fallback strategy: When the target domain has no organic keyword footprint
- * (common for new/low-DR sites), the pipeline derives seed terms from the
- * project's industry, business-profile (ICP pain points, positioning), and
- * competitor domains. This ensures the agent always receives keyword evidence.
+ * Strategy:
+ *  1. Fetch domain's current rankings as an EXCLUSION baseline (not seeds).
+ *  2. Always fetch top competitors' rankings — competitor keywords the domain
+ *     does NOT rank for are the highest-signal seed candidates.
+ *  3. Extract business seeds from business-profile.primary_services for
+ *     offering-anchored topical coverage.
+ *  4. Merge gap seeds + business seeds → feed into DataForSEO suggestions.
+ *
+ * Fallback: when no competitors are available, business seeds carry the full load.
  */
 @Injectable()
 export class SeedKeywordsPipeline implements Pipeline {
@@ -50,70 +53,92 @@ export class SeedKeywordsPipeline implements Pipeline {
     const country = (context.country as string)?.toLowerCase() || 'us';
     const language = (context.language as string) || 'en';
     const location = COUNTRY_TO_LOCATION[country] || (context.location as string) || 'United States';
-    const industry = (context.industry as string) || '';
     const start = Date.now();
 
     if (!domain) throw new Error('seed-keywords pipeline requires context.domain');
 
     let apiCallCount = 0;
 
-    // Step 1: Get domain's existing organic keywords via DataForSEO ranked keywords (top 50)
-    this.logger.log(`Seed keywords: fetching ranked keywords for ${domain} (country=${country})`);
-    const organicRaw = await this.dataforseo.getRankedKeywords(domain, location, language, 50);
-    apiCallCount++;
+    // ─── Step 1: Domain baseline — what the domain ALREADY ranks for ─────────
+    // Used as an exclusion list only; these are NOT seeds.
+    this.logger.log(`Seed keywords: fetching domain baseline for ${domain}`);
+    let domainRankings: SlimKeyword[] = [];
+    try {
+      const domainRaw = await this.dataforseo.getRankedKeywords(domain, location, language, 50);
+      apiCallCount++;
+      domainRankings = this.slimDfsRankedKeywords(domainRaw);
+    } catch (err) {
+      this.logger.warn(`Domain baseline fetch failed for "${domain}": ${(err as Error).message}`);
+    }
+    const domainKeywordSet = new Set(domainRankings.map((k) => k.keyword.toLowerCase().trim()));
 
-    // Step 2: Extract seed terms from organic keywords
-    const organicKeywords = this.slimDfsRankedKeywords(organicRaw);
-    let seedTerms: string[] = organicKeywords.map((k) => k.keyword).filter(Boolean).slice(0, 20);
+    // ─── Step 2: Competitor rankings — always primary, not fallback ──────────
+    const competitorDomains = this.extractCompetitorDomains(context['business-profile']);
+    const competitorRankings: Array<{ competitor: string; keywords: SlimKeyword[] }> = [];
 
-    // Step 2b: FALLBACK — If no organic keywords, derive seeds from context
-    let fallbackUsed = false;
-    let competitorOrganicKeywords: Array<{ competitor: string; keywords: SlimKeyword[] }> = [];
-
-    if (seedTerms.length < 5) {
-      fallbackUsed = true;
-      this.logger.warn(
-        `Seed keywords: DataForSEO returned ${seedTerms.length} ranked keywords for ${domain} (threshold: 5). Activating fallback seed generation.`,
+    if (competitorDomains.length > 0) {
+      this.logger.log(`Seed keywords: fetching rankings for ${Math.min(competitorDomains.length, 3)} competitors`);
+      const competitorResults = await Promise.all(
+        competitorDomains.slice(0, 3).map(async (comp) => {
+          try {
+            const raw = await this.dataforseo.getRankedKeywords(comp, location, language, 50);
+            apiCallCount++;
+            return { competitor: comp, keywords: this.slimDfsRankedKeywords(raw) };
+          } catch (err) {
+            this.logger.warn(`Competitor baseline fetch failed for "${comp}": ${(err as Error).message}`);
+            return null;
+          }
+        }),
       );
-
-      const fallbackSeeds = this.deriveFallbackSeeds(domain, industry, context['business-profile']);
-
-      // Also try to get organic keywords from competitor domains (max 2, 20 kws each)
-      const competitorDomains = this.extractCompetitorDomains(context['business-profile']);
-      if (competitorDomains.length > 0) {
-        this.logger.log(`Seed keywords: fetching competitor ranked keywords from ${competitorDomains.length} competitors`);
-        const competitorResults = await Promise.all(
-          competitorDomains.slice(0, 2).map(async (comp) => {
-            try {
-              const raw = await this.dataforseo.getRankedKeywords(comp, location, language, 20);
-              apiCallCount++;
-              return { competitor: comp, keywords: this.slimDfsRankedKeywords(raw) };
-            } catch (err) {
-              this.logger.warn(`Competitor ranked fetch failed for "${comp}": ${(err as Error).message}`);
-              return null;
-            }
-          }),
-        );
-        competitorOrganicKeywords = competitorResults.filter(Boolean) as typeof competitorOrganicKeywords;
-
-        // Extract keywords from competitor data as additional seeds
-        for (const comp of competitorOrganicKeywords) {
-          fallbackSeeds.push(...comp.keywords.map((k) => k.keyword).slice(0, 8));
-        }
-      }
-
-      // Deduplicate and limit fallback seeds
-      seedTerms = [...new Set(fallbackSeeds.map((s) => s.toLowerCase().trim()).filter(Boolean))].slice(0, 15);
-      this.logger.log(`Seed keywords: fallback generated ${seedTerms.length} seed terms`);
+      competitorRankings.push(...(competitorResults.filter(Boolean) as typeof competitorRankings));
     }
 
-    // Step 3: For each seed, get DataForSEO keyword suggestions
-    // Batch in groups of 5 with 500ms delay between batches
+    // ─── Step 3: Gap computation — competitor keywords the domain doesn't rank for
+    const allCompetitorKeywords: SlimKeyword[] = [];
+    for (const comp of competitorRankings) {
+      for (const kw of comp.keywords) {
+        if (kw.keyword && !domainKeywordSet.has(kw.keyword.toLowerCase().trim())) {
+          allCompetitorKeywords.push(kw);
+        }
+      }
+    }
+
+    // Deduplicate by keyword string, keeping the entry with the highest volume
+    const gapMap = new Map<string, SlimKeyword>();
+    for (const kw of allCompetitorKeywords) {
+      const key = kw.keyword.toLowerCase().trim();
+      const existing = gapMap.get(key);
+      if (!existing || (kw.volume ?? 0) > (existing.volume ?? 0)) {
+        gapMap.set(key, kw);
+      }
+    }
+    // Sort by volume descending — highest-signal gaps first
+    const gapKeywords = [...gapMap.values()]
+      .sort((a, b) => (b.volume ?? 0) - (a.volume ?? 0))
+      .slice(0, 30);
+
+    this.logger.log(`Seed keywords: ${gapKeywords.length} gap keywords computed from ${competitorRankings.length} competitors`);
+
+    // ─── Step 4: Business seeds from primary_services ─────────────────────────
+    const businessSeeds = this.extractBusinessSeeds(context['business-profile']);
+    this.logger.log(`Seed keywords: ${businessSeeds.length} business seeds from primary_services`);
+
+    // ─── Step 5: Merge gap seeds + business seeds for suggestion expansion ────
+    const gapSeedTerms = gapKeywords.slice(0, 15).map((k) => k.keyword.toLowerCase().trim());
+    const mergedSeeds = [...new Set([...gapSeedTerms, ...businessSeeds])].slice(0, 20);
+
+    // Activate fallback message when no competitor data was available
+    const fallbackUsed = competitorRankings.length === 0;
+    if (fallbackUsed) {
+      this.logger.warn(`Seed keywords: no competitor data — relying on business seeds only (${mergedSeeds.length} seeds)`);
+    }
+
+    // ─── Step 6: DataForSEO keyword suggestions per seed ─────────────────────
     const BATCH_SIZE = 5;
     const suggestionsResults: Array<{ seed: string; keywords: SlimKeyword[] }> = [];
 
-    for (let i = 0; i < seedTerms.length; i += BATCH_SIZE) {
-      const batch = seedTerms.slice(i, i + BATCH_SIZE);
+    for (let i = 0; i < mergedSeeds.length; i += BATCH_SIZE) {
+      const batch = mergedSeeds.slice(i, i + BATCH_SIZE);
 
       await Promise.all(
         batch.map(async (seed) => {
@@ -128,26 +153,28 @@ export class SeedKeywordsPipeline implements Pipeline {
         }),
       );
 
-      // Throttle between batches
-      if (i + BATCH_SIZE < seedTerms.length) {
+      if (i + BATCH_SIZE < mergedSeeds.length) {
         await sleep(500);
       }
     }
 
     return {
       rawData: {
-        organicKeywords,
-        seedTerms,
-        relatedTerms: suggestionsResults, // Populated from DFS suggestions (same shape as before)
+        gapKeywords,
+        domainRankings,
+        competitorRankings,
+        seedTerms: mergedSeeds,
+        // Keep legacy key so any dead-code checks in downstream steps don't throw
+        relatedTerms: suggestionsResults,
         suggestions: suggestionsResults,
-        ...(competitorOrganicKeywords.length > 0 ? { competitorOrganicKeywords } : {}),
       },
       metadata: {
         domain,
         country,
         location,
         fallbackUsed,
-        seedTermsDiscovered: seedTerms.length,
+        gapCount: gapKeywords.length,
+        seedTermsDiscovered: mergedSeeds.length,
         apiCallCount,
         durationMs: Date.now() - start,
       },
@@ -202,56 +229,25 @@ export class SeedKeywordsPipeline implements Pipeline {
   }
 
   /**
-   * Derive seed terms from project context when organic keywords are unavailable.
-   * Sources: industry field, business-profile (ICP pain points, positioning, content gaps).
+   * Extract seed terms from business-profile.primary_services.
+   * Each service name is trimmed to 2–4 words — precise enough to anchor a
+   * suggestion query without being too generic.
    */
-  private deriveFallbackSeeds(domain: string, industry: string, businessProfile: unknown): string[] {
-    const seeds: string[] = [];
+  private extractBusinessSeeds(businessProfile: unknown): string[] {
+    const bp = businessProfile as { primary_services?: string[] } | null | undefined;
+    if (!bp?.primary_services?.length) return [];
 
-    // Source 1: Industry terms (split by comma)
-    if (industry) {
-      const terms = industry.split(/[,/&]+/).map((t) => t.trim().toLowerCase()).filter(Boolean);
-      seeds.push(...terms);
-    }
-
-    // Source 2: Domain name parts (e.g. "luvindeals" → "deals")
-    const domainBase = domain.replace(/\.(com|net|org|io|ae|co|uk)$/i, '');
-    const domainWords = domainBase.split(/[^a-z]+/i).filter((w) => w.length > 3);
-    seeds.push(...domainWords.map((w) => w.toLowerCase()));
-
-    // Source 3: Business profile data
-    const bp = businessProfile as {
-      icp?: { pain_points?: string[]; industries?: string[] };
-      positioning?: string;
-      content_gaps?: string[];
-      competitors?: string[];
-    } | null | undefined;
-
-    if (bp) {
-      // ICP pain points → extract key phrases (take first 3-4 words of each)
-      if (bp.icp?.pain_points) {
-        for (const pp of bp.icp.pain_points.slice(0, 5)) {
-          const phrase = pp.split(/\s+/).slice(0, 4).join(' ').toLowerCase()
-            .replace(/[^a-z0-9\s]/g, '').trim();
-          if (phrase.length > 5) seeds.push(phrase);
-        }
-      }
-
-      // ICP industries as seeds
-      if (bp.icp?.industries) {
-        for (const ind of bp.icp.industries.slice(0, 5)) {
-          seeds.push(ind.toLowerCase().replace(/[^a-z0-9\s&/]/g, '').trim());
-        }
-      }
-
-      // Extract key terms from positioning (take noun phrases)
-      if (bp.positioning) {
-        const posTerms = this.extractKeyPhrases(bp.positioning);
-        seeds.push(...posTerms.slice(0, 5));
-      }
-    }
-
-    return seeds;
+    return bp.primary_services
+      .slice(0, 10)
+      .map((s) =>
+        s.toLowerCase()
+          .replace(/[^a-z0-9\s]/g, '')
+          .trim()
+          .split(/\s+/)
+          .slice(0, 4)
+          .join(' '),
+      )
+      .filter((s) => s.length > 3);
   }
 
   /**
@@ -272,30 +268,5 @@ export class SeedKeywordsPipeline implements Pipeline {
       }
     }
     return [...new Set(domains)];
-  }
-
-  /**
-   * Extract short key phrases from a text block (positioning, descriptions).
-   * Returns lowercase 2-3 word phrases that are likely relevant for keyword research.
-   */
-  private extractKeyPhrases(text: string): string[] {
-    const phrases: string[] = [];
-    // Split on punctuation and conjunctions, extract 2-3 word segments
-    const segments = text.toLowerCase()
-      .replace(/['']/g, "'")
-      .split(/[.,;:!?()\[\]{}""—–\-\/\\]+/)
-      .map((s) => s.trim())
-      .filter((s) => s.length > 5);
-
-    for (const seg of segments) {
-      const words = seg.split(/\s+/).filter((w) => w.length > 2 && !/^(the|and|for|with|from|that|this|are|was|will|has|been|its|all|can|also)$/.test(w));
-      if (words.length >= 2 && words.length <= 4) {
-        phrases.push(words.join(' '));
-      } else if (words.length > 4) {
-        // Take first 3 meaningful words
-        phrases.push(words.slice(0, 3).join(' '));
-      }
-    }
-    return phrases;
   }
 }
