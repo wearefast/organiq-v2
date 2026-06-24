@@ -235,47 +235,47 @@ export class DataForSeoService {
 
     const keywordStrings = keywords.map(kw => kw.keyword);
 
-    try {
-      // Fetch search volume and difficulty in parallel
-      const [volumeResp, difficultyResp] = await Promise.all([
-        this.getKeywordSearchVolume(keywordStrings, location, language),
-        this.getKeywordDifficulty(keywordStrings, location, language),
-      ]);
+    // Use allSettled so a KD API failure never kills volume enrichment (and vice versa).
+    // These are two independent external APIs — one failing must not nullify the other.
+    const [volumeResult, difficultyResult] = await Promise.allSettled([
+      this.getKeywordSearchVolume(keywordStrings, location, language),
+      this.getKeywordDifficulty(keywordStrings, location, language),
+    ]);
 
-      // Parse volume response: tasks[0].result[].keyword, search_volume
-      const volumeMap = new Map<string, number>();
-      const volumeItems = (volumeResp as any)?.tasks?.[0]?.result ?? [];
+    // Parse volume response: tasks[0].result[].keyword, search_volume
+    const volumeMap = new Map<string, number | null>();
+    if (volumeResult.status === 'fulfilled') {
+      const volumeItems = (volumeResult.value as any)?.tasks?.[0]?.result ?? [];
       for (const item of volumeItems) {
         if (item.keyword) {
           volumeMap.set(item.keyword.toLowerCase(), item.search_volume ?? null);
         }
       }
+    } else {
+      this.logger.warn(`enrichKeywordsWithMetrics — volume API failed: ${volumeResult.reason?.message ?? volumeResult.reason}`);
+    }
 
-      // Parse difficulty response: tasks[0].result[0].items[].keyword, keyword_difficulty
-      // bulk_keyword_difficulty wraps items one level deeper than search_volume
-      const difficultyMap = new Map<string, number>();
-      const diffItems = (difficultyResp as any)?.tasks?.[0]?.result?.[0]?.items ?? [];
+    // Parse difficulty response: tasks[0].result[0].items[].keyword, keyword_difficulty
+    // bulk_keyword_difficulty wraps items one level deeper than search_volume.
+    // DataForSEO Labs has limited geographic coverage — non-tier-1 markets may return errors.
+    const difficultyMap = new Map<string, number | null>();
+    if (difficultyResult.status === 'fulfilled') {
+      const diffItems = (difficultyResult.value as any)?.tasks?.[0]?.result?.[0]?.items ?? [];
       for (const item of diffItems) {
         if (item.keyword) {
           difficultyMap.set(item.keyword.toLowerCase(), item.keyword_difficulty ?? null);
         }
       }
-
-      // Merge back into original keywords array
-      return keywords.map(kw => ({
-        ...kw,
-        volume: volumeMap.get(kw.keyword.toLowerCase()) ?? null,
-        difficulty: difficultyMap.get(kw.keyword.toLowerCase()) ?? null,
-      }));
-    } catch (err) {
-      this.logger.warn(`enrichKeywordsWithMetrics failed: ${(err as Error).message}. Returning keywords as-is with null metrics.`);
-      // On failure, return keywords with null metrics rather than crashing
-      return keywords.map(kw => ({
-        ...kw,
-        volume: null,
-        difficulty: null,
-      }));
+    } else {
+      this.logger.warn(`enrichKeywordsWithMetrics — KD API failed: ${difficultyResult.reason?.message ?? difficultyResult.reason}`);
     }
+
+    // Merge back into original keywords array — null when API failed or keyword not found
+    return keywords.map(kw => ({
+      ...kw,
+      volume: volumeMap.has(kw.keyword.toLowerCase()) ? volumeMap.get(kw.keyword.toLowerCase())! : null,
+      difficulty: difficultyMap.has(kw.keyword.toLowerCase()) ? difficultyMap.get(kw.keyword.toLowerCase())! : null,
+    }));
   }
 
   // ─── Core Request Methods ─────────────────────────────────
