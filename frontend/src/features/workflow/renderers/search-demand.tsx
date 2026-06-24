@@ -183,58 +183,6 @@ export function SearchDemandRenderer({ data }: { data: unknown }) {
         </div>
       )}
 
-      {/* High Opportunity Keywords */}
-      {highOpp.length > 0 && (
-        <div>
-          <SectionLabel>
-            <InfoTip tip="Top keywords ranked by opportunity score — a blend of search volume and low keyword difficulty. Best candidates for quick ranking wins.">
-              Top Opportunity Keywords
-            </InfoTip>
-          </SectionLabel>
-          <div className="mt-2 space-y-1.5">
-            {highOpp.slice(0, 10).map((kw, i) => {
-              const enriched = typeof kw.keyword === 'string' ? enrichedMap.get(kw.keyword) : undefined;
-              const volume = kw.volume ?? enriched?.volume ?? enriched?.metrics?.searchVolume;
-              const difficulty = kw.difficulty ?? enriched?.difficulty ?? enriched?.metrics?.keywordDifficulty;
-              const score = kw.opportunityScore ?? enriched?.opportunityScore;
-              return (
-                <div key={i} className="flex items-center gap-3 rounded border border-zinc-800 bg-zinc-900/50 px-3 py-2">
-                  <span className="w-5 shrink-0 text-center text-[11px] font-semibold text-zinc-600">#{i + 1}</span>
-                  <div className="min-w-0 flex-1">
-                    <span className="block truncate text-sm font-medium text-zinc-200">{kw.keyword}</span>
-                  </div>
-                  <div className="flex shrink-0 items-center gap-3 text-xs">
-                    {volume !== undefined && (
-                      <span className="flex items-center gap-1">
-                        <span className="text-zinc-500">vol</span>
-                        <span className="font-medium text-zinc-300">{formatNumber(volume)}</span>
-                      </span>
-                    )}
-                    {difficulty !== undefined && (
-                      <span className="flex items-center gap-1">
-                        <span className="text-zinc-500">KD</span>
-                        <DifficultyBadge value={difficulty} />
-                      </span>
-                    )}
-                    {score !== undefined && (
-                      <span
-                        className="w-10 rounded px-1.5 py-0.5 text-center font-semibold"
-                        style={{
-                          background: `hsl(${Math.round(score * 120)}, 70%, 15%)`,
-                          color: `hsl(${Math.round(score * 120)}, 80%, 60%)`,
-                        }}
-                      >
-                        {(score * 100).toFixed(0)}
-                      </span>
-                    )}
-                  </div>
-                </div>
-              );
-            })}
-          </div>
-        </div>
-      )}
-
       {/* Full Keywords Table */}
       {kwRows.length > 0 && (
         <AllKeywordsTable rows={kwRows} medianVolume={medianVolume} />
