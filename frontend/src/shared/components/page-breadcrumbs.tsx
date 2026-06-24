@@ -17,6 +17,12 @@ interface Project {
   name: string;
 }
 
+interface WorkspaceWithProjects {
+  id: string;
+  name: string;
+  projects?: Project[];
+}
+
 export function PageBreadcrumbs() {
   const pathname = usePathname();
   const params = useParams<{ wId?: string; pId?: string }>();
@@ -31,7 +37,7 @@ export function PageBreadcrumbs() {
 
   // Fetch workspace and project names when IDs change
   useEffect(() => {
-    if (!wId && !pId) return;
+    if (!wId) return;
 
     let active = true;
     setLoading(true);
@@ -40,16 +46,18 @@ export function PageBreadcrumbs() {
       try {
         setAuthToken(await getToken());
         
-        // Fetch workspace if wId exists
-        if (wId) {
-          const ws = await apiFetch<Workspace>(`/workspaces/${wId}`);
-          if (active) setWorkspace(ws);
-        }
-
-        // Fetch project if both wId and pId exist
-        if (wId && pId) {
-          const proj = await apiFetch<Project>(`/workspaces/${wId}/projects/${pId}`);
-          if (active) setProject(proj);
+        // Fetch workspace with projects
+        const ws = await apiFetch<WorkspaceWithProjects>(`/workspaces/${wId}`);
+        if (active) {
+          setWorkspace({ id: ws.id, name: ws.name });
+          
+          // If pId exists, find the matching project
+          if (pId && ws.projects) {
+            const matchingProject = ws.projects.find((p) => p.id === pId);
+            if (matchingProject) {
+              setProject(matchingProject);
+            }
+          }
         }
       } catch (err) {
         // Silently fail if we can't fetch data
