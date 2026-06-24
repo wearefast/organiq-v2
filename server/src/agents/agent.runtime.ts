@@ -105,6 +105,7 @@ export class AgentRuntime {
   // they can write planning prose before the return_output tool call without
   // exhausting the standard 16 384-token limit.
   private static readonly STEP_MAX_OUTPUT_TOKENS: Record<string, number> = {
+    'seed-keywords': 32000,
     'method01-competitor-pages': 32000,
     'method02-seed-expansion': 32000,
     'method03-content-gap-import': 32000,

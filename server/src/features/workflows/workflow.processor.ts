@@ -517,26 +517,34 @@ export class WorkflowProcessor extends WorkerHost {
       // For content-images, strip raw base64 blobs before persisting — the binary
       // data is materialized into the content_images table by WorkflowMaterializerService.
       // Storing 15–30 MB of base64 in workflow_context/JSONB is unnecessary and slow.
-      if (result.output != null) {
-        let contextValue =
-          stepKey === 'content-images'
-            ? this.stripImagesBase64(result.output)
-            : result.output;
-
-        // Enrich seed-keywords with volume and difficulty from DataForSEO
-        if (stepKey === 'seed-keywords' && contextValue && typeof contextValue === 'object') {
-          const output = contextValue as Record<string, unknown>;
-          const seedKeywords = (output.seedKeywords ?? []) as Array<{ keyword: string; [key: string]: unknown }>;
-          if (Array.isArray(seedKeywords) && seedKeywords.length > 0) {
-            const country = context?.country as string || 'us';
-            const language = context?.language as string || 'en';
-            const enriched = await this.dataforseo.enrichKeywordsWithMetrics(seedKeywords, country, language);
-            contextValue = { ...output, seedKeywords: enriched };
-          }
-        }
-
-        await this.workflowService.setContext(workflowRunId, stepKey, contextValue);
+      //
+      // Guard: if output is null the agent hit max_tokens before calling return_output.
+      // Throw so BullMQ retries the step rather than silently storing awaiting_approval
+      // with no data, which would leave downstream steps with no context to read.
+      if (result.output == null) {
+        throw new Error(
+          `Agent returned null output for step "${stepKey}" — likely hit max_tokens mid-generation. BullMQ will retry.`,
+        );
       }
+
+      let contextValue =
+        stepKey === 'content-images'
+          ? this.stripImagesBase64(result.output)
+          : result.output;
+
+      // Enrich seed-keywords with volume and difficulty from DataForSEO
+      if (stepKey === 'seed-keywords' && contextValue && typeof contextValue === 'object') {
+        const output = contextValue as Record<string, unknown>;
+        const seedKeywords = (output.seedKeywords ?? []) as Array<{ keyword: string; [key: string]: unknown }>;
+        if (Array.isArray(seedKeywords) && seedKeywords.length > 0) {
+          const country = context?.country as string || 'us';
+          const language = context?.language as string || 'en';
+          const enriched = await this.dataforseo.enrichKeywordsWithMetrics(seedKeywords, country, language);
+          contextValue = { ...output, seedKeywords: enriched };
+        }
+      }
+
+      await this.workflowService.setContext(workflowRunId, stepKey, contextValue);
 
       // 13. Emit completion event
       const newStatus = agentDef.requiresApproval ? 'awaiting_approval' : 'completed';
