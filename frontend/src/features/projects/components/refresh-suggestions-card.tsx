@@ -95,13 +95,13 @@ export function RefreshSuggestionsCard({ projectId }: RefreshSuggestionsCardProp
               <div className="min-w-0 flex-1">
                 <div className="flex items-center gap-2">
                   <span className="rounded bg-zinc-800 px-1.5 py-0.5 text-[10px] font-medium text-zinc-300">
-                    {DATA_TYPE_LABELS[s.dataType] || s.dataType}
+                    {DATA_TYPE_LABELS[s.dataType] || s.dataType || 'Unknown'}
                   </span>
                   {s.targetKey && s.targetKey !== 'latest' && (
                     <span className="truncate text-[10px] text-zinc-500">{s.targetKey}</span>
                   )}
                 </div>
-                <p className="mt-1 text-xs text-zinc-300">{s.reason}</p>
+                <p className="mt-1 text-xs text-zinc-300">{s.reason || 'No reason provided'}</p>
                 <p className="mt-0.5 text-[10px] text-zinc-500">
                   Flagged {timeAgo(s.suggestedAt)} by {s.suggestedBy} · Data from {timeAgo(s.lastUpdated)}
                 </p>

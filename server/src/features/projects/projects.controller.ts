@@ -152,9 +152,10 @@ export class ProjectsController {
 
   @Post(':id/intelligence/refresh-suggestions/:suggestionId/dismiss')
   async dismissRefreshSuggestion(
+    @Param('id') projectId: string,
     @Param('suggestionId') suggestionId: string,
     @Req() req: any,
   ) {
-    return this.intelligenceService.dismissRefreshSuggestion(suggestionId, req.org.id);
+    return this.intelligenceService.dismissRefreshSuggestion(suggestionId, req.org.id, projectId);
   }
 }

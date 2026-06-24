@@ -1,5 +1,5 @@
 import { Injectable, Logger } from '@nestjs/common';
-import { eq, and, or, sql } from 'drizzle-orm';
+import { eq, and, or, sql, isNull } from 'drizzle-orm';
 import { DatabaseService } from '../../shared/database/database.service';
 import { projectIntelligence, refreshSuggestions } from '../../db/schema';
 
@@ -59,6 +59,25 @@ export class ProjectIntelligenceService {
       .returning();
 
     this.logger.debug(`Upserted intelligence: ${entry.dataType} for project ${entry.projectId} (target: ${targetKey})`);
+
+    // Auto-dismiss any active refresh suggestions for this dataType+target,
+    // since we just stored fresh data — the stale warning is no longer relevant.
+    const rawTargetKey = entry.targetKey ?? null;
+    await this.db.db
+      .update(refreshSuggestions)
+      .set({ dismissed: true, refreshedAt: new Date() })
+      .where(
+        and(
+          eq(refreshSuggestions.projectId, entry.projectId),
+          eq(refreshSuggestions.organizationId, entry.organizationId),
+          eq(refreshSuggestions.dataType, entry.dataType),
+          eq(refreshSuggestions.dismissed, false),
+          rawTargetKey === null
+            ? isNull(refreshSuggestions.targetKey)
+            : eq(refreshSuggestions.targetKey, rawTargetKey),
+        ),
+      );
+
     return result;
   }
 
@@ -157,12 +176,37 @@ export class ProjectIntelligenceService {
     reason: string;
     suggestedBy: string;
   }) {
+    const rawTargetKey = data.targetKey ?? null;
+
+    // Deduplicate: if an active suggestion for the same (project, dataType, targetKey)
+    // already exists, update its reason/timestamp instead of creating a duplicate.
+    const existing = await this.db.db.query.refreshSuggestions.findFirst({
+      where: and(
+        eq(refreshSuggestions.projectId, data.projectId),
+        eq(refreshSuggestions.organizationId, data.organizationId),
+        eq(refreshSuggestions.dataType, data.dataType),
+        eq(refreshSuggestions.dismissed, false),
+        rawTargetKey === null
+          ? isNull(refreshSuggestions.targetKey)
+          : eq(refreshSuggestions.targetKey, rawTargetKey),
+      ),
+    });
+
+    if (existing) {
+      const [updated] = await this.db.db
+        .update(refreshSuggestions)
+        .set({ reason: data.reason, suggestedAt: new Date(), lastUpdated: data.lastUpdated })
+        .where(eq(refreshSuggestions.id, existing.id))
+        .returning();
+      return updated;
+    }
+
     const [suggestion] = await this.db.db
       .insert(refreshSuggestions)
       .values({
         projectId: data.projectId,
         organizationId: data.organizationId,
-        targetKey: data.targetKey ?? null,
+        targetKey: rawTargetKey,
         dataType: data.dataType,
         lastUpdated: data.lastUpdated,
         reason: data.reason,
@@ -190,13 +234,14 @@ export class ProjectIntelligenceService {
   /**
    * Dismiss a refresh suggestion. Scoped to organization for authorization.
    */
-  async dismissRefreshSuggestion(id: string, organizationId: string) {
+  async dismissRefreshSuggestion(id: string, organizationId: string, projectId: string) {
     const [updated] = await this.db.db
       .update(refreshSuggestions)
       .set({ dismissed: true })
       .where(and(
         eq(refreshSuggestions.id, id),
         eq(refreshSuggestions.organizationId, organizationId),
+        eq(refreshSuggestions.projectId, projectId),
       ))
       .returning();
     return updated ?? null;

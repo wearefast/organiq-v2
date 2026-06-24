@@ -176,6 +176,13 @@
       "when": 1782221366479,
       "tag": "0024_add_direct_competitors",
       "breakpoints": true
+    },
+    {
+      "idx": 25,
+      "version": "7",
+      "when": 1782290684324,
+      "tag": "0025_improve_refresh_suggestions_index",
+      "breakpoints": true
     }
   ]
 }

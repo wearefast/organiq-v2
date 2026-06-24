@@ -93,7 +93,7 @@ const FLAG_STALE_DATA_TOOL: AnthropicToolDef = {
       reason: { type: 'string', description: 'Why this data appears stale' },
       last_updated: { type: 'string', description: 'ISO timestamp of when the data was last updated' },
     },
-    required: ['data_type', 'reason'],
+    required: ['data_type', 'reason', 'last_updated'],
   },
 };
 

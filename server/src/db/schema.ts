@@ -1217,7 +1217,7 @@ export const refreshSuggestions = pgTable(
     refreshedAt: timestamp('refreshed_at'),
   },
   (table) => ({
-    projectActiveIdx: index('rs_project_active_idx').on(table.projectId),
+    projectActiveIdx: index('rs_project_active_idx').on(table.projectId, table.organizationId),
   }),
 );
 
