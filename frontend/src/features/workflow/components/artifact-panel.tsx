@@ -223,7 +223,7 @@ export function ArtifactPanel({
 
       {/* Approval bar */}
       {(showApprovalBar || showRerunButton) && (
-        <footer className="border-t border-zinc-800 bg-[var(--bg-elevated)] px-6 py-3">
+        <footer className="sticky bottom-0 z-10 border-t border-zinc-800 bg-[var(--bg-elevated)] px-6 py-3 shadow-lg shadow-black/50">
           {rerunConfirm && (
             <div className="mb-3 flex items-center justify-between rounded-md border border-blue-500/20 bg-blue-500/5 px-3 py-2">
               <p className="text-[12px] text-blue-300">
