@@ -3,17 +3,19 @@
 import { useState } from 'react';
 import { InfoTip } from '@/shared/components';
 
+// ─── Types ────────────────────────────────────────────────────────────────────
+
 interface PlatformResponse {
   platform: 'openai' | 'anthropic' | 'perplexity';
   mentioned: boolean;
   position: string | null;
   context: string | null;
   fullResponse?: string;
+  sentiment?: 'positive' | 'neutral' | 'negative' | null;
 }
 
 interface AiMentionEntry {
   query: string;
-  // New multi-platform format
   responses?: PlatformResponse[];
   // Legacy flat format (backward compat)
   mentioned?: boolean;
@@ -35,12 +37,18 @@ interface AiIntelligenceData {
   [key: string]: unknown;
 }
 
+interface ModalState {
+  query: string;
+  response: PlatformResponse;
+}
+
 interface NormalizedDimension {
   score: number;
   findings: string[];
 }
 
-/** Case-insensitive + space-insensitive dimension lookup */
+// ─── Helpers ──────────────────────────────────────────────────────────────────
+
 function findDimension(dims: Record<string, unknown>, key: string): NormalizedDimension | null {
   const normalKey = key.toLowerCase().replace(/\s+/g, '');
   for (const [k, v] of Object.entries(dims)) {
@@ -55,8 +63,11 @@ function findDimension(dims: Record<string, unknown>, key: string): NormalizedDi
   return null;
 }
 
+// ─── Main Renderer ────────────────────────────────────────────────────────────
+
 export function AiIntelligenceRenderer({ data }: { data: unknown }) {
   const intel = data as AiIntelligenceData;
+  const [modal, setModal] = useState<ModalState | null>(null);
 
   if (!intel || typeof intel !== 'object') {
     return <p className="text-sm text-zinc-500">No AI intelligence data available.</p>;
@@ -71,7 +82,9 @@ export function AiIntelligenceRenderer({ data }: { data: unknown }) {
             <span className="text-xl font-bold text-violet-400">{intel.aiReadinessScore}</span>
           </div>
           <div>
-            <p className="text-lg font-semibold text-zinc-100"><InfoTip tip="Likelihood your domain is cited by AI engines (0â€“100), averaged across OpenAI, Claude, and Perplexity">AI Readiness Score</InfoTip></p>
+            <p className="text-lg font-semibold text-zinc-100">
+              <InfoTip tip="Likelihood your domain is cited by AI engines (0-100), averaged across OpenAI, Claude, and Perplexity">AI Readiness Score</InfoTip>
+            </p>
             <p className="text-sm text-zinc-400">
               {intel.aiReadinessScore >= 70 ? 'Well-positioned for AI search' :
                intel.aiReadinessScore >= 40 ? 'Moderate AI visibility' : 'Significant improvement needed'}
@@ -101,7 +114,11 @@ export function AiIntelligenceRenderer({ data }: { data: unknown }) {
           <div className="mt-2 space-y-3">
             {Array.isArray(intel.aiMentions)
               ? intel.aiMentions.map((mention, i) => (
-                  <AiMentionCard key={i} mention={mention as AiMentionEntry} />
+                  <AiMentionCard
+                    key={i}
+                    mention={mention as AiMentionEntry}
+                    onOpenModal={(response) => setModal({ query: (mention as AiMentionEntry).query, response })}
+                  />
                 ))
               : Object.entries(intel.aiMentions).map(([category, items]) => (
                   <div key={category} className="rounded border border-zinc-800 bg-zinc-900/50 px-3 py-2">
@@ -110,7 +127,7 @@ export function AiIntelligenceRenderer({ data }: { data: unknown }) {
                     </p>
                     {Array.isArray(items) && items.map((item, j) => {
                       if (typeof item === 'string') {
-                        return <p key={j} className="text-sm text-zinc-300 ml-2">â€¢ {item}</p>;
+                        return <p key={j} className="text-sm text-zinc-300 ml-2">• {item}</p>;
                       }
                       const obj = item as Record<string, unknown>;
                       const title = (obj.title as string) ?? '';
@@ -171,20 +188,83 @@ export function AiIntelligenceRenderer({ data }: { data: unknown }) {
           <p className="mt-1 text-sm leading-relaxed text-zinc-300">{intel.summary}</p>
         </div>
       )}
+
+      {/* Response Modal */}
+      {modal && <ResponseModal state={modal} onClose={() => setModal(null)} />}
     </div>
   );
 }
 
-// â”€â”€â”€ AiMentionCard â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+// ─── ResponseModal ────────────────────────────────────────────────────────────
 
-const PLATFORM_LABELS: Record<string, { label: string; color: string }> = {
-  openai:     { label: 'OpenAI',     color: 'text-emerald-400' },
-  anthropic:  { label: 'Claude',     color: 'text-violet-400' },
-  perplexity: { label: 'Perplexity', color: 'text-sky-400' },
-};
+function ResponseModal({ state, onClose }: { state: ModalState; onClose: () => void }) {
+  const { query, response } = state;
+  return (
+    <div
+      className="fixed inset-0 z-50 flex items-end sm:items-center justify-center p-4 bg-black/60 backdrop-blur-sm"
+      onClick={onClose}
+    >
+      <div
+        className="w-full max-w-2xl max-h-[80vh] bg-zinc-900 border border-zinc-700 rounded-xl shadow-2xl flex flex-col"
+        onClick={(e) => e.stopPropagation()}
+      >
+        {/* Header */}
+        <div className="flex items-center justify-between px-5 py-3 border-b border-zinc-800 shrink-0">
+          <div className="flex items-center gap-2 min-w-0">
+            <EngineBadge engine={response.platform} />
+            <span className="text-sm text-zinc-400 truncate">{query}</span>
+          </div>
+          <button
+            onClick={onClose}
+            className="ml-3 shrink-0 text-zinc-500 hover:text-zinc-200 transition-colors text-lg leading-none"
+            aria-label="Close"
+          >
+            ×
+          </button>
+        </div>
 
-function AiMentionCard({ mention }: { mention: AiMentionEntry }) {
-  // New multi-platform format
+        {/* Stats row */}
+        <div className="flex items-center gap-4 px-5 py-3 border-b border-zinc-800 shrink-0">
+          <div className="flex flex-col gap-0.5">
+            <span className="text-[10px] text-zinc-500 uppercase tracking-wider">Visibility</span>
+            {response.mentioned
+              ? <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded border text-xs bg-green-500/10 text-green-400 border-green-500/20">Mentioned</span>
+              : <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded border text-xs bg-zinc-700/50 text-zinc-500 border-zinc-700">Not found</span>
+            }
+          </div>
+          <div className="flex flex-col gap-0.5">
+            <span className="text-[10px] text-zinc-500 uppercase tracking-wider">Position</span>
+            <PositionBadge mentioned={response.mentioned} position={response.position} />
+          </div>
+          <div className="flex flex-col gap-0.5">
+            <span className="text-[10px] text-zinc-500 uppercase tracking-wider">Sentiment</span>
+            <SentimentBadge sentiment={response.sentiment ?? null} />
+          </div>
+        </div>
+
+        {/* Response body */}
+        <div className="overflow-y-auto px-5 py-4 text-sm text-zinc-300 leading-relaxed whitespace-pre-wrap">
+          {response.fullResponse
+            ? response.fullResponse
+            : response.context
+              ? response.context
+              : <span className="text-zinc-600 italic">No response text available.</span>
+          }
+        </div>
+      </div>
+    </div>
+  );
+}
+
+// ─── AiMentionCard ────────────────────────────────────────────────────────────
+
+function AiMentionCard({
+  mention,
+  onOpenModal,
+}: {
+  mention: AiMentionEntry;
+  onOpenModal: (response: PlatformResponse) => void;
+}) {
   if (mention.responses && mention.responses.length > 0) {
     const mentionedCount = mention.responses.filter((r) => r.mentioned).length;
     return (
@@ -197,14 +277,18 @@ function AiMentionCard({ mention }: { mention: AiMentionEntry }) {
         </div>
         <div className="divide-y divide-zinc-800/60">
           {mention.responses.map((r) => (
-            <PlatformResponseRow key={r.platform} response={r} />
+            <PlatformResponseRow
+              key={r.platform}
+              response={r}
+              onOpen={() => onOpenModal(r)}
+            />
           ))}
         </div>
       </div>
     );
   }
 
-  // Legacy flat format (backward compat)
+  // Legacy flat format
   return (
     <div className="flex items-center justify-between rounded border border-zinc-800 bg-zinc-900/50 px-3 py-2">
       <span className="text-sm text-zinc-300">{mention.query}</span>
@@ -217,39 +301,83 @@ function AiMentionCard({ mention }: { mention: AiMentionEntry }) {
   );
 }
 
-function PlatformResponseRow({ response }: { response: PlatformResponse }) {
-  const [expanded, setExpanded] = useState(false);
-  const meta = PLATFORM_LABELS[response.platform] ?? { label: response.platform, color: 'text-zinc-400' };
+// ─── PlatformResponseRow ──────────────────────────────────────────────────────
+
+const PLATFORM_META: Record<string, { label: string; color: string }> = {
+  openai:     { label: 'OpenAI',     color: 'text-zinc-200' },
+  anthropic:  { label: 'Claude',     color: 'text-orange-400' },
+  perplexity: { label: 'Perplexity', color: 'text-teal-400' },
+};
+
+function PlatformResponseRow({ response, onOpen }: { response: PlatformResponse; onOpen: () => void }) {
+  const meta = PLATFORM_META[response.platform] ?? { label: response.platform, color: 'text-zinc-400' };
+  const hasContent = !!(response.fullResponse || response.context);
 
   return (
-    <div className="px-3 py-2">
-      <div className="flex items-start gap-2">
-        <span className={`shrink-0 w-20 text-[11px] font-semibold ${meta.color}`}>{meta.label}</span>
-        <div className="flex-1 min-w-0">
-          <div className="flex items-center gap-2">
-            <PositionBadge mentioned={response.mentioned} position={response.position} />
-            {response.context && (
-              <span className="text-xs text-zinc-400 truncate">{response.context}</span>
-            )}
-          </div>
-          {response.fullResponse && (
-            <div className="mt-1">
-              {expanded ? (
-                <p className="text-xs text-zinc-400 leading-relaxed whitespace-pre-wrap break-words">
-                  {response.fullResponse}
-                </p>
-              ) : null}
-              <button
-                onClick={() => setExpanded((v) => !v)}
-                className="mt-0.5 text-[10px] text-zinc-500 hover:text-zinc-300 transition-colors"
-              >
-                {expanded ? 'collapse' : 'read response â†“'}
-              </button>
-            </div>
-          )}
-        </div>
+    <div
+      className={`px-3 py-2 flex items-center gap-3 ${hasContent ? 'cursor-pointer hover:bg-zinc-800/30 transition-colors' : ''}`}
+      onClick={hasContent ? onOpen : undefined}
+      title={hasContent ? 'Click to view AI response' : undefined}
+    >
+      <span className={`shrink-0 w-20 text-[11px] font-semibold ${meta.color}`}>{meta.label}</span>
+      <div className="flex items-center gap-2 flex-1 min-w-0">
+        <PositionBadge mentioned={response.mentioned} position={response.position} />
+        {response.sentiment && <SentimentBadge sentiment={response.sentiment} />}
+        {response.context && (
+          <span className="text-xs text-zinc-500 truncate">{response.context}</span>
+        )}
       </div>
+      {hasContent && (
+        <svg className="shrink-0 w-3.5 h-3.5 text-zinc-600" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+          <path strokeLinecap="round" strokeLinejoin="round" d="M15 12a3 3 0 11-6 0 3 3 0 016 0z" />
+          <path strokeLinecap="round" strokeLinejoin="round" d="M2.458 12C3.732 7.943 7.523 5 12 5c4.478 0 8.268 2.943 9.542 7-1.274 4.057-5.064 7-9.542 7-4.477 0-8.268-2.943-9.542-7z" />
+        </svg>
+      )}
     </div>
+  );
+}
+
+// ─── Badges ───────────────────────────────────────────────────────────────────
+
+function EngineBadge({ engine }: { engine: string }) {
+  const styles: Record<string, string> = {
+    perplexity: 'bg-teal-500/10 text-teal-300 border-teal-500/20',
+    openai:     'bg-zinc-100/5 text-zinc-200 border-zinc-100/10',
+    anthropic:  'bg-orange-500/10 text-orange-300 border-orange-500/20',
+  };
+  const labels: Record<string, string> = {
+    perplexity: 'Perplexity',
+    openai: 'OpenAI',
+    anthropic: 'Claude',
+  };
+  return (
+    <span className={`inline-flex items-center px-1.5 py-0.5 rounded border text-xs ${styles[engine] ?? 'bg-zinc-700/50 text-zinc-400 border-zinc-700'}`}>
+      {labels[engine] ?? engine}
+    </span>
+  );
+}
+
+function SentimentBadge({ sentiment }: { sentiment: 'positive' | 'neutral' | 'negative' | null }) {
+  if (!sentiment) return <span className="text-zinc-600 text-xs">-</span>;
+  const styles = {
+    positive: 'text-green-400 bg-green-500/10 border-green-500/20',
+    neutral:  'text-zinc-400 bg-zinc-700/40 border-zinc-600/30',
+    negative: 'text-red-400 bg-red-500/10 border-red-500/20',
+  };
+  const icons = { positive: '↑', neutral: '→', negative: '↓' };
+  const titles = {
+    positive: 'Positive — the AI mentions the brand with favorable language',
+    neutral:  'Neutral — the AI mentions the brand without strong positive or negative framing',
+    negative: 'Negative — the AI mentions the brand with unfavorable language',
+  };
+  return (
+    <span
+      className={`inline-flex items-center gap-1 px-1.5 py-0.5 rounded border text-xs capitalize ${styles[sentiment]}`}
+      title={titles[sentiment]}
+    >
+      <span className="text-[10px]">{icons[sentiment]}</span>
+      {sentiment}
+    </span>
   );
 }
 
@@ -265,6 +393,8 @@ function PositionBadge({ mentioned, position }: { mentioned: boolean; position: 
   const colorClass = colors[position] ?? 'bg-violet-500/20 text-violet-400';
   return <span className={`rounded px-2 py-0.5 text-[10px] font-medium ${colorClass}`}>{position}</span>;
 }
+
+// ─── Shared sub-components ────────────────────────────────────────────────────
 
 function DimensionRow({ label, dim, tip }: { label: string; dim: NormalizedDimension | null; tip?: string }) {
   if (!dim) return null;
@@ -285,9 +415,9 @@ function DimensionRow({ label, dim, tip }: { label: string; dim: NormalizedDimen
 
 function PriorityBadge({ priority }: { priority: string }) {
   const colors: Record<string, string> = {
-    high: 'bg-red-500/20 text-red-400',
+    high:   'bg-red-500/20 text-red-400',
     medium: 'bg-yellow-500/20 text-yellow-400',
-    low: 'bg-blue-500/20 text-blue-400',
+    low:    'bg-blue-500/20 text-blue-400',
   };
   return (
     <span className={`rounded px-1.5 py-0.5 text-[10px] font-medium ${colors[priority] ?? 'bg-zinc-700 text-zinc-300'}`}>
