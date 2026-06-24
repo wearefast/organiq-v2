@@ -132,8 +132,7 @@ export function TourProvider({ children }: { children: React.ReactNode }) {
       // Destroy any currently running driver first
       driverRef.current?.destroy();
 
-      // Definite assignment pattern: d is assigned before onDestroyStarted can fire
-      let d!: ReturnType<typeof createDriver>;
+      const totalSteps = section.steps.length;
 
       const config: DriverConfig = {
         animate: true,
@@ -146,22 +145,33 @@ export function TourProvider({ children }: { children: React.ReactNode }) {
         nextBtnText: 'Next →',
         prevBtnText: '← Back',
         doneBtnText: 'Got it ✓',
-        onDestroyStarted: () => {
-          // Only mark complete if the user finished all steps.
-          // Pressing ESC mid-tour (isLastStep() === false) will NOT mark the section complete,
-          // so the tour will start again on next login.
-          if (d.isLastStep()) {
-            markComplete(section.key);
-          }
-        },
         steps: section.steps.map((step) => ({
           ...(step.element ? { element: step.element } : {}),
           popover: step.popover,
         })),
       };
 
-      d = createDriver(config);
+      const d = createDriver(config);
       driverRef.current = d;
+      
+      // Mark the section complete when the user explicitly finishes it (reaches last step and clicks done).
+      // Listen for the driver being destroyed with a small delay to ensure the destroy is propagating.
+      const originalDestroy = d.destroy.bind(d);
+      d.destroy = function() {
+        // Check if we're on the last step when destroy is called.
+        // For single-step tours, always mark complete.
+        // For multi-step tours, only mark complete if they reached the last step.
+        const currentState = this.getState?.();
+        const isOnLastStep = totalSteps === 1 || 
+          (currentState?.currentStepIndex !== undefined && currentState.currentStepIndex === totalSteps - 1);
+        
+        if (isOnLastStep) {
+          markComplete(section.key);
+        }
+        
+        return originalDestroy();
+      };
+      
       d.drive();
     },
     [markComplete],

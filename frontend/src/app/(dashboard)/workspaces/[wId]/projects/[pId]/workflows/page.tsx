@@ -121,7 +121,7 @@ export default function WorkflowRunsPage() {
                   </div>
                 </div>
 
-                <div className="flex items-center gap-4 text-[12px] text-zinc-500">
+                <div className="flex flex-col items-end gap-1 text-[12px] text-zinc-500">
                   {run.creditsUsed > 0 && (
                     <span>{run.creditsUsed} credits</span>
                   )}
