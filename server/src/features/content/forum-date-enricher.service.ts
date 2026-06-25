@@ -29,7 +29,7 @@ export class ForumDateEnricherService {
   private readonly REDDIT_UA = 'OrganiqBot/1.0 (by /u/organiqbot; for date enrichment)';
 
   // Delay between individual requests to avoid rate limiting
-  private readonly INTER_REQUEST_DELAY_MS = 600;
+  private readonly INTER_REQUEST_DELAY_MS = 2000;
 
   constructor(
     private readonly db: DatabaseService,
@@ -194,25 +194,32 @@ export class ForumDateEnricherService {
     const cdxUrl =
       `https://web.archive.org/cdx/search/cdx?url=${encodeURIComponent(cleanUrl)}` +
       `&output=json&limit=1&fl=timestamp&filter=statuscode:200&from=2005&to=${new Date().getFullYear() + 1}`;
-    try {
-      const controller = new AbortController();
-      const timer = setTimeout(() => controller.abort(), 15_000);
-      const response = await fetch(cdxUrl, {
-        signal: controller.signal,
-        headers: { 'User-Agent': 'OrganiqBot/1.0 (+https://app.rankorganiq.com/bot)' },
-      });
-      clearTimeout(timer);
-      if (!response.ok) {
-        this.logger.warn(`Wayback CDX ${response.status} for ${url}`);
-        return null;
+
+    for (let attempt = 0; attempt < 2; attempt++) {
+      if (attempt > 0) await this.delay(3000);
+      try {
+        const controller = new AbortController();
+        const timer = setTimeout(() => controller.abort(), 15_000);
+        const response = await fetch(cdxUrl, {
+          signal: controller.signal,
+          headers: { 'User-Agent': 'OrganiqBot/1.0 (+https://app.rankorganiq.com/bot)' },
+        });
+        clearTimeout(timer);
+
+        if (response.status === 503) continue; // retry on Wayback overload
+        if (!response.ok) {
+          this.logger.warn(`Wayback CDX ${response.status} for ${url}`);
+          return null;
+        }
+        const data = await response.json() as string[][];
+        if (!data || data.length < 2) return null;
+        const ts = data[1]?.[0];
+        if (!ts || ts.length < 8) return null;
+        return `${ts.substring(0, 4)}-${ts.substring(4, 6)}-${ts.substring(6, 8)}`;
+      } catch (err) {
+        this.logger.warn(`Wayback CDX failed for ${url}: ${err instanceof Error ? err.message : err}`);
+        if (attempt === 0) continue; // retry once on network error
       }
-      const data = await response.json() as string[][];
-      if (!data || data.length < 2) return null;
-      const ts = data[1]?.[0];
-      if (!ts || ts.length < 8) return null;
-      return `${ts.substring(0, 4)}-${ts.substring(4, 6)}-${ts.substring(6, 8)}`;
-    } catch (err) {
-      this.logger.warn(`Wayback CDX failed for ${url}: ${err instanceof Error ? err.message : err}`);
     }
     return null;
   }
