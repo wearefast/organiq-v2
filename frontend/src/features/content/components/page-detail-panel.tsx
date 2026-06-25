@@ -2,8 +2,8 @@
 
 import { useEffect, useState, useCallback } from 'react';
 import {
-  X, FileText, BookOpen, Image, Globe, Loader2,
-  CheckCircle2, Clock, ChevronDown, RotateCcw, Pencil, Check, Plus, Trash2,
+  X, FileText, BookOpen, Image, Globe, Loader2, Eye,
+  CheckCircle2, Clock, ChevronDown, RotateCcw, Pencil, Check, Plus, Trash2, ChevronLeft, ChevronRight,
 } from 'lucide-react';
 import {
   fetchTopicalMapPage,
@@ -106,6 +106,8 @@ export function PageDetailPanel({ projectId, mapId, pageId, onClose, onContentGe
   const [articleExpanded, setArticleExpanded] = useState(false);
   const [briefEditing, setBriefEditing] = useState(false);
   const [briefEditData, setBriefEditData] = useState<BriefEditState | null>(null);
+  const [viewingArticleModal, setViewingArticleModal] = useState(false);
+  const [viewingImageIndex, setViewingImageIndex] = useState<number | null>(null);
 
   const load = useCallback(async () => {
     try {
@@ -291,7 +293,21 @@ export function PageDetailPanel({ projectId, mapId, pageId, onClose, onContentGe
                 </button>
               ) : null}
             />
-            <PipelineStage icon={<Image className="h-3.5 w-3.5" />} label="Images" done={images.length > 0} locked={!article} meta={images.length > 0 ? `${images.length} images` : undefined} />
+            <PipelineStage
+              icon={<Image className="h-3.5 w-3.5" />}
+              label="Images"
+              done={images.length > 0}
+              locked={!article}
+              meta={images.length > 0 ? `${images.length} images` : undefined}
+              action={images.length > 0 ? (
+                <button
+                  onClick={() => setViewingImageIndex(0)}
+                  className="flex items-center gap-1 rounded px-2 py-1 text-[10px] font-medium text-blue-400 hover:text-blue-300"
+                >
+                  <Eye className="h-3 w-3" /> View
+                </button>
+              ) : undefined}
+            />
             <PipelineStage icon={<Globe className="h-3.5 w-3.5" />} label="Published" done={isPublished} locked={!article} />
           </div>
         </div>
@@ -378,21 +394,29 @@ export function PageDetailPanel({ projectId, mapId, pageId, onClose, onContentGe
         {/* ── Article section ───────────────────────────────────────── */}
         {article?.articleData != null && (
           <div className="border-t border-zinc-800/60">
-            <button
-              onClick={() => setArticleExpanded((v) => !v)}
-              className="flex w-full items-center justify-between px-5 py-3 text-left hover:bg-zinc-900/40"
-            >
-              <div className="flex items-center gap-2">
-                <span className="text-xs font-semibold text-zinc-200">Article</span>
-                {article.wordCount != null && <span className="text-[10px] text-zinc-600">· {article.wordCount} words</span>}
-                {article.status && (
-                  <span className={`rounded px-1.5 py-0.5 text-[9px] font-medium capitalize ${
-                    article.status === 'approved' || article.status === 'published' ? 'bg-emerald-900/40 text-emerald-400' : 'bg-zinc-800 text-zinc-500'
-                  }`}>{article.status}</span>
-                )}
-              </div>
-              <ChevronDown className={`h-3.5 w-3.5 text-zinc-600 transition-transform ${articleExpanded ? 'rotate-180' : ''}`} />
-            </button>
+            <div className="flex items-center justify-between px-5 py-3">
+              <button
+                onClick={() => setArticleExpanded((v) => !v)}
+                className="flex flex-1 items-center justify-between text-left hover:text-zinc-100"
+              >
+                <div className="flex items-center gap-2">
+                  <span className="text-xs font-semibold text-zinc-200">Article</span>
+                  {article.wordCount != null && <span className="text-[10px] text-zinc-600">· {article.wordCount} words</span>}
+                  {article.status && (
+                    <span className={`rounded px-1.5 py-0.5 text-[9px] font-medium capitalize ${
+                      article.status === 'approved' || article.status === 'published' ? 'bg-emerald-900/40 text-emerald-400' : 'bg-zinc-800 text-zinc-500'
+                    }`}>{article.status}</span>
+                  )}
+                </div>
+                <ChevronDown className={`h-3.5 w-3.5 text-zinc-600 transition-transform ${articleExpanded ? 'rotate-180' : ''}`} />
+              </button>
+              <button
+                onClick={() => setViewingArticleModal(true)}
+                className="ml-2 flex items-center gap-1 rounded px-2 py-1 text-[10px] font-medium text-blue-400 hover:text-blue-300"
+              >
+                <Eye className="h-3 w-3" /> View
+              </button>
+            </div>
             {articleExpanded && (
               <div className="border-t border-zinc-800/60 px-5 pb-5 pt-3">
                 <ArticlePreview data={article.articleData} />
@@ -434,7 +458,8 @@ export function PageDetailPanel({ projectId, mapId, pageId, onClose, onContentGe
   }
 
   return (
-    <div className="fixed inset-y-0 right-0 z-50 flex w-[520px] flex-col border-l border-zinc-800 bg-zinc-950 shadow-2xl">
+    <>
+    <div className="fixed inset-y-0 right-0 z-50 flex w-[1040px] flex-col border-l border-zinc-800 bg-zinc-950 shadow-2xl">
       <div className="flex items-start justify-between gap-3 border-b border-zinc-800 px-5 py-4">
         <div className="min-w-0 flex-1">
           {loading ? (
@@ -452,6 +477,64 @@ export function PageDetailPanel({ projectId, mapId, pageId, onClose, onContentGe
       </div>
       <div className="flex-1 overflow-y-auto">{renderBody()}</div>
     </div>
+
+    {/* Article Modal */}
+    {viewingArticleModal && article?.articleData && (
+      <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/80 p-4">
+        <div className="flex h-full max-h-screen w-full max-w-4xl flex-col rounded-lg bg-zinc-900 shadow-2xl">
+          <div className="flex items-center justify-between border-b border-zinc-800 px-6 py-4">
+            <h2 className="text-lg font-semibold text-zinc-100">Article</h2>
+            <button onClick={() => setViewingArticleModal(false)} className="rounded p-1 text-zinc-500 hover:bg-zinc-800 hover:text-zinc-300">
+              <X className="h-5 w-5" />
+            </button>
+          </div>
+          <div className="flex-1 overflow-y-auto px-6 py-4">
+            <ArticlePreview data={article.articleData} isFullView />
+          </div>
+        </div>
+      </div>
+    )}
+
+    {/* Image Gallery Modal */}
+    {viewingImageIndex !== null && images.length > 0 && (
+      <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/80 p-4">
+        <div className="flex h-full max-h-screen w-full max-w-2xl flex-col rounded-lg bg-zinc-900 shadow-2xl">
+          <div className="flex items-center justify-between border-b border-zinc-800 px-6 py-4">
+            <div className="flex items-center gap-3">
+              <h2 className="text-lg font-semibold text-zinc-100">Image {viewingImageIndex + 1} of {images.length}</h2>
+            </div>
+            <button onClick={() => setViewingImageIndex(null)} className="rounded p-1 text-zinc-500 hover:bg-zinc-800 hover:text-zinc-300">
+              <X className="h-5 w-5" />
+            </button>
+          </div>
+          <div className="flex flex-1 items-center justify-center overflow-auto">
+            {images[viewingImageIndex]?.base64 ? (
+              <img src={images[viewingImageIndex].base64} alt={images[viewingImageIndex].altText || `Image ${viewingImageIndex + 1}`} className="max-h-full max-w-full object-contain" />
+            ) : (
+              <p className="text-zinc-500">Image not available</p>
+            )}
+          </div>
+          <div className="flex items-center justify-between border-t border-zinc-800 px-6 py-4">
+            <button
+              onClick={() => setViewingImageIndex(Math.max(0, viewingImageIndex - 1))}
+              disabled={viewingImageIndex === 0}
+              className="rounded p-1 text-zinc-500 hover:bg-zinc-800 hover:text-zinc-300 disabled:opacity-40"
+            >
+              <ChevronLeft className="h-5 w-5" />
+            </button>
+            <p className="text-xs text-zinc-500">{images[viewingImageIndex]?.altText || `Image ${viewingImageIndex + 1}`}</p>
+            <button
+              onClick={() => setViewingImageIndex(Math.min(images.length - 1, viewingImageIndex + 1))}
+              disabled={viewingImageIndex === images.length - 1}
+              className="rounded p-1 text-zinc-500 hover:bg-zinc-800 hover:text-zinc-300 disabled:opacity-40"
+            >
+              <ChevronRight className="h-5 w-5" />
+            </button>
+          </div>
+        </div>
+      </div>
+    )}
+    </>
   );
 }
 
@@ -698,11 +781,11 @@ function KV({ label, value }: { label: string; value: string }) {
   );
 }
 
-function ArticlePreview({ data }: { data: unknown }) {
+function ArticlePreview({ data, isFullView }: { data: unknown; isFullView?: boolean }) {
   const markdown = ((data ?? {}) as Record<string, unknown>).markdown as string | undefined;
   if (!markdown) return <p className="text-xs text-zinc-600">No content available.</p>;
-  const preview = markdown.slice(0, 800);
-  return <pre className="whitespace-pre-wrap font-sans text-[11px] leading-relaxed text-zinc-400">{preview}{markdown.length > 800 ? '…' : ''}</pre>;
+  const preview = isFullView ? markdown : markdown.slice(0, 800);
+  return <pre className="whitespace-pre-wrap font-sans text-[11px] leading-relaxed text-zinc-400">{preview}{!isFullView && markdown.length > 800 ? '…' : ''}</pre>;
 }
 
 function formatNum(n: number): string {
