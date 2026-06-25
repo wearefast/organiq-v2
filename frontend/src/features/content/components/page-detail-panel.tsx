@@ -317,6 +317,7 @@ export function PageDetailPanel({ projectId, mapId, pageId, onClose, onContentGe
               label="Brief"
               done={!!brief}
               status={brief?.status}
+              onClick={brief ? () => { setViewingContent('brief'); setBriefEditing(false); } : undefined}
               action={!brief ? (
                 <button
                   onClick={handleGenerateBrief}
@@ -482,12 +483,6 @@ export function PageDetailPanel({ projectId, mapId, pageId, onClose, onContentGe
                     Regenerate
                   </button>
                 )}
-                <button
-                  onClick={() => setViewingContent('brief')}
-                  className="rounded px-2 py-1 text-[10px] font-medium text-zinc-400 hover:bg-zinc-800"
-                >
-                  ← Brief
-                </button>
               </div>
             </div>
 
@@ -726,7 +721,9 @@ function ArticleEditForm({
   };
 
   const removePlaceholder = (id: string) => {
-    const newContent = editedContent.replace(`[IMAGE_PLACEHOLDER_${id}]\n`, '').replace(`\n[IMAGE_PLACEHOLDER_${id}]`, '');
+    // Remove placeholder with optional surrounding newlines
+    const pattern = new RegExp(`\\[IMAGE_PLACEHOLDER_${id}\\]\\n?|\\n\\[IMAGE_PLACEHOLDER_${id}\\]`, 'g');
+    const newContent = editedContent.replace(pattern, '');
     setEditedContent(newContent);
   };
 
