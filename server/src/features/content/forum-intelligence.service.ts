@@ -2,6 +2,7 @@ import { Injectable, Logger } from '@nestjs/common';
 import { eq, and, desc, sql, inArray } from 'drizzle-orm';
 import { DatabaseService } from '../../shared/database/database.service';
 import { DataForSeoService } from '../integrations/dataforseo/dataforseo.service';
+import { ForumDateEnricherService } from './forum-date-enricher.service';
 import {
   forumTopics,
   forumOpportunities,
@@ -25,6 +26,7 @@ export class ForumIntelligenceService {
   constructor(
     private readonly db: DatabaseService,
     private readonly dataForSeo: DataForSeoService,
+    private readonly dateEnricher: ForumDateEnricherService,
   ) {}
 
   // ─── Topic Generation ────────────────────────────────────────
@@ -190,6 +192,10 @@ export class ForumIntelligenceService {
     }
 
     this.logger.log(`Scan complete for project ${projectId}: ${totalNew} new opportunities`);
+
+    // Fire-and-forget: enrich undated opportunities in the background
+    void this.dateEnricher.enrichMissingDates(projectId);
+
     return totalNew;
   }
 
@@ -395,6 +401,10 @@ export class ForumIntelligenceService {
       .values({ projectId, topic: topic.toLowerCase().trim(), source: 'manual' })
       .onConflictDoNothing({ target: [forumTopics.projectId, forumTopics.topic] })
       .returning();
+  }
+
+  async enrichMissingDates(projectId: string): Promise<number> {
+    return this.dateEnricher.enrichMissingDates(projectId);
   }
 
   async removeTopic(id: string, projectId: string) {

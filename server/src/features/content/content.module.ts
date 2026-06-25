@@ -5,13 +5,16 @@ import { ContentController } from './content.controller';
 import { ContentService } from './content.service';
 import { ForumIntelligenceService } from './forum-intelligence.service';
 import { ForumIntelligenceProcessor } from './forum-intelligence.processor';
+import { ForumDateEnricherService } from './forum-date-enricher.service';
 import { TopicalMapsModule } from '../topical-maps/topical-maps.module';
 import { DataForSeoModule } from '../integrations/dataforseo/dataforseo.module';
+import { FirecrawlModule } from '../integrations/firecrawl/firecrawl.module';
 
 @Module({
   imports: [
     TopicalMapsModule,
     DataForSeoModule,
+    FirecrawlModule,
     BullModule.registerQueue({
       name: 'forum-intelligence',
       defaultJobOptions: {
@@ -23,7 +26,7 @@ import { DataForSeoModule } from '../integrations/dataforseo/dataforseo.module';
     }),
   ],
   controllers: [ContentController],
-  providers: [ContentService, ForumIntelligenceService, ForumIntelligenceProcessor],
+  providers: [ContentService, ForumIntelligenceService, ForumIntelligenceProcessor, ForumDateEnricherService],
   exports: [ContentService, ForumIntelligenceService],
 })
 export class ContentModule implements OnModuleInit {

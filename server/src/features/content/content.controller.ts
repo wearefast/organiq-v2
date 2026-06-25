@@ -129,6 +129,12 @@ export class ContentController {
     return { newOpportunities: count };
   }
 
+  @Post('forums/enrich')
+  async enrichForumDates(@Param('projectId') projectId: string) {
+    const count = await this.forumIntelligence.enrichMissingDates(projectId);
+    return { enriched: count };
+  }
+
   @Get(':id')
   async findOne(
     @Param('projectId') projectId: string,
