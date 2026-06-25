@@ -109,13 +109,15 @@ function getProjectItems(wId: string, pId: string): NavItem[] {
       ],
     },
     {
-      href: `${base}/content/articles`,
+      href: `${base}/content/topical-map`,
       icon: FileText,
       label: 'Content',
       children: [
-        { href: `${base}/content/articles`, label: 'Articles' },
-        { href: `${base}/content/assets`,   label: 'Assets' },
-        { href: `${base}/content/calendar`, label: 'Calendar' },
+        { href: `${base}/content/topical-map`, label: 'Topical Map' },
+        { href: `${base}/content/brief`,        label: 'Brief' },
+        { href: `${base}/content/articles`,    label: 'Articles' },
+        { href: `${base}/content/assets`,      label: 'Assets' },
+        { href: `${base}/content/calendar`,    label: 'Calendar' },
       ],
     },
     {

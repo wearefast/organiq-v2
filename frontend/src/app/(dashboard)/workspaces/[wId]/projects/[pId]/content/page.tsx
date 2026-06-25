@@ -6,7 +6,7 @@ export default function ContentRedirect() {
   const router = useRouter();
   const params = useParams();
   useEffect(() => {
-    router.replace(`/workspaces/${params.wId}/projects/${params.pId}/content/articles`);
+    router.replace(`/workspaces/${params.wId}/projects/${params.pId}/content/topical-map`);
   }, [router, params.wId, params.pId]);
   return null;
 }

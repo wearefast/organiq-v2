@@ -14,6 +14,8 @@ import {
   type ContentStats,
   type ContentImage,
 } from '@/features/content/services/content.service';
+import { ContentArticleRenderer } from '@/features/workflow/renderers/content-article';
+import { useContentStep } from '@/features/content/hooks/use-content-step';
 
 const STATUS_COLORS: Record<string, string> = {
   draft: 'bg-zinc-600',
@@ -41,6 +43,14 @@ export default function ArticlesPage() {
   const params = useParams();
   const projectId = params.pId as string;
   const { getToken } = useAuth();
+
+  const {
+    stepStatus: articleStepStatus,
+    artifactData: articleArtifact,
+    loading: stepLoading,
+    approving,
+    approve,
+  } = useContentStep(projectId, 'content-article');
 
   const [pieces, setPieces] = useState<ContentPiece[]>([]);
   const [stats, setStats] = useState<ContentStats | null>(null);
@@ -86,6 +96,41 @@ export default function ArticlesPage() {
 
   const selected = selectedId ? pieces.find((p) => p.id === selectedId) : null;
 
+  if (stepLoading) {
+    return (
+      <div className="flex items-center justify-center p-12">
+        <div className="h-8 w-8 animate-spin rounded-full border-2 border-zinc-600 border-t-blue-500" />
+      </div>
+    );
+  }
+
+  // Article awaiting approval: full-page review before materialising into domain table
+  if (articleStepStatus === 'awaiting_approval') {
+    return (
+      <div className="space-y-4 p-6">
+        <div className="flex items-start justify-between gap-4 rounded-lg border border-amber-500/30 bg-amber-500/5 px-4 py-3">
+          <div className="flex items-center gap-2.5">
+            <div className="mt-0.5 h-2 w-2 shrink-0 rounded-full bg-amber-400" />
+            <div>
+              <p className="text-sm font-medium text-amber-300">Your article is ready for review</p>
+              <p className="text-xs text-zinc-500">
+                Review the article below, then approve to finalise it and begin image generation.
+              </p>
+            </div>
+          </div>
+          <button
+            onClick={approve}
+            disabled={approving}
+            className="shrink-0 rounded bg-emerald-600 px-4 py-1.5 text-sm font-medium text-white hover:bg-emerald-500 disabled:opacity-50"
+          >
+            {approving ? 'Approving…' : 'Approve & Continue →'}
+          </button>
+        </div>
+        <ContentArticleRenderer data={articleArtifact} />
+      </div>
+    );
+  }
+
   if (loading) {
     return (
       <div className="flex items-center justify-center p-12">
@@ -96,6 +141,15 @@ export default function ArticlesPage() {
 
   return (
     <div className="space-y-6 p-6">
+      {articleStepStatus === 'running' && (
+        <div className="flex items-center gap-3 rounded-lg border border-blue-500/30 bg-blue-500/5 px-4 py-3">
+          <div className="h-4 w-4 animate-spin rounded-full border-2 border-blue-500 border-t-transparent" />
+          <div>
+            <p className="text-sm font-medium text-blue-300">Writing your article…</p>
+            <p className="text-xs text-zinc-500">This usually takes 2–3 minutes. This page will update automatically.</p>
+          </div>
+        </div>
+      )}
       <div className="flex items-center justify-between">
         <h1 className="text-2xl font-bold text-white">Articles</h1>
       </div>

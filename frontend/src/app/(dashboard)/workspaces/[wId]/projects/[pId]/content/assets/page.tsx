@@ -5,6 +5,7 @@ import { useParams } from 'next/navigation';
 import { useAuth } from '@clerk/nextjs';
 import { setAuthToken, apiFetch } from '@/shared/utils/api';
 import { Upload, Trash2, X, Download, Image as ImageIcon, FileText, Film, Music, File } from 'lucide-react';
+import { useContentStep } from '@/features/content/hooks/use-content-step';
 
 interface GeneratedImage {
   id: string;
@@ -48,6 +49,13 @@ export default function AssetsPage() {
   const { getToken } = useAuth();
 
   const [tab, setTab] = useState<'generated' | 'uploaded'>('generated');
+
+  const {
+    stepStatus: imagesStepStatus,
+    artifactData: imagesArtifact,
+    approving,
+    approve,
+  } = useContentStep(projectId, 'content-images');
 
   // Generated images state
   const [images, setImages] = useState<GeneratedImage[]>([]);
@@ -159,6 +167,65 @@ export default function AssetsPage() {
     );
   });
 
+  // Images awaiting approval: show artifact gallery for review before materialisation
+  if (imagesStepStatus === 'awaiting_approval') {
+    const artifactImages =
+      (imagesArtifact as { images?: Array<{ index: number; base64: string; altText?: string; prompt?: string; size?: string }> })
+        ?.images ?? [];
+    const toDataUri = (b64: string) =>
+      b64.startsWith('data:') ? b64 : `data:image/png;base64,${b64}`;
+    return (
+      <div className="space-y-4 p-6">
+        <div className="flex items-start justify-between gap-4 rounded-lg border border-amber-500/30 bg-amber-500/5 px-4 py-3">
+          <div className="flex items-center gap-2.5">
+            <div className="mt-0.5 h-2 w-2 shrink-0 rounded-full bg-amber-400" />
+            <div>
+              <p className="text-sm font-medium text-amber-300">
+                Your images are ready for review
+              </p>
+              <p className="text-xs text-zinc-500">
+                Review the generated images below, then approve to save them to your assets.
+              </p>
+            </div>
+          </div>
+          <button
+            onClick={approve}
+            disabled={approving}
+            className="shrink-0 rounded bg-emerald-600 px-4 py-1.5 text-sm font-medium text-white hover:bg-emerald-500 disabled:opacity-50"
+          >
+            {approving ? 'Approving…' : 'Approve & Save →'}
+          </button>
+        </div>
+        {artifactImages.length === 0 ? (
+          <p className="text-sm text-zinc-500">No images in artifact.</p>
+        ) : (
+          <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3">
+            {artifactImages.map((img) => (
+              <div
+                key={img.index}
+                className="overflow-hidden rounded-lg border border-zinc-700 bg-zinc-900"
+              >
+                <img
+                  src={toDataUri(img.base64)}
+                  alt={img.altText ?? `Image ${img.index + 1}`}
+                  className="w-full object-cover"
+                />
+                {img.altText && (
+                  <div className="p-2">
+                    <p className="text-xs text-zinc-400">{img.altText}</p>
+                    {img.size && (
+                      <p className="mt-0.5 text-[10px] text-zinc-600">{img.size}</p>
+                    )}
+                  </div>
+                )}
+              </div>
+            ))}
+          </div>
+        )}
+      </div>
+    );
+  }
+
   return (
     <div className="space-y-6 p-6">
       {/* Header */}
@@ -218,6 +285,17 @@ export default function AssetsPage() {
       {/* â”€â”€ Generated Tab â”€â”€ */}
       {tab === 'generated' && (
         <div className="space-y-4">
+          {imagesStepStatus === 'running' && (
+            <div className="flex items-center gap-3 rounded-lg border border-blue-500/30 bg-blue-500/5 px-4 py-3">
+              <div className="h-4 w-4 animate-spin rounded-full border-2 border-blue-500 border-t-transparent" />
+              <div>
+                <p className="text-sm font-medium text-blue-300">Generating your images…</p>
+                <p className="text-xs text-zinc-500">
+                  This usually takes 1–2 minutes. This page will update automatically.
+                </p>
+              </div>
+            </div>
+          )}
           <input
             type="text"
             placeholder="Search by alt text, prompt, or articleâ€¦"
