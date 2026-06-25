@@ -550,6 +550,31 @@
 
 ---
 
+## Backlog
+
+### Forum Intelligence — Reddit Date Resolution via OAuth
+
+**Context:** The Forum Date Enricher (`forum-date-enricher.service.ts`) cannot reliably resolve `publishedDate` for Reddit posts from AWS EC2 IPs. Root causes confirmed via diagnostics:
+- `reddit.com` direct API: HTTP 403 (AWS IP blocked)
+- Wayback Machine CDX: works for pre-2023 posts, but 503/connection failure for recent posts
+- Quora: CDX 403 (robots.txt exclusion), Firecrawl returns 1.75MB with no standard date metadata
+
+**Fix:** Implement Reddit OAuth (script app) to call `GET /r/{sub}/comments/{id}/.json` with a Bearer token. Reddit's OAuth API is not IP-restricted and returns `created_utc` (Unix seconds) reliably for every post.
+
+**Steps:**
+1. Register a Reddit "script" app at https://reddit.com/prefs/apps — get `REDDIT_CLIENT_ID` + `REDDIT_CLIENT_SECRET`
+2. Add env vars to EC2: `REDDIT_CLIENT_ID`, `REDDIT_CLIENT_SECRET`, `REDDIT_USER_AGENT`
+3. In `forum-date-enricher.service.ts`, add `getRedditAccessToken()` method: POST to `https://www.reddit.com/api/v1/access_token` with Basic auth (client_id:client_secret) and `grant_type=client_credentials`
+4. Cache the token (expires in 1 hour) in a private field; refresh when expired
+5. Replace `resolveRedditDate()` body: call `GET https://oauth.reddit.com/r/{sub}/comments/{id}/.json?raw_json=1&limit=1` with `Authorization: Bearer {token}` header; parse `created_utc`
+6. Keep Wayback CDX as fallback if OAuth fails
+
+**Expected outcome:** ~50% of forum opportunities (all Reddit posts) get accurate `publishedDate`. Quora remains on Wayback CDX (limited coverage for older posts only).
+
+**Files to change:** `server/src/features/content/forum-date-enricher.service.ts` (±30 lines), `.env` / EC2 environment
+
+---
+
 #### 12.4 Fix phase1-baseline: duplicate Ahrefs getOrganicKeywords call every run
 
 | # | Task | Status |
