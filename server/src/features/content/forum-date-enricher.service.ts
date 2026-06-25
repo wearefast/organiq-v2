@@ -1,7 +1,6 @@
 import { Injectable, Logger } from '@nestjs/common';
 import { eq, and, isNull } from 'drizzle-orm';
 import { DatabaseService } from '../../shared/database/database.service';
-import { WebCrawlerService } from '../../shared/web-crawler/web-crawler.service';
 import { FirecrawlService } from '../integrations/firecrawl/firecrawl.service';
 import { forumOpportunities } from '../../db/schema';
 
@@ -9,29 +8,31 @@ import { forumOpportunities } from '../../db/schema';
  * ForumDateEnricherService
  *
  * DataForSEO's `timestamp` field is frequently absent for SERP results,
- * causing `publishedDate = null` in the DB. This service scrapes each
- * undated URL after a scan completes to extract the actual published date.
+ * causing `publishedDate = null` in the DB. This service resolves dates
+ * after each scan using source-specific strategies:
  *
- * Strategy chain (cheapest first):
- *   1. JSON-LD `datePublished` (script tag, free fetch)
- *   2. <meta property="article:published_time">
- *   3. <meta name="date">
- *   4. <time datetime="..."> first occurrence
- *   5. Reddit: data-timestamp attribute (Unix ms)
- *   6. Reddit: "created_utc" in inline JSON
- *   7. Quora: "Asked X ago" relative text
- *   8. Firecrawl rendered HTML fallback (paid, only if all above fail)
+ * Reddit:
+ *   - Append `.json` to the thread URL to call Reddit's public JSON API
+ *   - Parse `created_utc` (Unix timestamp) from the response
+ *   - Free, reliable, no bot detection
+ *
+ * Quora:
+ *   - Quora blocks plain HTTP bots; Firecrawl renders the page with a
+ *     headless browser and returns HTML with Open Graph meta tags or JSON-LD
+ *   - Extract `article:published_time` or `datePublished` from rendered HTML
  */
 @Injectable()
 export class ForumDateEnricherService {
   private readonly logger = new Logger(ForumDateEnricherService.name);
 
-  // Delay between individual URL fetches to avoid IP bans
-  private readonly INTER_REQUEST_DELAY_MS = 400;
+  // Reddit API requires a descriptive User-Agent (their policy)
+  private readonly REDDIT_UA = 'OrganiqBot/1.0 (by /u/organiqbot; for date enrichment)';
+
+  // Delay between individual requests to avoid rate limiting
+  private readonly INTER_REQUEST_DELAY_MS = 600;
 
   constructor(
     private readonly db: DatabaseService,
-    private readonly webCrawler: WebCrawlerService,
     private readonly firecrawl: FirecrawlService,
   ) {}
 
@@ -93,146 +94,143 @@ export class ForumDateEnricherService {
   // ─── Core Resolution ─────────────────────────────────────────
 
   /**
-   * Attempt to resolve a published date for a URL.
-   * Returns an ISO date string ("YYYY-MM-DD") or null.
+   * Route to the right strategy based on source domain.
+   * Returns "YYYY-MM-DD" or null.
    */
   private async resolveDate(url: string): Promise<string | null> {
-    // Stage 1: free static HTML fetch
-    const html = await this.webCrawler.fetchText(url, 8_000);
-    if (html) {
-      const date = this.extractFromHtml(html, url);
-      if (date) return date;
+    if (url.includes('reddit.com')) {
+      return this.resolveRedditDate(url);
     }
+    if (url.includes('quora.com')) {
+      return this.resolveQuoraDate(url);
+    }
+    return null;
+  }
 
-    // Stage 2: Firecrawl (renders JS, costs credits — only if Stage 1 failed)
+  // ─── Reddit: Public JSON API ──────────────────────────────────
+
+  /**
+   * Reddit's public JSON API returns `created_utc` (Unix seconds) reliably.
+   * No authentication needed. Append `.json` to any thread URL.
+   *
+   * e.g. https://www.reddit.com/r/x/comments/abc/title/.json
+   */
+  private async resolveRedditDate(url: string): Promise<string | null> {
+    try {
+      // Build the .json URL — strip query string first, ensure trailing slash before .json
+      const base = url.split('?')[0].replace(/\/?$/, '/');
+      const jsonUrl = `${base}.json?raw_json=1&limit=1`;
+
+      const controller = new AbortController();
+      const timer = setTimeout(() => controller.abort(), 10_000);
+
+      const response = await fetch(jsonUrl, {
+        signal: controller.signal,
+        headers: {
+          'User-Agent': this.REDDIT_UA,
+          'Accept': 'application/json',
+        },
+      });
+      clearTimeout(timer);
+
+      if (!response.ok) {
+        this.logger.debug(`Reddit JSON API ${response.status} for ${url}`);
+        return null;
+      }
+
+      // Reddit JSON API returns an array: [listing, comments_listing]
+      // The post data is in [0].data.children[0].data.created_utc
+      const data = await response.json() as Array<{
+        data?: {
+          children?: Array<{
+            data?: { created_utc?: number };
+          }>;
+        };
+      }>;
+
+      const createdUtc = data?.[0]?.data?.children?.[0]?.data?.created_utc;
+      if (typeof createdUtc === 'number' && createdUtc > 0) {
+        return new Date(createdUtc * 1000).toISOString().split('T')[0];
+      }
+    } catch (err) {
+      this.logger.debug(
+        `Reddit JSON API failed for ${url}: ${err instanceof Error ? err.message : err}`,
+      );
+    }
+    return null;
+  }
+
+  // ─── Quora: Firecrawl (renders JS, bypasses bot detection) ───
+
+  /**
+   * Quora blocks plain HTTP bots. Firecrawl renders the page with a headless
+   * browser and returns rawHtml that contains Open Graph or JSON-LD date metadata.
+   */
+  private async resolveQuoraDate(url: string): Promise<string | null> {
     try {
       const result = (await this.firecrawl.scrape(url, {
         formats: ['rawHtml'],
         onlyMainContent: false,
-        waitFor: 1500,
-      })) as { data?: { rawHtml?: string }; rawHtml?: string } | null;
+        waitFor: 2000,
+      })) as { data?: { rawHtml?: string } } | null;
 
-      const renderedHtml = result?.data?.rawHtml ?? (result as any)?.rawHtml ?? '';
-      if (renderedHtml) {
-        const date = this.extractFromHtml(renderedHtml, url);
-        if (date) return date;
-      }
+      const html = result?.data?.rawHtml ?? '';
+      if (!html) return null;
+
+      return this.extractDateFromHtml(html);
     } catch (err) {
       this.logger.debug(
-        `Firecrawl fallback failed for ${url}: ${err instanceof Error ? err.message : err}`,
+        `Firecrawl failed for ${url}: ${err instanceof Error ? err.message : err}`,
       );
     }
-
     return null;
   }
 
-  // ─── Extraction Strategy Chain ───────────────────────────────
+  // ─── HTML Date Extraction ─────────────────────────────────────
 
-  private extractFromHtml(html: string, url: string): string | null {
-    // Strategy 1: JSON-LD datePublished
-    const jsonLdDate = this.extractJsonLdDate(html);
-    if (jsonLdDate) return jsonLdDate;
-
-    // Strategy 2: <meta property="article:published_time">
-    const ogDate = this.extractMetaTag(html, /property=["']article:published_time["']\s+content=["']([^"']+)["']/i)
-      ?? this.extractMetaTag(html, /content=["']([^"']+)["']\s+property=["']article:published_time["']/i);
-    if (ogDate) return ogDate;
-
-    // Strategy 3: <meta name="date">
-    const metaDate = this.extractMetaTag(html, /name=["']date["']\s+content=["']([^"']+)["']/i)
-      ?? this.extractMetaTag(html, /content=["']([^"']+)["']\s+name=["']date["']/i);
-    if (metaDate) return metaDate;
-
-    // Strategy 4: <time datetime="...">
-    const timeEl = html.match(/<time[^>]+datetime=["']([^"']+)["']/i)?.[1];
-    if (timeEl) {
-      const parsed = this.parseToIso(timeEl);
-      if (parsed) return parsed;
-    }
-
-    // Reddit-specific strategies
-    if (url.includes('reddit.com')) {
-      const redditDate = this.extractRedditDate(html);
-      if (redditDate) return redditDate;
-    }
-
-    // Quora-specific strategies
-    if (url.includes('quora.com')) {
-      const quoraDate = this.extractQuoraDate(html);
-      if (quoraDate) return quoraDate;
-    }
-
-    return null;
-  }
-
-  private extractJsonLdDate(html: string): string | null {
+  private extractDateFromHtml(html: string): string | null {
+    // 1. JSON-LD datePublished / dateCreated
     const scriptBlocks = [...html.matchAll(/<script[^>]+type=["']application\/ld\+json["'][^>]*>([\s\S]*?)<\/script>/gi)];
     for (const block of scriptBlocks) {
       try {
         const json = JSON.parse(block[1]);
-        const candidates = Array.isArray(json) ? json : [json];
-        for (const node of candidates) {
-          const raw = node?.datePublished ?? node?.dateCreated ?? node?.uploadDate;
+        const nodes = Array.isArray(json) ? json : [json];
+        for (const node of nodes) {
+          const raw = node?.datePublished ?? node?.dateCreated;
           if (raw) {
-            const parsed = this.parseToIso(String(raw));
-            if (parsed) return parsed;
+            const d = this.parseToIso(String(raw));
+            if (d) return d;
           }
         }
-      } catch {
-        // malformed JSON-LD — skip
-      }
-    }
-    return null;
-  }
-
-  private extractMetaTag(html: string, pattern: RegExp): string | null {
-    const match = html.match(pattern)?.[1];
-    if (!match) return null;
-    return this.parseToIso(match);
-  }
-
-  private extractRedditDate(html: string): string | null {
-    // Strategy 5: data-timestamp="NNNNN" (milliseconds) on .thing element
-    const dataTs = html.match(/data-timestamp=["'](\d{10,13})["']/)?.[1];
-    if (dataTs) {
-      const parsed = this.parseToIso(dataTs);
-      if (parsed) return parsed;
+      } catch { /* malformed JSON-LD */ }
     }
 
-    // Strategy 6: "created_utc":NNNNNNNNNN in inline JSON (seconds)
-    const createdUtc = html.match(/"created_utc"\s*:\s*(\d{9,10})/)?.[1];
-    if (createdUtc) {
-      const parsed = this.parseToIso(createdUtc + '000'); // seconds → ms
-      if (parsed) return parsed;
+    // 2. <meta property="article:published_time">
+    const ogMatch =
+      html.match(/property=["']article:published_time["'][^>]+content=["']([^"']+)["']/i)?.[1] ??
+      html.match(/content=["']([^"']+)["'][^>]+property=["']article:published_time["']/i)?.[1];
+    if (ogMatch) {
+      const d = this.parseToIso(ogMatch);
+      if (d) return d;
     }
 
-    // Strategy 6b: shreddit (new reddit) data-created-timestamp
-    const shredditTs = html.match(/data-created-timestamp=["']([^"']+)["']/)?.[1];
-    if (shredditTs) {
-      const parsed = this.parseToIso(shredditTs);
-      if (parsed) return parsed;
+    // 3. <time datetime="..."> — first occurrence
+    const timeMatch = html.match(/<time[^>]+datetime=["']([^"']+)["']/i)?.[1];
+    if (timeMatch) {
+      const d = this.parseToIso(timeMatch);
+      if (d) return d;
     }
 
-    return null;
-  }
-
-  private extractQuoraDate(html: string): string | null {
-    // Strategy 7: Quora "Asked [date]" patterns
-    // e.g. "Asked March 15, 2024", "Asked 3 years ago", "Asked · 2 years ago"
-    const askedPattern = /Asked\s*[·•]?\s*([A-Za-z]+\s+\d{1,2},?\s+\d{4})/i;
-    const askedMatch = html.match(askedPattern)?.[1];
-    if (askedMatch) {
-      const parsed = this.parseToIso(askedMatch);
-      if (parsed) return parsed;
+    // 4. Quora "Asked X ago" / "Asked [date]" visible text patterns
+    const absoluteMatch = html.match(/Asked\s*[·•]?\s*([A-Za-z]+ \d{1,2},? \d{4})/i)?.[1];
+    if (absoluteMatch) {
+      const d = this.parseToIso(absoluteMatch);
+      if (d) return d;
     }
 
-    // Relative: "Asked 3 years ago", "Asked 6 months ago"
-    const relativePattern = /Asked\s*[·•]?\s*(\d+)\s+(year|month|week|day|hour)s?\s+ago/i;
-    const relMatch = html.match(relativePattern);
+    const relMatch = html.match(/Asked\s*[·•]?\s*(\d+)\s+(year|month|week|day|hour)s?\s+ago/i);
     if (relMatch) {
-      const amount = parseInt(relMatch[1], 10);
-      const unit = relMatch[2].toLowerCase();
-      return this.relativeToIso(amount, unit);
+      return this.relativeToIso(parseInt(relMatch[1], 10), relMatch[2].toLowerCase());
     }
 
     return null;
@@ -240,44 +238,35 @@ export class ForumDateEnricherService {
 
   // ─── Date Parsing Utilities ──────────────────────────────────
 
-  /**
-   * Normalize any raw date string/number to "YYYY-MM-DD".
-   * Handles ISO strings, Unix timestamps (10-digit seconds / 13-digit ms),
-   * and human-readable date strings.
-   */
   private parseToIso(raw: string): string | null {
     if (!raw) return null;
     const trimmed = raw.trim();
 
-    // Unix timestamp: 10-digit (seconds) or 13-digit (ms)
+    // Unix seconds (10-digit)
     if (/^\d{10}$/.test(trimmed)) {
       return new Date(parseInt(trimmed, 10) * 1000).toISOString().split('T')[0];
     }
+    // Unix ms (13-digit)
     if (/^\d{13}$/.test(trimmed)) {
       return new Date(parseInt(trimmed, 10)).toISOString().split('T')[0];
     }
 
-    // ISO-8601 or parseable date string
     const d = new Date(trimmed);
     if (!isNaN(d.getTime()) && d.getFullYear() > 2000 && d.getFullYear() <= new Date().getFullYear() + 1) {
       return d.toISOString().split('T')[0];
     }
-
     return null;
   }
 
-  /**
-   * Convert a relative time expression ("3 years ago") to ISO date.
-   */
   private relativeToIso(amount: number, unit: string): string | null {
     const now = new Date();
     switch (unit) {
-      case 'year':   now.setFullYear(now.getFullYear() - amount); break;
-      case 'month':  now.setMonth(now.getMonth() - amount); break;
-      case 'week':   now.setDate(now.getDate() - amount * 7); break;
-      case 'day':    now.setDate(now.getDate() - amount); break;
-      case 'hour':   now.setHours(now.getHours() - amount); break;
-      default:       return null;
+      case 'year':  now.setFullYear(now.getFullYear() - amount); break;
+      case 'month': now.setMonth(now.getMonth() - amount); break;
+      case 'week':  now.setDate(now.getDate() - amount * 7); break;
+      case 'day':   now.setDate(now.getDate() - amount); break;
+      case 'hour':  now.setHours(now.getHours() - amount); break;
+      default:      return null;
     }
     return now.toISOString().split('T')[0];
   }
