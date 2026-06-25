@@ -110,6 +110,28 @@ export class DataForSeoService {
     return items.filter((i) => i.type === 'organic');
   }
 
+  async searchQuoraThreads(query: string, country = 'us', depth = 20) {
+    const keyword = `site:quora.com ${query.trim()}`;
+    const raw = (await this.post('/serp/google/organic/live/advanced', [
+      { keyword, location_name: this.resolveLocation(country), language_code: 'en', depth },
+    ])) as {
+      tasks?: Array<{
+        result?: Array<{
+          items?: Array<{
+            type?: string;
+            title?: string;
+            url?: string;
+            description?: string;
+            rank_absolute?: number;
+            timestamp?: string;
+          }>;
+        }>;
+      }>;
+    };
+    const items = raw.tasks?.[0]?.result?.[0]?.items ?? [];
+    return items.filter((i) => i.type === 'organic');
+  }
+
   // ─── Keywords Data ────────────────────────────────────────
 
   async getKeywordSearchVolume(keywords: string[], location: string = 'United States', language: string = 'en') {

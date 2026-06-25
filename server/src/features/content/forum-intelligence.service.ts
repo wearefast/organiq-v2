@@ -249,7 +249,22 @@ export class ForumIntelligenceService {
   }
 
   private async scanTopic(topicId: string, topic: string, projectId: string, country: string, relevanceKeywords: string[]): Promise<number> {
-    const items: SerpItem[] = await this.dataForSeo.searchRedditThreads(topic, country);
+    const [redditResult, quoraResult] = await Promise.allSettled([
+      this.dataForSeo.searchRedditThreads(topic, country),
+      this.dataForSeo.searchQuoraThreads(topic, country),
+    ]);
+
+    if (redditResult.status === 'rejected') {
+      this.logger.warn(`Reddit scan failed for "${topic}": ${redditResult.reason}`);
+    }
+    if (quoraResult.status === 'rejected') {
+      this.logger.warn(`Quora scan failed for "${topic}": ${quoraResult.reason}`);
+    }
+
+    const items: SerpItem[] = [
+      ...(redditResult.status === 'fulfilled' ? redditResult.value : []),
+      ...(quoraResult.status === 'fulfilled' ? quoraResult.value : []),
+    ];
 
     let newCount = 0;
     for (const item of items) {

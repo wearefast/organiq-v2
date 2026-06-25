@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useEffect, useCallback } from 'react';
+import { useState, useEffect, useCallback, useMemo } from 'react';
 import { useParams } from 'next/navigation';
 import { useAuth } from '@clerk/nextjs';
 import { ExternalLink } from 'lucide-react';
@@ -37,29 +37,30 @@ interface ForumStats {
   avgScore: number;
 }
 
+// ─── Source detection ─────────────────────────────────────────
+
+type ForumSource = 'all' | 'reddit' | 'quora';
+
+const SOURCES: { key: ForumSource; label: string; domain: string }[] = [
+  { key: 'all',    label: 'All',   domain: '' },
+  { key: 'reddit', label: 'Reddit', domain: 'reddit.com' },
+  { key: 'quora',  label: 'Quora',  domain: 'quora.com' },
+];
+
+function detectSource(url: string): ForumSource {
+  if (url.includes('reddit.com')) return 'reddit';
+  if (url.includes('quora.com'))  return 'quora';
+  return 'all';
+}
+
 // ─── Helpers ─────────────────────────────────────────────────
-
-function formatDate(dateStr: string | null | undefined): string | null {
-  if (!dateStr) return null;
-  const d = new Date(dateStr);
-  if (isNaN(d.getTime())) return null;
-  return d.toLocaleDateString('en-US', { year: 'numeric', month: 'short', day: 'numeric' });
-}
-
-function scoreColor(score: number): string {
-  if (score >= 70) return 'text-green-400 bg-green-900/30';
-  if (score >= 40) return 'text-yellow-400 bg-yellow-900/30';
-  return 'text-zinc-400 bg-zinc-700/50';
-}
 
 function formatRelativeTime(dateStr: string | null | undefined): string | null {
   if (!dateStr) return null;
   const d = new Date(dateStr);
   if (isNaN(d.getTime())) return null;
-  
   const now = new Date();
   const secondsAgo = Math.floor((now.getTime() - d.getTime()) / 1000);
-  
   if (secondsAgo < 60) return 'just now';
   if (secondsAgo < 3600) return `${Math.floor(secondsAgo / 60)}m ago`;
   if (secondsAgo < 86400) return `${Math.floor(secondsAgo / 3600)}h ago`;
@@ -69,14 +70,52 @@ function formatRelativeTime(dateStr: string | null | undefined): string | null {
   return `${Math.floor(secondsAgo / 31536000)}y ago`;
 }
 
-function RedditLogo() {
+// ─── Logo components ─────────────────────────────────────────
+
+function RedditLogo({ className = 'h-5 w-5' }: { className?: string }) {
   return (
-    <img 
-      src="https://redditinc.com/hs-fs/hubfs/Reddit%20Inc/Content/Brand%20Page/Reddit_Logo.png" 
-      alt="Reddit" 
-      className="h-5 w-5"
+    <img
+      src="https://redditinc.com/hs-fs/hubfs/Reddit%20Inc/Content/Brand%20Page/Reddit_Logo.png"
+      alt="Reddit"
+      className={className}
     />
   );
+}
+
+function QuoraLogo({ className = 'h-5 w-5' }: { className?: string }) {
+  return (
+    <img
+      src="https://upload.wikimedia.org/wikipedia/commons/thumb/9/91/Quora-logo_2015.svg/200px-Quora-logo_2015.svg.png"
+      alt="Quora"
+      className={className}
+      style={{ objectFit: 'contain' }}
+    />
+  );
+}
+
+function SourceBadge({ url, subreddit }: { url: string; subreddit: string | null }) {
+  if (url.includes('reddit.com')) {
+    return subreddit ? (
+      <span className="inline-flex items-center gap-1 text-[11px] font-semibold text-orange-400 bg-orange-900/30 px-2 py-0.5 rounded-full">
+        <RedditLogo className="h-3 w-3" />
+        r/{subreddit}
+      </span>
+    ) : (
+      <span className="inline-flex items-center gap-1 text-[11px] font-semibold text-orange-400 bg-orange-900/30 px-2 py-0.5 rounded-full">
+        <RedditLogo className="h-3 w-3" />
+        Reddit
+      </span>
+    );
+  }
+  if (url.includes('quora.com')) {
+    return (
+      <span className="inline-flex items-center gap-1 text-[11px] font-semibold text-red-400 bg-red-900/30 px-2 py-0.5 rounded-full">
+        <QuoraLogo className="h-3 w-3" />
+        Quora
+      </span>
+    );
+  }
+  return null;
 }
 
 // ─── Page ────────────────────────────────────────────────────
@@ -93,6 +132,7 @@ export default function ForumsPage() {
   const [scanning, setScanning] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [filterStatus, setFilterStatus] = useState<string>('new');
+  const [filterSource, setFilterSource] = useState<ForumSource>('all');
   const [newTopic, setNewTopic] = useState('');
 
   const base = `/projects/${projectId}/content`;
@@ -125,6 +165,25 @@ export default function ForumsPage() {
   useEffect(() => {
     loadData();
   }, [loadData]);
+
+  // ─── Source-filtered opportunities ──────────────────────────
+
+  const filteredOpportunities = useMemo(() => {
+    if (filterSource === 'all') return opportunities;
+    return opportunities.filter((o) => detectSource(o.url) === filterSource);
+  }, [opportunities, filterSource]);
+
+  // ─── Source counts for tab badges ───────────────────────────
+
+  const sourceCounts = useMemo(() => {
+    const counts: Record<ForumSource, number> = { all: opportunities.length, reddit: 0, quora: 0 };
+    for (const o of opportunities) {
+      const s = detectSource(o.url);
+      if (s === 'reddit') counts.reddit++;
+      else if (s === 'quora') counts.quora++;
+    }
+    return counts;
+  }, [opportunities]);
 
   // ─── Actions ────────────────────────────────────────────────
 
@@ -194,18 +253,21 @@ export default function ForumsPage() {
     <div className="space-y-6 p-6">
       {/* Header */}
       <div className="flex items-start justify-between">
-        <div className="flex items-center gap-3">
-          <div>
-            <div className="flex items-center gap-2">
-              <h1 className="text-2xl font-bold text-white">Forum Intelligence</h1>
+        <div>
+          <div className="flex items-center gap-2">
+            <h1 className="text-2xl font-bold text-white">Forum Intelligence</h1>
+            <div className="flex items-center gap-1.5">
               <div className="h-6 w-6 rounded-full bg-orange-500/10 flex items-center justify-center border border-orange-500/20">
-                <RedditLogo />
+                <RedditLogo className="h-4 w-4" />
+              </div>
+              <div className="h-6 w-6 rounded-full bg-red-500/10 flex items-center justify-center border border-red-500/20">
+                <QuoraLogo className="h-3.5 w-3.5" />
               </div>
             </div>
-            <p className="mt-1 text-sm text-zinc-400">
-              Automated Reddit monitoring — find and engage with discussions in your niche.
-            </p>
           </div>
+          <p className="mt-1 text-sm text-zinc-400">
+            Automated forum monitoring — find and engage with discussions across Reddit, Quora, and more.
+          </p>
         </div>
         <button
           onClick={handleScan}
@@ -216,7 +278,7 @@ export default function ForumsPage() {
         </button>
       </div>
 
-      {/* Stats Cards */}
+      {/* KPI Cards — always show totals across all sources */}
       {stats && (
         <div className="grid grid-cols-4 gap-4">
           <div className="rounded-xl border border-zinc-700 bg-zinc-800/50 p-4">
@@ -240,11 +302,9 @@ export default function ForumsPage() {
 
       {/* Monitored Topics */}
       <div className="rounded-xl border border-zinc-700 bg-zinc-800/40 p-4 space-y-3">
-        <div className="flex items-center justify-between">
-          <p className="text-xs font-semibold uppercase tracking-wide text-zinc-500">
-            Monitored Topics ({topics.length})
-          </p>
-        </div>
+        <p className="text-xs font-semibold uppercase tracking-wide text-zinc-500">
+          Monitored Topics ({topics.length})
+        </p>
         <div className="flex flex-wrap gap-2">
           {topics.map((t) => (
             <span
@@ -290,81 +350,101 @@ export default function ForumsPage() {
         <div className="rounded-lg border border-red-800 bg-red-900/20 p-3 text-sm text-red-400">{error}</div>
       )}
 
-      {/* Filter Tabs */}
-      <div className="flex items-center gap-2 border-b border-zinc-700 pb-2">
-        {['new', 'seen', 'replied', 'dismissed'].map((s) => (
-          <button
-            key={s}
-            onClick={() => setFilterStatus(s)}
-            className={`rounded-md px-3 py-1.5 text-xs font-medium capitalize transition ${
-              filterStatus === s
-                ? 'bg-zinc-700 text-white'
-                : 'text-zinc-400 hover:text-zinc-200'
-            }`}
-          >
-            {s}
-          </button>
-        ))}
+      {/* Status + Source filter row */}
+      <div className="flex items-center justify-between border-b border-zinc-700 pb-2">
+        {/* Status tabs */}
+        <div className="flex items-center gap-1">
+          {['new', 'seen', 'replied', 'dismissed'].map((s) => (
+            <button
+              key={s}
+              onClick={() => setFilterStatus(s)}
+              className={`rounded-md px-3 py-1.5 text-xs font-medium capitalize transition ${
+                filterStatus === s ? 'bg-zinc-700 text-white' : 'text-zinc-400 hover:text-zinc-200'
+              }`}
+            >
+              {s}
+            </button>
+          ))}
+        </div>
+
+        {/* Source tabs */}
+        <div className="flex items-center gap-1">
+          {SOURCES.map(({ key, label }) => (
+            <button
+              key={key}
+              onClick={() => setFilterSource(key)}
+              className={`inline-flex items-center gap-1.5 rounded-md px-3 py-1.5 text-xs font-medium transition ${
+                filterSource === key
+                  ? 'bg-zinc-700 text-white'
+                  : 'text-zinc-400 hover:text-zinc-200'
+              }`}
+            >
+              {key === 'reddit' && <RedditLogo className="h-3 w-3" />}
+              {key === 'quora'  && <QuoraLogo  className="h-3 w-3" />}
+              {label}
+              {key !== 'all' && sourceCounts[key] > 0 && (
+                <span className="ml-0.5 rounded-full bg-zinc-600 px-1.5 text-[10px] text-zinc-300">
+                  {sourceCounts[key]}
+                </span>
+              )}
+            </button>
+          ))}
+        </div>
       </div>
 
       {/* Opportunities List */}
-      {opportunities.length === 0 ? (
+      {filteredOpportunities.length === 0 ? (
         <div className="rounded-xl border border-dashed border-zinc-700 p-12 text-center">
           <p className="text-zinc-500 text-sm">
             {filterStatus === 'new'
-              ? 'No new opportunities. Click "Scan Now" to search for fresh Reddit threads.'
-              : `No ${filterStatus} opportunities.`}
+              ? 'No new opportunities. Click "Scan Now" to search for fresh threads.'
+              : `No ${filterStatus} opportunities${filterSource !== 'all' ? ` from ${filterSource}` : ''}.`}
           </p>
         </div>
       ) : (
         <div className="space-y-3">
-          {opportunities.map((opp) => (
+          {filteredOpportunities.map((opp) => (
             <div
               key={opp.id}
               className="rounded-xl border border-zinc-700 bg-zinc-800/50 p-4 hover:border-zinc-600 transition"
             >
-              <div className="flex items-start justify-between gap-3">
-                <div className="min-w-0 flex-1">
-                  <div className="flex items-center gap-2 flex-wrap">
-                    {opp.subreddit && (
-                      <span className="text-[11px] font-semibold text-indigo-400 bg-indigo-900/30 px-2 py-0.5 rounded-full">
-                        r/{opp.subreddit}
-                      </span>
-                    )}
-                    {opp.isQuestion && (
-                      <span className="text-[11px] text-yellow-400 bg-yellow-900/30 px-2 py-0.5 rounded-full">
-                        ❓ Question
-                      </span>
-                    )}
-                    {opp.topic && (
-                      <span className="text-[11px] text-zinc-500 bg-zinc-700/50 px-2 py-0.5 rounded-full">
-                        {opp.topic.topic}
-                      </span>
+              <div className="flex flex-col gap-2">
+                {/* Top row: content + action buttons */}
+                <div className="flex items-start justify-between gap-3">
+                  <div className="min-w-0 flex-1">
+                    <div className="flex items-center gap-2 flex-wrap">
+                      <SourceBadge url={opp.url} subreddit={opp.subreddit} />
+                      {opp.isQuestion && (
+                        <span className="text-[11px] text-yellow-400 bg-yellow-900/30 px-2 py-0.5 rounded-full">
+                          ❓ Question
+                        </span>
+                      )}
+                      {opp.topic && (
+                        <span className="text-[11px] text-zinc-500 bg-zinc-700/50 px-2 py-0.5 rounded-full">
+                          {opp.topic.topic}
+                        </span>
+                      )}
+                    </div>
+                    <a
+                      href={opp.url}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      className="mt-1.5 block text-sm font-medium text-zinc-100 leading-snug hover:text-indigo-300 transition"
+                    >
+                      {opp.title}
+                    </a>
+                    {opp.snippet && (
+                      <p className="mt-1 text-xs text-zinc-400 leading-relaxed line-clamp-2">{opp.snippet}</p>
                     )}
                   </div>
-                  <a
-                    href={opp.url}
-                    target="_blank"
-                    rel="noopener noreferrer"
-                    className="mt-1.5 block text-sm font-medium text-zinc-100 leading-snug hover:text-indigo-300 transition"
-                  >
-                    {opp.title}
-                  </a>
-                  {opp.snippet && (
-                    <p className="mt-1 text-xs text-zinc-400 leading-relaxed line-clamp-2">{opp.snippet}</p>
-                  )}
-                </div>
 
-                <div className="flex shrink-0 flex-col items-end gap-2">
-                  {/* Action buttons */}
                   {(opp.status === 'new' || opp.status === 'seen') && (
-                    <div className="flex flex-col gap-1.5 items-end">
+                    <div className="flex shrink-0 flex-col gap-1.5 items-end">
                       <a
                         href={opp.url}
                         target="_blank"
                         rel="noopener noreferrer"
                         className="inline-flex items-center gap-1 rounded px-2 py-1 text-[10px] font-medium bg-indigo-600 text-white hover:bg-indigo-500 transition"
-                        title="Reply on Reddit"
                       >
                         Reply Now
                         <ExternalLink className="h-3 w-3" />
@@ -372,24 +452,27 @@ export default function ForumsPage() {
                       <button
                         onClick={() => handleStatusUpdate(opp.id, 'dismissed')}
                         className="rounded px-2 py-0.5 text-[10px] font-medium bg-zinc-700/50 text-zinc-400 hover:bg-zinc-700 transition"
-                        title="Dismiss"
                       >
                         ✕ Dismiss
                       </button>
                     </div>
                   )}
-                  {/* Time posted */}
-                  {formatRelativeTime(opp.publishedDate) && (
-                    <span className="text-[10px] text-zinc-500 whitespace-nowrap mt-1">
+                </div>
+
+                {/* Bottom row: date pinned to the right */}
+                {formatRelativeTime(opp.publishedDate) && (
+                  <div className="flex justify-end">
+                    <span className="text-[10px] text-zinc-500 whitespace-nowrap">
                       {formatRelativeTime(opp.publishedDate)}
                     </span>
-                  )}
-                </div>
+                  </div>
+                )}
               </div>
             </div>
           ))}
         </div>
       )}
     </div>
+
   );
 }
