@@ -1,6 +1,6 @@
 'use client';
 
-import { useEffect, useState, useCallback } from 'react';
+import { useEffect, useState, useCallback, useRef } from 'react';
 import {
   X, FileText, BookOpen, Image, Globe, Loader2,
   CheckCircle2, Clock, ChevronDown, RotateCcw, Pencil, Check, Plus, Trash2,
@@ -105,7 +105,7 @@ export function PageDetailPanel({ projectId, mapId, pageId, onClose, onContentGe
   const [briefExpanded, setBriefExpanded] = useState(false);
   const [briefEditing, setBriefEditing] = useState(false);
   const [briefEditData, setBriefEditData] = useState<BriefEditState | null>(null);
-  const [viewingContent, setViewingContent] = useState<'brief' | 'article'>('brief');
+  const [viewingContent, setViewingContent] = useState<'brief' | 'article' | 'images'>('brief');
   const [articleEditing, setArticleEditing] = useState(false);
   const [imageShowPlaceholders, setImageShowPlaceholders] = useState(true);
 
@@ -352,13 +352,14 @@ export function PageDetailPanel({ projectId, mapId, pageId, onClose, onContentGe
               done={images.length > 0}
               locked={!article}
               meta={images.length > 0 ? `${images.length} images` : undefined}
+              onClick={images.length > 0 ? () => setViewingContent('images') : undefined}
             />
             <PipelineStage icon={<Globe className="h-3.5 w-3.5" />} label="Published" done={isPublished} locked={!article} />
           </div>
         </div>
 
         {/* ── Brief section ─────────────────────────────────────────── */}
-        {brief?.briefData != null && (
+        {brief?.briefData != null && viewingContent === 'brief' && (
           <div className="border-t border-zinc-800/60">
             {/* Header with inline actions */}
             <div className="flex items-center justify-between px-5 py-3">
@@ -409,30 +410,22 @@ export function PageDetailPanel({ projectId, mapId, pageId, onClose, onContentGe
                     Regenerate
                   </button>
                 )}
-                <button
-                  onClick={() => setBriefExpanded((v) => !v)}
-                  className="rounded p-1 text-zinc-600 hover:bg-zinc-800 hover:text-zinc-400"
-                >
-                  <ChevronDown className={`h-3.5 w-3.5 transition-transform ${briefExpanded ? 'rotate-180' : ''}`} />
-                </button>
               </div>
             </div>
 
-            {briefExpanded && (
-              <div className="border-t border-zinc-800/60 px-5 pb-6 pt-4">
-                {briefEditing && briefEditData ? (
-                  <BriefEditForm
-                    data={briefEditData}
-                    saving={busy === 'saving'}
-                    onChange={setBriefEditData}
-                    onSave={handleSaveBrief}
-                    onCancel={() => { setBriefEditing(false); setBriefEditData(null); }}
+            <div className="border-t border-zinc-800/60 px-5 pb-6 pt-4">
+              {briefEditing && briefEditData ? (
+                <BriefEditForm
+                  data={briefEditData}
+                  saving={busy === 'saving'}
+                  onChange={setBriefEditData}
+                  onSave={handleSaveBrief}
+                  onCancel={() => { setBriefEditing(false); setBriefEditData(null); }}
                   />
                 ) : (
                   <BriefPreview data={brief.briefData} />
                 )}
-              </div>
-            )}
+            </div>
           </div>
         )}
 
@@ -511,6 +504,26 @@ export function PageDetailPanel({ projectId, mapId, pageId, onClose, onContentGe
               ) : (
                 <ArticleFormatter data={article.articleData as Record<string, unknown>} images={images} showImagePlaceholders={imageShowPlaceholders} />
               )}
+            </div>
+          </div>
+        )}
+
+        {/* ── Images section ────────────────────────────────────────── */}
+        {images.length > 0 && viewingContent === 'images' && (
+          <div className="border-t border-zinc-800/60 px-5 pb-6 pt-4">
+            <h3 className="mb-4 text-sm font-semibold text-zinc-200">Images ({images.length})</h3>
+            <div className="grid gap-4 sm:grid-cols-2">
+              {images.map((img, idx) => (
+                <div key={img.id} className="overflow-hidden rounded-lg border border-zinc-800 bg-zinc-900/50">
+                  {img.base64 && (
+                    <img src={img.base64} alt={img.altText || `Image ${idx + 1}`} className="h-40 w-full object-cover" />
+                  )}
+                  <div className="p-2">
+                    <p className="text-[10px] font-medium text-zinc-400">{img.altText || `Image ${idx + 1}`}</p>
+                    {img.prompt && <p className="mt-1 text-[9px] text-zinc-600">{img.prompt}</p>}
+                  </div>
+                </div>
+              ))}
             </div>
           </div>
         )}
@@ -673,45 +686,223 @@ function ArticleEditForm({
   onImagePlaceholdersChange: (show: boolean) => void;
 }) {
   const [editedContent, setEditedContent] = useState(String(data.markdown ?? ''));
+  const textareaRef = useRef<HTMLTextAreaElement>(null);
+  const [imagePlaceholders, setImagePlaceholders] = useState<Array<{id: string; line: number}>>([]);
+
+  // Parse image placeholders from content
+  useEffect(() => {
+    const lines = editedContent.split('\n');
+    const placeholders = lines
+      .map((line, idx) => ({
+        match: line.match(/\[IMAGE_PLACEHOLDER_(\d+)\]/),
+        line: idx,
+      }))
+      .filter(p => p.match)
+      .map(p => ({ id: p.match![1], line: p.line }));
+    setImagePlaceholders(placeholders);
+  }, [editedContent]);
+
+  const insertFormatting = (before: string, after: string = '') => {
+    const textarea = textareaRef.current;
+    if (!textarea) return;
+
+    const start = textarea.selectionStart;
+    const end = textarea.selectionEnd;
+    const selected = editedContent.substring(start, end);
+    const newContent = editedContent.substring(0, start) + before + selected + after + editedContent.substring(end);
+    setEditedContent(newContent);
+
+    // Restore focus and selection
+    setTimeout(() => {
+      textarea.focus();
+      textarea.selectionStart = start + before.length;
+      textarea.selectionEnd = start + before.length + selected.length;
+    });
+  };
+
+  const insertImagePlaceholder = () => {
+    const nextId = Math.max(0, ...imagePlaceholders.map(p => parseInt(p.id))) + 1;
+    insertFormatting(`\n[IMAGE_PLACEHOLDER_${nextId}]\n`);
+  };
+
+  const removePlaceholder = (id: string) => {
+    const newContent = editedContent.replace(`[IMAGE_PLACEHOLDER_${id}]\n`, '').replace(`\n[IMAGE_PLACEHOLDER_${id}]`, '');
+    setEditedContent(newContent);
+  };
+
+  const movePlaceholder = (id: string, direction: 'up' | 'down') => {
+    const lines = editedContent.split('\n');
+    const lineIdx = imagePlaceholders.find(p => p.id === id)?.line;
+    if (lineIdx === undefined || (direction === 'up' && lineIdx === 0) || (direction === 'down' && lineIdx === lines.length - 1)) return;
+
+    const swapIdx = direction === 'up' ? lineIdx - 1 : lineIdx + 1;
+    [lines[lineIdx], lines[swapIdx]] = [lines[swapIdx], lines[lineIdx]];
+    setEditedContent(lines.join('\n'));
+  };
 
   return (
     <div className="space-y-4">
-      <div>
-        <div className="mb-2 flex items-center justify-between">
-          <p className="text-[10px] font-medium text-zinc-600">Article Content</p>
-          <label className="flex items-center gap-1 text-[10px] text-zinc-500">
-            <input
-              type="checkbox"
-              checked={imageShowPlaceholders}
-              onChange={(e) => onImagePlaceholdersChange(e.target.checked)}
-              className="h-3 w-3"
-            />
-            Show image placeholders
-          </label>
-        </div>
-        <textarea
-          value={editedContent}
-          onChange={(e) => setEditedContent(e.target.value)}
-          rows={10}
-          className="w-full resize-none rounded border border-zinc-800 bg-zinc-900 px-3 py-2 font-mono text-xs text-zinc-200 placeholder-zinc-600 focus:border-zinc-600 focus:outline-none"
-          placeholder="Markdown content..."
-        />
+      {/* Toolbar */}
+      <div className="flex flex-wrap gap-1 rounded border border-zinc-800 bg-zinc-900/50 p-2">
+        <button
+          type="button"
+          onClick={() => insertFormatting('**', '**')}
+          className="rounded px-2 py-1 text-xs font-bold text-zinc-300 hover:bg-zinc-800"
+          title="Bold"
+        >
+          B
+        </button>
+        <button
+          type="button"
+          onClick={() => insertFormatting('_', '_')}
+          className="rounded px-2 py-1 text-xs italic text-zinc-300 hover:bg-zinc-800"
+          title="Italic"
+        >
+          I
+        </button>
+        <div className="w-px bg-zinc-800" />
+        <button
+          type="button"
+          onClick={() => insertFormatting('# ')}
+          className="rounded px-2 py-1 text-xs text-zinc-300 hover:bg-zinc-800"
+          title="Heading 1"
+        >
+          H1
+        </button>
+        <button
+          type="button"
+          onClick={() => insertFormatting('## ')}
+          className="rounded px-2 py-1 text-xs text-zinc-300 hover:bg-zinc-800"
+          title="Heading 2"
+        >
+          H2
+        </button>
+        <button
+          type="button"
+          onClick={() => insertFormatting('### ')}
+          className="rounded px-2 py-1 text-xs text-zinc-300 hover:bg-zinc-800"
+          title="Heading 3"
+        >
+          H3
+        </button>
+        <div className="w-px bg-zinc-800" />
+        <button
+          type="button"
+          onClick={() => insertFormatting('- ')}
+          className="rounded px-2 py-1 text-xs text-zinc-300 hover:bg-zinc-800"
+          title="Bullet list"
+        >
+          • List
+        </button>
+        <button
+          type="button"
+          onClick={() => insertFormatting('1. ')}
+          className="rounded px-2 py-1 text-xs text-zinc-300 hover:bg-zinc-800"
+          title="Numbered list"
+        >
+          1. List
+        </button>
+        <div className="w-px bg-zinc-800" />
+        <button
+          type="button"
+          onClick={insertImagePlaceholder}
+          className="rounded px-2 py-1 text-xs text-zinc-300 hover:bg-zinc-800"
+          title="Insert image placeholder"
+        >
+          + Image
+        </button>
       </div>
-      <div className="flex items-center justify-end gap-2 pt-1">
-        <button
-          onClick={onCancel}
-          className="rounded px-3 py-1.5 text-xs text-zinc-500 hover:bg-zinc-800 hover:text-zinc-300"
-        >
-          Cancel
-        </button>
-        <button
-          onClick={() => onSave({ markdown: editedContent })}
-          disabled={saving}
-          className="flex items-center gap-1.5 rounded bg-emerald-700 px-4 py-1.5 text-xs font-medium text-white hover:bg-emerald-600 disabled:opacity-50"
-        >
-          {saving && <Loader2 className="h-3 w-3 animate-spin" />}
-          {saving ? 'Saving…' : 'Save Article'}
-        </button>
+
+      {/* Editor & Preview Split View */}
+      <div className="grid gap-2 lg:grid-cols-2">
+        <div>
+          <p className="mb-1 text-[10px] font-medium text-zinc-600">Editor</p>
+          <textarea
+            ref={textareaRef}
+            value={editedContent}
+            onChange={(e) => setEditedContent(e.target.value)}
+            rows={14}
+            className="w-full resize-none rounded border border-zinc-800 bg-zinc-900 px-3 py-2 font-mono text-xs text-zinc-200 placeholder-zinc-600 focus:border-zinc-600 focus:outline-none"
+            placeholder="Enter article content with markdown formatting..."
+          />
+        </div>
+
+        <div>
+          <p className="mb-1 text-[10px] font-medium text-zinc-600">Preview</p>
+          <div className="max-h-60 overflow-auto rounded border border-zinc-800 bg-zinc-900/50 p-3">
+            <ArticleFormatter data={{ markdown: editedContent }} images={[]} showImagePlaceholders={imageShowPlaceholders} />
+          </div>
+        </div>
+      </div>
+
+      {/* Image Placeholders Management */}
+      {imagePlaceholders.length > 0 && (
+        <div className="rounded border border-zinc-800 bg-zinc-900/50 p-2">
+          <p className="mb-2 text-[10px] font-medium text-zinc-600">Image Placeholders ({imagePlaceholders.length})</p>
+          <div className="space-y-1">
+            {imagePlaceholders.map((ph, idx) => (
+              <div key={ph.id} className="flex items-center justify-between rounded bg-zinc-800/50 px-2 py-1">
+                <span className="text-[10px] text-zinc-400">Placeholder {ph.id} (Line {ph.line + 1})</span>
+                <div className="flex gap-1">
+                  {idx > 0 && (
+                    <button
+                      type="button"
+                      onClick={() => movePlaceholder(ph.id, 'up')}
+                      className="rounded px-1.5 py-0.5 text-[10px] text-zinc-400 hover:bg-zinc-700"
+                    >
+                      ↑
+                    </button>
+                  )}
+                  {idx < imagePlaceholders.length - 1 && (
+                    <button
+                      type="button"
+                      onClick={() => movePlaceholder(ph.id, 'down')}
+                      className="rounded px-1.5 py-0.5 text-[10px] text-zinc-400 hover:bg-zinc-700"
+                    >
+                      ↓
+                    </button>
+                  )}
+                  <button
+                    type="button"
+                    onClick={() => removePlaceholder(ph.id)}
+                    className="rounded px-1.5 py-0.5 text-[10px] text-red-500 hover:bg-red-900/20"
+                  >
+                    Remove
+                  </button>
+                </div>
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
+
+      {/* Image Display Toggle & Actions */}
+      <div className="flex items-center justify-between">
+        <label className="flex items-center gap-1 text-[10px] text-zinc-500">
+          <input
+            type="checkbox"
+            checked={imageShowPlaceholders}
+            onChange={(e) => onImagePlaceholdersChange(e.target.checked)}
+            className="h-3 w-3"
+          />
+          Show image placeholders in preview
+        </label>
+        <div className="flex items-center justify-end gap-2">
+          <button
+            onClick={onCancel}
+            className="rounded px-3 py-1.5 text-xs text-zinc-500 hover:bg-zinc-800 hover:text-zinc-300"
+          >
+            Cancel
+          </button>
+          <button
+            onClick={() => onSave({ markdown: editedContent })}
+            disabled={saving}
+            className="flex items-center gap-1.5 rounded bg-emerald-700 px-4 py-1.5 text-xs font-medium text-white hover:bg-emerald-600 disabled:opacity-50"
+          >
+            {saving && <Loader2 className="h-3 w-3 animate-spin" />}
+            {saving ? 'Saving…' : 'Save Article'}
+          </button>
+        </div>
       </div>
     </div>
   );
