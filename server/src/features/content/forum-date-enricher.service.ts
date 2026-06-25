@@ -95,11 +95,58 @@ export class ForumDateEnricherService {
 
   /**
    * Publicly test a single URL — used by the diagnostics endpoint.
-   * Returns the resolved date or null, plus detail about what happened.
    */
-  async testUrl(url: string): Promise<{ url: string; date: string | null }> {
-    const date = await this.resolveDate(url);
-    return { url, date };
+  async testUrl(url: string): Promise<{ url: string; date: string | null; detail: string }> {
+    if (url.includes('reddit.com')) {
+      return this.testReddit(url);
+    }
+    if (url.includes('quora.com')) {
+      return this.testQuora(url);
+    }
+    return { url, date: null, detail: 'unsupported source' };
+  }
+
+  private async testReddit(url: string): Promise<{ url: string; date: string | null; detail: string }> {
+    const base = url.split('?')[0].replace(/\/?$/, '/');
+    const jsonUrl = `${base}.json?raw_json=1&limit=1`;
+    try {
+      const controller = new AbortController();
+      const timer = setTimeout(() => controller.abort(), 10_000);
+      const response = await fetch(jsonUrl, {
+        signal: controller.signal,
+        headers: { 'User-Agent': this.REDDIT_UA, 'Accept': 'application/json' },
+      });
+      clearTimeout(timer);
+      if (!response.ok) {
+        const text = await response.text();
+        return { url, date: null, detail: `HTTP ${response.status}: ${text.substring(0, 200)}` };
+      }
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      const data = await response.json() as any;
+      const createdUtc = data?.[0]?.data?.children?.[0]?.data?.created_utc;
+      const date = typeof createdUtc === 'number' ? new Date(createdUtc * 1000).toISOString().split('T')[0] : null;
+      return { url, date, detail: `created_utc=${createdUtc}` };
+    } catch (err) {
+      return { url, date: null, detail: `exception: ${err instanceof Error ? err.message : err}` };
+    }
+  }
+
+  private async testQuora(url: string): Promise<{ url: string; date: string | null; detail: string }> {
+    try {
+      const result = (await this.firecrawl.scrape(url, {
+        formats: ['rawHtml'],
+        onlyMainContent: false,
+        waitFor: 2000,
+      })) as { data?: { rawHtml?: string } } | null;
+      const html = result?.data?.rawHtml ?? '';
+      if (!html) return { url, date: null, detail: 'firecrawl returned empty html' };
+      const date = this.extractDateFromHtml(html);
+      const ogHint = html.includes('article:published_time') ? 'has og:date' : 'no og:date';
+      const timeHint = html.match(/<time[^>]+datetime/i)?.[0]?.substring(0, 80) ?? 'no time tag';
+      return { url, date, detail: `htmlLen=${html.length} ${ogHint} timeTag=${timeHint}` };
+    } catch (err) {
+      return { url, date: null, detail: `firecrawl exception: ${err instanceof Error ? err.message : err}` };
+    }
   }
 
   /**
