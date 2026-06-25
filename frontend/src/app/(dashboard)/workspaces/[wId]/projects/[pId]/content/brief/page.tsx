@@ -135,39 +135,6 @@ export default function ContentBriefPage() {
     </div>
   );
 }
-
-
-export default function ContentBriefPage() {
-  const params = useParams();
-  const projectId = params.pId as string;
-
-  const [briefs, setBriefs] = useState<ContentPiece[]>([]);
-  const [selected, setSelected] = useState<ContentPiece | null>(null);
-  const [loading, setLoading] = useState(true);
-
-  useEffect(() => {
-    fetchContent(projectId)
-      .then((pieces) => {
-        const briefPieces = pieces.filter((p) => p.type === 'brief');
-        setBriefs(briefPieces);
-        if (briefPieces.length > 0) setSelected(briefPieces[0]);
-      })
-      .catch(console.error)
-      .finally(() => setLoading(false));
-  }, [projectId]);
-
-  if (loading) {
-    return (
-      <div className="flex h-64 items-center justify-center">
-        <div className="h-6 w-6 animate-spin rounded-full border-2 border-zinc-700 border-t-zinc-400" />
-      </div>
-    );
-  }
-
-  if (briefs.length === 0) {
-    return (
-      <div className="flex h-64 flex-col items-center justify-center gap-2">
-        <p className="text-sm text-zinc-500">No content brief yet.</p>
         <p className="text-xs text-zinc-600">
           Run the workflow through Step 16 to generate a content brief.
         </p>
