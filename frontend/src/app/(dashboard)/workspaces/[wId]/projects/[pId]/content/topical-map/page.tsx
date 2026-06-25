@@ -1,9 +1,18 @@
 'use client';
 
+import { useEffect, useState } from 'react';
 import { useParams } from 'next/navigation';
+import { apiFetch } from '@/shared/utils/api';
 import { useContentStep } from '@/features/content/hooks/use-content-step';
 import { TopicalMapRenderer } from '@/features/workflow/renderers/topical-map';
-import TopicalMapPage from '../../topical-map/page';
+
+interface TopicalMap {
+  id: string;
+  name: string;
+  pillars: unknown;
+  calendar?: unknown;
+  [key: string]: unknown;
+}
 
 export default function ContentStrategyPage() {
   const params = useParams();
@@ -12,6 +21,16 @@ export default function ContentStrategyPage() {
     projectId,
     'topical-map',
   );
+
+  const [maps, setMaps] = useState<TopicalMap[]>([]);
+  const [mapsLoading, setMapsLoading] = useState(true);
+
+  useEffect(() => {
+    apiFetch<TopicalMap[]>(`/projects/${projectId}/topical-maps`)
+      .then(setMaps)
+      .catch(console.error)
+      .finally(() => setMapsLoading(false));
+  }, [projectId]);
 
   if (loading) {
     return (
@@ -67,6 +86,34 @@ export default function ContentStrategyPage() {
     );
   }
 
-  // Default: approved / completed / pending / no run — show domain data
-  return <TopicalMapPage />;
+  // Default: approved / completed / pending — render domain data with the same
+  // TopicalMapRenderer used in the workflow view
+  if (mapsLoading) {
+    return (
+      <div className="flex h-64 items-center justify-center">
+        <div className="h-6 w-6 animate-spin rounded-full border-2 border-zinc-700 border-t-zinc-400" />
+      </div>
+    );
+  }
+
+  if (maps.length === 0) {
+    return (
+      <div className="flex h-64 flex-col items-center justify-center gap-2">
+        <p className="text-sm text-zinc-500">No topical map yet.</p>
+        <p className="text-xs text-zinc-600">
+          Run the workflow through Step 15 to generate a topical map.
+        </p>
+      </div>
+    );
+  }
+
+  return (
+    <div className="p-6">
+      {maps.length > 1 && (
+        <p className="mb-4 text-xs text-zinc-500">{maps.length} maps available — showing latest</p>
+      )}
+      <TopicalMapRenderer data={maps[0]} />
+    </div>
+  );
 }
+
