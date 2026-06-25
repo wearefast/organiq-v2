@@ -94,6 +94,18 @@ export interface RunStepCost {
   createdAt: string;
 }
 
+export interface ProjectBreakdownRow {
+  workflowRunId: string | null;
+  stepKey: string | null;
+  provider: string;
+  endpoint: string;
+  calls: number;
+  tokensIn: number | null;
+  tokensOut: number | null;
+  costUsd: number;
+  createdAt: string;
+}
+
 export async function getApiUsageSummary(params: {
   orgId?: string;
   from?: string;
@@ -120,6 +132,16 @@ export async function getApiUsageByProject(params: {
 
 export async function getApiUsageByRun(runId: string): Promise<RunStepCost[]> {
   return apiFetch<RunStepCost[]>(`/internal/api-usage/by-run/${runId}`);
+}
+
+export async function getApiUsageProjectBreakdown(
+  projectId: string,
+  params: { from?: string; to?: string },
+): Promise<ProjectBreakdownRow[]> {
+  const qs = new URLSearchParams();
+  if (params.from) qs.set('from', params.from);
+  if (params.to) qs.set('to', params.to);
+  return apiFetch<ProjectBreakdownRow[]>(`/internal/api-usage/breakdown/project/${projectId}?${qs}`);
 }
 
 export async function downloadApiUsageCsv(params: {

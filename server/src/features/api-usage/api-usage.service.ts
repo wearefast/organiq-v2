@@ -66,6 +66,19 @@ export interface RunStepCost {
   createdAt: Date;
 }
 
+/** One row in the flat project breakdown — frontend groups by workflowRunId */
+export interface ProjectBreakdownRow {
+  workflowRunId: string | null;
+  stepKey: string | null;
+  provider: string;
+  endpoint: string;
+  calls: number;
+  tokensIn: number | null;
+  tokensOut: number | null;
+  costUsd: number;
+  createdAt: Date;
+}
+
 @Injectable()
 export class ApiUsageService {
   private readonly logger = new Logger(ApiUsageService.name);
@@ -230,6 +243,51 @@ export class ApiUsageService {
       calls: r.calls ?? 0,
       costUsd: Math.round((r.costUsd ?? 0) * 1_000_000) / 1_000_000,
       durationMs: r.durationMs ?? null,
+      createdAt: r.createdAt,
+    }));
+  }
+
+  /**
+   * Full cost breakdown for a single project — flat list grouped by
+   * (workflowRunId, stepKey, provider, endpoint). Frontend aggregates into
+   * "Workflow Runs" vs "Feature Calls" (null workflowRunId) sections.
+   */
+  async getByProjectBreakdown(projectId: string, from: Date, to: Date): Promise<ProjectBreakdownRow[]> {
+    const rows = await this.db.db
+      .select({
+        workflowRunId: apiUsageLogs.workflowRunId,
+        stepKey: apiUsageLogs.stepKey,
+        provider: apiUsageLogs.provider,
+        endpoint: apiUsageLogs.endpoint,
+        calls: sql<number>`cast(count(*) as int)`,
+        tokensIn: sql<number | null>`cast(coalesce(sum(${apiUsageLogs.tokensIn}), null) as int)`,
+        tokensOut: sql<number | null>`cast(coalesce(sum(${apiUsageLogs.tokensOut}), null) as int)`,
+        costUsd: sql<number>`cast(sum(${apiUsageLogs.costUsd}) as float)`,
+        createdAt: sql<Date>`min(${apiUsageLogs.createdAt})`,
+      })
+      .from(apiUsageLogs)
+      .where(and(
+        eq(apiUsageLogs.projectId, projectId),
+        gte(apiUsageLogs.createdAt, from),
+        lte(apiUsageLogs.createdAt, to),
+      ))
+      .groupBy(
+        apiUsageLogs.workflowRunId,
+        apiUsageLogs.stepKey,
+        apiUsageLogs.provider,
+        apiUsageLogs.endpoint,
+      )
+      .orderBy(asc(sql`min(${apiUsageLogs.createdAt})`));
+
+    return rows.map((r) => ({
+      workflowRunId: r.workflowRunId ?? null,
+      stepKey: r.stepKey ?? null,
+      provider: r.provider,
+      endpoint: r.endpoint,
+      calls: r.calls ?? 0,
+      tokensIn: r.tokensIn ?? null,
+      tokensOut: r.tokensOut ?? null,
+      costUsd: Math.round((r.costUsd ?? 0) * 1_000_000) / 1_000_000,
       createdAt: r.createdAt,
     }));
   }

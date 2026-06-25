@@ -5,11 +5,11 @@ import { Download, Loader2, RefreshCw, ChevronDown, ChevronRight, TrendingUp, Za
 import {
   getApiUsageSummary,
   getApiUsageByProject,
-  getApiUsageByRun,
+  getApiUsageProjectBreakdown,
   downloadApiUsageCsv,
   type ApiUsageSummary,
   type ProjectCost,
-  type RunStepCost,
+  type ProjectBreakdownRow,
 } from '../services/admin.service';
 
 // ─── Constants ────────────────────────────────────────────────
@@ -49,60 +49,144 @@ function fmtNum(n: number) {
   return new Intl.NumberFormat('en-US').format(n);
 }
 
-// ─── Run Drill-Down ───────────────────────────────────────────
+function shortId(id: string) {
+  return id.slice(0, 8) + '…';
+}
 
-function RunDrillDown({ runId }: { runId: string }) {
-  const [rows, setRows] = useState<RunStepCost[] | null>(null);
+// ─── Step Table ───────────────────────────────────────────────
+
+function StepTable({ rows }: { rows: ProjectBreakdownRow[] }) {
+  return (
+    <table className="w-full text-xs">
+      <thead>
+        <tr className="border-b border-zinc-700">
+          <th className="px-3 py-1.5 text-left font-medium text-zinc-500">Process / Step</th>
+          <th className="px-3 py-1.5 text-left font-medium text-zinc-500">Provider</th>
+          <th className="px-3 py-1.5 text-left font-medium text-zinc-500">Model / Endpoint</th>
+          <th className="px-3 py-1.5 text-right font-medium text-zinc-500">Calls</th>
+          <th className="px-3 py-1.5 text-right font-medium text-zinc-500">Tokens In</th>
+          <th className="px-3 py-1.5 text-right font-medium text-zinc-500">Tokens Out</th>
+          <th className="px-3 py-1.5 text-right font-medium text-zinc-500">Cost</th>
+        </tr>
+      </thead>
+      <tbody>
+        {rows.map((r, i) => (
+          <tr key={i} className="border-b border-zinc-800/60 last:border-0 hover:bg-zinc-800/20">
+            <td className="px-3 py-1.5 font-mono text-[11px] text-zinc-300">{r.stepKey || '—'}</td>
+            <td className="px-3 py-1.5">{providerBadge(r.provider)}</td>
+            <td className="max-w-[160px] truncate px-3 py-1.5 text-zinc-400">{r.endpoint}</td>
+            <td className="px-3 py-1.5 text-right tabular-nums text-zinc-300">{fmtNum(r.calls)}</td>
+            <td className="px-3 py-1.5 text-right tabular-nums text-zinc-400">{r.tokensIn != null ? fmtNum(r.tokensIn) : '—'}</td>
+            <td className="px-3 py-1.5 text-right tabular-nums text-zinc-400">{r.tokensOut != null ? fmtNum(r.tokensOut) : '—'}</td>
+            <td className="px-3 py-1.5 text-right tabular-nums font-medium text-violet-300">{usd(r.costUsd)}</td>
+          </tr>
+        ))}
+      </tbody>
+    </table>
+  );
+}
+
+// ─── Project Drill-Down ───────────────────────────────────────
+
+function ProjectDrillDown({ projectId, from, to }: { projectId: string; from: string; to: string }) {
+  const [rows, setRows] = useState<ProjectBreakdownRow[] | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const [expandedRuns, setExpandedRuns] = useState<Set<string>>(new Set());
 
   useEffect(() => {
     let active = true;
-    getApiUsageByRun(runId)
+    setLoading(true);
+    setError(null);
+    getApiUsageProjectBreakdown(projectId, { from, to })
       .then((data) => { if (active) { setRows(data); setLoading(false); } })
       .catch((err) => { if (active) { setError((err as Error).message); setLoading(false); } });
     return () => { active = false; };
-  }, [runId]);
+  }, [projectId, from, to]);
 
-  if (loading) return <div className="flex items-center gap-2 py-3 text-xs text-zinc-500"><Loader2 className="h-3 w-3 animate-spin" /> Loading step breakdown…</div>;
+  if (loading) return <div className="flex items-center gap-2 py-3 text-xs text-zinc-500"><Loader2 className="h-3 w-3 animate-spin" /> Loading breakdown…</div>;
   if (error) return <p className="py-2 text-xs text-red-400">{error}</p>;
-  if (!rows?.length) return <p className="py-2 text-xs text-zinc-500">No API calls logged for this run.</p>;
+  if (!rows?.length) return <p className="py-2 text-xs text-zinc-500">No API calls logged for this project in this date range.</p>;
+
+  // Separate workflow runs from direct feature calls
+  const byRun = new Map<string, ProjectBreakdownRow[]>();
+  const directCalls: ProjectBreakdownRow[] = [];
+
+  for (const row of rows) {
+    if (row.workflowRunId) {
+      if (!byRun.has(row.workflowRunId)) byRun.set(row.workflowRunId, []);
+      byRun.get(row.workflowRunId)!.push(row);
+    } else {
+      directCalls.push(row);
+    }
+  }
+
+  const toggleRun = (id: string) => setExpandedRuns((prev) => {
+    const next = new Set(prev);
+    next.has(id) ? next.delete(id) : next.add(id);
+    return next;
+  });
+
+  const runTotal = (runRows: ProjectBreakdownRow[]) =>
+    runRows.reduce((s, r) => s + r.costUsd, 0);
 
   return (
-    <div className="overflow-x-auto">
-      <table className="w-full text-xs">
-        <thead>
-          <tr className="border-b border-zinc-700">
-            <th className="px-3 py-2 text-left font-medium text-zinc-500">Step</th>
-            <th className="px-3 py-2 text-left font-medium text-zinc-500">Provider</th>
-            <th className="px-3 py-2 text-left font-medium text-zinc-500">Endpoint / Model</th>
-            <th className="px-3 py-2 text-right font-medium text-zinc-500">Calls</th>
-            <th className="px-3 py-2 text-right font-medium text-zinc-500">Tokens In</th>
-            <th className="px-3 py-2 text-right font-medium text-zinc-500">Tokens Out</th>
-            <th className="px-3 py-2 text-right font-medium text-zinc-500">Cost</th>
-          </tr>
-        </thead>
-        <tbody>
-          {rows.map((r, i) => (
-            <tr key={i} className="border-b border-zinc-800 last:border-0 hover:bg-zinc-800/30">
-              <td className="px-3 py-2 font-mono text-zinc-300">{r.stepKey || '—'}</td>
-              <td className="px-3 py-2">{providerBadge(r.provider)}</td>
-              <td className="max-w-[180px] truncate px-3 py-2 text-zinc-400">{r.endpoint}</td>
-              <td className="px-3 py-2 text-right tabular-nums text-zinc-300">{fmtNum(r.calls)}</td>
-              <td className="px-3 py-2 text-right tabular-nums text-zinc-400">{r.tokensIn != null ? fmtNum(r.tokensIn) : '—'}</td>
-              <td className="px-3 py-2 text-right tabular-nums text-zinc-400">{r.tokensOut != null ? fmtNum(r.tokensOut) : '—'}</td>
-              <td className="px-3 py-2 text-right tabular-nums font-medium text-violet-300">{usd(r.costUsd)}</td>
-            </tr>
-          ))}
-        </tbody>
-      </table>
+    <div className="space-y-3">
+      {/* Workflow Runs */}
+      {byRun.size > 0 && (
+        <div>
+          <p className="mb-1.5 text-[10px] font-semibold uppercase tracking-wide text-zinc-500">Workflow Runs ({byRun.size})</p>
+          <div className="space-y-1">
+            {[...byRun.entries()].map(([runId, runRows]) => {
+              const expanded = expandedRuns.has(runId);
+              const total = runTotal(runRows);
+              const calls = runRows.reduce((s, r) => s + r.calls, 0);
+              // Derive providers used
+              const providers = [...new Set(runRows.map((r) => r.provider))];
+              return (
+                <div key={runId} className="rounded border border-zinc-800 bg-zinc-900/40">
+                  <button
+                    className="flex w-full items-center justify-between px-3 py-2 text-left hover:bg-zinc-800/30"
+                    onClick={() => toggleRun(runId)}
+                  >
+                    <div className="flex items-center gap-2">
+                      {expanded ? <ChevronDown className="h-3 w-3 text-zinc-400" /> : <ChevronRight className="h-3 w-3 text-zinc-500" />}
+                      <span className="font-mono text-[11px] text-zinc-300">{shortId(runId)}</span>
+                      <span className="text-[10px] text-zinc-500">{calls} calls</span>
+                      <div className="flex gap-1">{providers.map((p) => providerBadge(p))}</div>
+                    </div>
+                    <span className="font-semibold text-white">{usd(total)}</span>
+                  </button>
+                  {expanded && (
+                    <div className="overflow-x-auto border-t border-zinc-800 px-2 py-1">
+                      <StepTable rows={runRows} />
+                    </div>
+                  )}
+                </div>
+              );
+            })}
+          </div>
+        </div>
+      )}
+
+      {/* Direct Feature Calls (business profile, on-demand agents, forum search) */}
+      {directCalls.length > 0 && (
+        <div>
+          <p className="mb-1.5 text-[10px] font-semibold uppercase tracking-wide text-zinc-500">
+            Feature Calls (business profile, on-demand agents, forum search)
+          </p>
+          <div className="overflow-x-auto rounded border border-zinc-800 bg-zinc-900/40">
+            <StepTable rows={directCalls} />
+          </div>
+        </div>
+      )}
     </div>
   );
 }
 
 // ─── Project Row ──────────────────────────────────────────────
 
-function ProjectRow({ project }: { project: ProjectCost }) {
+function ProjectRow({ project, from, to }: { project: ProjectCost; from: string; to: string }) {
   const [expanded, setExpanded] = useState(false);
 
   return (
@@ -126,9 +210,8 @@ function ProjectRow({ project }: { project: ProjectCost }) {
       </tr>
       {expanded && (
         <tr className="border-b border-zinc-800">
-          <td colSpan={4} className="bg-zinc-900/50 px-8 py-3">
-            <p className="mb-2 text-[10px] font-semibold uppercase tracking-wide text-zinc-500">Run breakdown (latest 20 calls)</p>
-            <RunDrillDown runId={project.projectId} />
+          <td colSpan={4} className="bg-zinc-900/50 px-6 py-4">
+            <ProjectDrillDown projectId={project.projectId} from={from} to={to} />
           </td>
         </tr>
       )}
@@ -338,7 +421,7 @@ export function ApiCostsPanel({ orgs }: ApiCostsPanelProps) {
                     </tr>
                   </thead>
                   <tbody>
-                    {projects.map((p) => <ProjectRow key={p.projectId} project={p} />)}
+                    {projects.map((p) => <ProjectRow key={p.projectId} project={p} from={dateParams().from} to={dateParams().to} />)}
                   </tbody>
                 </table>
               </div>

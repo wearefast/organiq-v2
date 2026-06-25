@@ -142,6 +142,17 @@ export class InternalController {
     return this.apiUsageService.getByWorkflowRun(runId);
   }
 
+  /** Full process breakdown for a specific project (by run + step + provider). */
+  @Get('api-usage/breakdown/project/:projectId')
+  getApiUsageProjectBreakdown(
+    @Param('projectId') projectId: string,
+    @Query('from') fromStr?: string,
+    @Query('to') toStr?: string,
+  ) {
+    const { from, to } = this.parseDateRange(fromStr, toStr);
+    return this.apiUsageService.getByProjectBreakdown(projectId, from, to);
+  }
+
   /** Export raw logs as CSV download. */
   @Get('api-usage/export')
   async exportApiUsageCsv(
