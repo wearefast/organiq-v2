@@ -11,6 +11,7 @@ import {
 } from '@nestjs/common';
 import { ApiTags, ApiBearerAuth } from '@nestjs/swagger';
 import { ContentService } from './content.service';
+import { ContentGenerationService } from './content-generation.service';
 import { ForumIntelligenceService } from './forum-intelligence.service';
 import { ClerkGuard } from '../auth/clerk.guard';
 import { OrgMembershipGuard } from '../auth/org-membership.guard';
@@ -22,6 +23,7 @@ import { OrgMembershipGuard } from '../auth/org-membership.guard';
 export class ContentController {
   constructor(
     private readonly contentService: ContentService,
+    private readonly contentGenerationService: ContentGenerationService,
     private readonly forumIntelligence: ForumIntelligenceService,
   ) {}
 
@@ -250,5 +252,31 @@ export class ContentController {
       body.topicalMapId,
       body.workflowRunId,
     );
+  }
+
+  // ─── Per-Page On-Demand Generation ───────────────────────────────────────
+
+  /**
+   * Generate a content brief for a specific topical map page.
+   * Idempotent — returns existing brief if already generated.
+   */
+  @Post('pages/:pageId/generate-brief')
+  async generateBriefForPage(
+    @Param('projectId') projectId: string,
+    @Param('pageId') pageId: string,
+  ) {
+    return this.contentGenerationService.generateBriefForPage(pageId, projectId);
+  }
+
+  /**
+   * Generate a full article for a specific topical map page.
+   * Requires a brief to exist first.
+   */
+  @Post('pages/:pageId/generate-article')
+  async generateArticleForPage(
+    @Param('projectId') projectId: string,
+    @Param('pageId') pageId: string,
+  ) {
+    return this.contentGenerationService.generateArticleForPage(pageId, projectId);
   }
 }

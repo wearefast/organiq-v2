@@ -1,6 +1,10 @@
 ﻿'use client';
 
 import { useState } from 'react';
+import type { TopicalMapPage } from '@/features/content/services/content.service';
+
+/** Indexed by page title for O(1) lookup in the renderer. */
+export type PageStatusMap = Record<string, TopicalMapPage>;
 
 interface PageItem {
   title: string;
@@ -134,7 +138,15 @@ const PILLAR_COLORS = [
   { bar: 'bg-purple-500', badge: 'bg-purple-500/10 text-purple-400 border-purple-500/20', ring: 'border-purple-500/30' },
 ];
 
-export function TopicalMapRenderer({ data }: { data: unknown }) {
+export function TopicalMapRenderer({
+  data,
+  pageStatusMap,
+  onPageClick,
+}: {
+  data: unknown;
+  pageStatusMap?: PageStatusMap;
+  onPageClick?: (pageId: string, pageTitle: string) => void;
+}) {
   const d = data as TopicalMapData;
   const [expandedPillar, setExpandedPillar] = useState<string | null>(null);
   const [expandedCluster, setExpandedCluster] = useState<string | null>(null);
@@ -316,31 +328,68 @@ export function TopicalMapRenderer({ data }: { data: unknown }) {
                                   <span className="text-[10px] font-semibold uppercase tracking-wider text-zinc-600">Vol</span>
                                   <span className="text-[10px] font-semibold uppercase tracking-wider text-zinc-600">KD</span>
                                 </div>
-                                {cluster.pages.map((page, i) => (
+                                {cluster.pages.map((page, i) => {
+                                  const pageStatus = pageStatusMap?.[page.title];
+                                  const hasBrief = pageStatus?.contentPieces.some((p) => p.type === 'brief');
+                                  const hasArticle = pageStatus?.contentPieces.some((p) => p.type === 'article');
+                                  const hasImages = pageStatus?.contentPieces.some(
+                                    (p) => (((p as { imageCount?: number }).imageCount) ?? 0) > 0,
+                                  );
+                                  const isPublished = pageStatus?.contentPieces.some(
+                                    (p) => p.status === 'published',
+                                  );
+                                  return (
                                   <div
                                     key={i}
-                                    className={`grid grid-cols-[1fr_auto_auto_auto_auto] items-center gap-x-3 px-3 py-2 ${i % 2 === 0 ? 'bg-zinc-900/40' : 'bg-zinc-900/20'}`}
+                                    role={onPageClick ? 'button' : undefined}
+                                    tabIndex={onPageClick ? 0 : undefined}
+                                    className={`grid grid-cols-[1fr_auto_auto_auto_auto] items-center gap-x-3 px-3 py-2 ${i % 2 === 0 ? 'bg-zinc-900/40' : 'bg-zinc-900/20'} ${onPageClick ? 'cursor-pointer hover:bg-zinc-800/40' : ''}`}
+                                    onClick={() => {
+                                      if (!onPageClick || !pageStatus?.id) return;
+                                      onPageClick(pageStatus.id, page.title);
+                                    }}
+                                    onKeyDown={(e) => {
+                                      if ((e.key === 'Enter' || e.key === ' ') && onPageClick && pageStatus?.id) {
+                                        onPageClick(pageStatus.id, page.title);
+                                      }
+                                    }}
                                   >
                                     <div className="min-w-0">
-                                      <p className="truncate text-[11px] text-zinc-300">{page.title}</p>
+                                      <div className="flex items-center gap-1.5">
+                                        <p className="truncate text-[11px] text-zinc-300">{page.title}</p>
+                                        {pageStatus && (
+                                          <div className="flex shrink-0 items-center gap-0.5">
+                                            <StatusDot done={!!hasBrief} title="Brief" />
+                                            <StatusDot done={!!hasArticle} title="Article" />
+                                            <StatusDot done={!!hasImages} title="Images" />
+                                            <StatusDot done={!!isPublished} title="Published" />
+                                          </div>
+                                        )}
+                                        {!pageStatus && onPageClick && (
+                                          <span className="shrink-0 rounded bg-zinc-800 px-1 py-0.5 text-[9px] text-zinc-600">
+                                            start
+                                          </span>
+                                        )}
+                                      </div>
                                       {page.suggestedUrl && (
                                         <p className="truncate text-[10px] text-zinc-600">{page.suggestedUrl}</p>
                                       )}
                                     </div>
-                                    <div>{page.contentType ? <ContentTypeBadge type={page.contentType} /> : <span className="text-[10px] text-zinc-700">â€”</span>}</div>
+                                    <div>{page.contentType ? <ContentTypeBadge type={page.contentType} /> : <span className="text-[10px] text-zinc-700">–</span>}</div>
                                     <div>
                                       {page.funnelStage
                                         ? <FunnelBadge stage={page.funnelStage} />
-                                        : <span className="text-[10px] text-zinc-700">â€”</span>}
+                                        : <span className="text-[10px] text-zinc-700">–</span>}
                                     </div>
                                     <span className="text-right text-[10px] text-zinc-500">
-                                      {page.volume !== undefined ? formatNumber(page.volume) : 'â€”'}
+                                      {page.volume !== undefined ? formatNumber(page.volume) : '–'}
                                     </span>
                                     <span className={`text-right text-[10px] font-medium ${page.difficulty !== undefined ? difficultyColor(page.difficulty) : 'text-zinc-700'}`}>
-                                      {page.difficulty !== undefined ? page.difficulty : 'â€”'}
+                                      {page.difficulty !== undefined ? page.difficulty : '–'}
                                     </span>
                                   </div>
-                                ))}
+                                  );
+                                })}
                               </div>
                             )}
                           </div>
@@ -505,6 +554,15 @@ function PriorityBadge({ priority }: { priority: string }) {
     <span className={`rounded px-1.5 py-0.5 text-[9px] font-medium capitalize ${styles[priority.toLowerCase()] ?? styles.low}`}>
       {priority}
     </span>
+  );
+}
+
+function StatusDot({ done, title }: { done: boolean; title: string }) {
+  return (
+    <span
+      title={title}
+      className={`inline-block h-1.5 w-1.5 rounded-full ${done ? 'bg-emerald-400' : 'bg-zinc-700'}`}
+    />
   );
 }
 

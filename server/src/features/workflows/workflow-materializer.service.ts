@@ -3,6 +3,7 @@ import { eq, and, sql } from 'drizzle-orm';
 import { DatabaseService } from '../../shared/database/database.service';
 import { KeywordsService, BulkKeywordInput } from '../keywords/keywords.service';
 import { TopicalMapsService } from '../topical-maps/topical-maps.service';
+import { TopicalMapPagesService } from '../topical-maps/topical-map-pages.service';
 import { ContentService } from '../content/content.service';
 import {
   workflowRuns,
@@ -40,6 +41,7 @@ export class WorkflowMaterializerService {
     private readonly db: DatabaseService,
     private readonly keywordsService: KeywordsService,
     private readonly topicalMapsService: TopicalMapsService,
+    private readonly topicalMapPagesService: TopicalMapPagesService,
     private readonly contentService: ContentService,
   ) {}
 
@@ -254,8 +256,12 @@ export class WorkflowMaterializerService {
         calendar: calendar ?? undefined,
       });
       this.logger.log(`Updated existing topical map ${existing.id}`);
+      // Sync pages for the updated map
+      await this.topicalMapPagesService.syncFromMap(existing.id, projectId).catch((e: unknown) =>
+        this.logger.error(`Page sync failed for map ${existing.id}: ${e}`),
+      );
     } else {
-      await this.topicalMapsService.create({
+      const created = await this.topicalMapsService.create({
         projectId,
         workflowRunId,
         name: 'Topical Map',
@@ -263,14 +269,10 @@ export class WorkflowMaterializerService {
         calendar: calendar ?? undefined,
       });
       this.logger.log(`Created topical map for project ${projectId}`);
-    }
-  }
-
-  /**
-   * Step 16: content-brief → content_pieces (type=brief)
-   * Artifact shape: { targetKeyword, serpAnalysis, contentStructure, wordCountTarget, ... }
-   */
-  private async materializeContentBrief(
+      // Sync pages for the newly created map
+      await this.topicalMapPagesService.syncFromMap(created.id, projectId).catch((e: unknown) =>
+        this.logger.error(`Page sync failed for map ${created.id}: ${e}`),
+      );
     projectId: string,
     workflowRunId: string,
     data: Record<string, unknown>,

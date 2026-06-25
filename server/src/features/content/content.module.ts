@@ -3,18 +3,21 @@ import { BullModule, InjectQueue } from '@nestjs/bullmq';
 import { Queue } from 'bullmq';
 import { ContentController } from './content.controller';
 import { ContentService } from './content.service';
+import { ContentGenerationService } from './content-generation.service';
 import { ForumIntelligenceService } from './forum-intelligence.service';
 import { ForumIntelligenceProcessor } from './forum-intelligence.processor';
 import { ForumDateEnricherService } from './forum-date-enricher.service';
 import { TopicalMapsModule } from '../topical-maps/topical-maps.module';
 import { DataForSeoModule } from '../integrations/dataforseo/dataforseo.module';
 import { FirecrawlModule } from '../integrations/firecrawl/firecrawl.module';
+import { OpenAiModule } from '../integrations/openai/openai.module';
 
 @Module({
   imports: [
     TopicalMapsModule,
     DataForSeoModule,
     FirecrawlModule,
+    OpenAiModule,
     BullModule.registerQueue({
       name: 'forum-intelligence',
       defaultJobOptions: {
@@ -26,8 +29,8 @@ import { FirecrawlModule } from '../integrations/firecrawl/firecrawl.module';
     }),
   ],
   controllers: [ContentController],
-  providers: [ContentService, ForumIntelligenceService, ForumIntelligenceProcessor, ForumDateEnricherService],
-  exports: [ContentService, ForumIntelligenceService],
+  providers: [ContentService, ContentGenerationService, ForumIntelligenceService, ForumIntelligenceProcessor, ForumDateEnricherService],
+  exports: [ContentService, ContentGenerationService, ForumIntelligenceService],
 })
 export class ContentModule implements OnModuleInit {
   private readonly logger = new Logger(ContentModule.name);

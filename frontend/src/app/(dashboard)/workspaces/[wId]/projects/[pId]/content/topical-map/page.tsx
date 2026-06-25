@@ -1,10 +1,16 @@
 'use client';
 
-import { useEffect, useState } from 'react';
+import { useEffect, useState, useCallback } from 'react';
 import { useParams } from 'next/navigation';
 import { apiFetch } from '@/shared/utils/api';
 import { useContentStep } from '@/features/content/hooks/use-content-step';
-import { TopicalMapRenderer } from '@/features/workflow/renderers/topical-map';
+import { TopicalMapRenderer, type PageStatusMap } from '@/features/workflow/renderers/topical-map';
+import { PageDetailPanel } from '@/features/content/components/page-detail-panel';
+import {
+  fetchTopicalMapPages,
+  syncTopicalMapPages,
+} from '@/features/content/services/content.service';
+import type { TopicalMapPage } from '@/features/content/services/content.service';
 
 interface TopicalMap {
   id: string;
@@ -24,6 +30,8 @@ export default function ContentStrategyPage() {
 
   const [maps, setMaps] = useState<TopicalMap[]>([]);
   const [mapsLoading, setMapsLoading] = useState(true);
+  const [pageStatusMap, setPageStatusMap] = useState<PageStatusMap>({});
+  const [selectedPageId, setSelectedPageId] = useState<string | null>(null);
 
   useEffect(() => {
     apiFetch<TopicalMap[]>(`/projects/${projectId}/topical-maps`)
@@ -31,6 +39,34 @@ export default function ContentStrategyPage() {
       .catch(console.error)
       .finally(() => setMapsLoading(false));
   }, [projectId]);
+
+  // Once maps are loaded, fetch page statuses (auto-sync if empty)
+  useEffect(() => {
+    if (maps.length === 0) return;
+    const mapId = maps[0].id;
+    fetchTopicalMapPages(projectId, mapId)
+      .then(async (pages: TopicalMapPage[]) => {
+        if (pages.length === 0) {
+          // Auto-sync pages from JSONB on first load
+          await syncTopicalMapPages(projectId, mapId);
+          const synced = await fetchTopicalMapPages(projectId, mapId);
+          return synced;
+        }
+        return pages;
+      })
+      .then((pages: TopicalMapPage[]) => {
+        const map: PageStatusMap = {};
+        for (const page of pages) {
+          map[page.title] = page;
+        }
+        setPageStatusMap(map);
+      })
+      .catch(console.error);
+  }, [maps, projectId]);
+
+  const handlePageClick = useCallback((pageId: string) => {
+    setSelectedPageId(pageId);
+  }, []);
 
   if (loading) {
     return (
@@ -108,11 +144,35 @@ export default function ContentStrategyPage() {
   }
 
   return (
-    <div className="p-6">
+    <div className="relative p-6">
       {maps.length > 1 && (
         <p className="mb-4 text-xs text-zinc-500">{maps.length} maps available — showing latest</p>
       )}
-      <TopicalMapRenderer data={maps[0]} />
+      <TopicalMapRenderer
+        data={maps[0]}
+        pageStatusMap={pageStatusMap}
+        onPageClick={handlePageClick}
+      />
+      {selectedPageId && (
+        <PageDetailPanel
+          projectId={projectId}
+          mapId={maps[0].id}
+          pageId={selectedPageId}
+          onClose={() => setSelectedPageId(null)}
+          onContentGenerated={() => {
+            // Refresh page statuses after content is generated
+            fetchTopicalMapPages(projectId, maps[0].id)
+              .then((pages: TopicalMapPage[]) => {
+                const map: PageStatusMap = {};
+                for (const page of pages) {
+                  map[page.title] = page;
+                }
+                setPageStatusMap(map);
+              })
+              .catch(console.error);
+          }}
+        />
+      )}
     </div>
   );
 }

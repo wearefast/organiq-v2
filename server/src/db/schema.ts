@@ -531,6 +531,40 @@ export const topicalMaps = pgTable(
   }),
 );
 
+// ─── Topical Map Pages ───────────────────────────────────────
+// Normalised rows extracted from topicalMaps.pillars JSONB.
+// Each page gets a stable UUID that other tables (contentPieces) can FK against.
+
+export const topicalMapPages = pgTable(
+  'topical_map_pages',
+  {
+    id: uuid('id').primaryKey().defaultRandom(),
+    topicalMapId: uuid('topical_map_id').notNull().references(() => topicalMaps.id, { onDelete: 'cascade' }),
+    projectId: uuid('project_id').notNull().references(() => projects.id, { onDelete: 'cascade' }),
+    pillarTitle: text('pillar_title').notNull(),
+    clusterTitle: text('cluster_title').notNull(),
+    title: text('title').notNull(),
+    keyword: text('keyword'),
+    suggestedUrl: text('suggested_url'),
+    contentType: text('content_type'),
+    intent: text('intent'),
+    funnelStage: text('funnel_stage'),
+    volume: integer('volume'),
+    difficulty: integer('difficulty'),
+    estimatedWordCount: integer('estimated_word_count'),
+    priority: text('priority'),
+    linksTo: text('links_to').array(),
+    linksFrom: text('links_from').array(),
+    sortOrder: integer('sort_order').default(0).notNull(),
+    createdAt: timestamp('created_at').defaultNow().notNull(),
+  },
+  (table) => ({
+    mapIdx: index('topical_map_pages_map_idx').on(table.topicalMapId),
+    projectIdx: index('topical_map_pages_project_idx').on(table.projectId),
+    mapTitleIdx: uniqueIndex('topical_map_pages_map_title_idx').on(table.topicalMapId, table.title),
+  }),
+);
+
 // ─── Content Pieces ──────────────────────────────────────────
 
 export const contentPieces = pgTable(
@@ -540,6 +574,7 @@ export const contentPieces = pgTable(
     projectId: uuid('project_id').notNull().references(() => projects.id, { onDelete: 'cascade' }),
     keywordId: uuid('keyword_id').references(() => keywords.id, { onDelete: 'set null' }),
     topicalMapId: uuid('topical_map_id').references(() => topicalMaps.id, { onDelete: 'set null' }),
+    topicalMapPageId: uuid('topical_map_page_id').references(() => topicalMapPages.id, { onDelete: 'set null' }),
     workflowRunId: uuid('workflow_run_id').references(() => workflowRuns.id, { onDelete: 'set null' }),
     sourceStepKey: text('source_step_key'),
     type: contentTypeEnum('type').notNull(),
@@ -557,6 +592,7 @@ export const contentPieces = pgTable(
     projectIdx: index('content_pieces_project_idx').on(table.projectId),
     statusIdx: index('content_pieces_status_idx').on(table.projectId, table.status),
     runStepIdx: uniqueIndex('content_pieces_run_step_idx').on(table.workflowRunId, table.sourceStepKey),
+    pageIdx: index('content_pieces_page_idx').on(table.topicalMapPageId),
   }),
 );
 
@@ -797,12 +833,20 @@ export const topicalMapsRelations = relations(topicalMaps, ({ one, many }) => ({
   project: one(projects, { fields: [topicalMaps.projectId], references: [projects.id] }),
   workflowRun: one(workflowRuns, { fields: [topicalMaps.workflowRunId], references: [workflowRuns.id] }),
   contentPieces: many(contentPieces),
+  pages: many(topicalMapPages),
+}));
+
+export const topicalMapPagesRelations = relations(topicalMapPages, ({ one, many }) => ({
+  topicalMap: one(topicalMaps, { fields: [topicalMapPages.topicalMapId], references: [topicalMaps.id] }),
+  project: one(projects, { fields: [topicalMapPages.projectId], references: [projects.id] }),
+  contentPieces: many(contentPieces),
 }));
 
 export const contentPiecesRelations = relations(contentPieces, ({ one, many }) => ({
   project: one(projects, { fields: [contentPieces.projectId], references: [projects.id] }),
   keyword: one(keywords, { fields: [contentPieces.keywordId], references: [keywords.id] }),
   topicalMap: one(topicalMaps, { fields: [contentPieces.topicalMapId], references: [topicalMaps.id] }),
+  topicalMapPage: one(topicalMapPages, { fields: [contentPieces.topicalMapPageId], references: [topicalMapPages.id] }),
   workflowRun: one(workflowRuns, { fields: [contentPieces.workflowRunId], references: [workflowRuns.id] }),
   images: many(contentImages),
 }));

@@ -124,3 +124,84 @@ export interface ContentImage {
 export function fetchContentImages(projectId: string, contentPieceId: string): Promise<ContentImage[]> {
   return apiFetch(`/projects/${projectId}/content/${contentPieceId}/images`);
 }
+
+// ─── Topical Map Pages ─────────────────────────────────────────────────────
+
+export interface TopicalMapPageContentPiece {
+  id: string;
+  type: 'brief' | 'article';
+  status: 'draft' | 'review' | 'approved' | 'published';
+  wordCount?: number;
+  imageCount?: number;
+  scheduledPublishAt?: string | null;
+}
+
+export interface TopicalMapPage {
+  id: string;
+  topicalMapId: string;
+  projectId: string;
+  pillarTitle: string;
+  clusterTitle: string;
+  title: string;
+  keyword?: string | null;
+  suggestedUrl?: string | null;
+  contentType?: string | null;
+  intent?: string | null;
+  funnelStage?: string | null;
+  volume?: number | null;
+  difficulty?: number | null;
+  estimatedWordCount?: number | null;
+  priority?: string | null;
+  linksTo?: string[] | null;
+  linksFrom?: string[] | null;
+  sortOrder: number;
+  createdAt: string;
+  contentPieces: TopicalMapPageContentPiece[];
+}
+
+export interface TopicalMapPageDetail extends TopicalMapPage {
+  contentPieces: Array<ContentPiece & { images?: ContentImage[] }>;
+}
+
+/** Fetch all pages for a topical map with their content piece status. */
+export function fetchTopicalMapPages(projectId: string, mapId: string): Promise<TopicalMapPage[]> {
+  return apiFetch(`/projects/${projectId}/topical-maps/${mapId}/pages`);
+}
+
+/** Fetch a single page with full content pieces + images. */
+export function fetchTopicalMapPage(
+  projectId: string,
+  mapId: string,
+  pageId: string,
+): Promise<TopicalMapPageDetail> {
+  return apiFetch(`/projects/${projectId}/topical-maps/${mapId}/pages/${pageId}`);
+}
+
+/** Materialise pages from the topical map's JSONB into the pages table. */
+export function syncTopicalMapPages(
+  projectId: string,
+  mapId: string,
+): Promise<{ synced: number; pages: TopicalMapPage[] }> {
+  return apiFetch(`/projects/${projectId}/topical-maps/${mapId}/sync-pages`, { method: 'POST' });
+}
+
+/** Generate a brief for a specific topical map page. */
+export function generateBriefForPage(
+  projectId: string,
+  pageId: string,
+): Promise<ContentPiece> {
+  return apiFetch(`/projects/${projectId}/content/pages/${pageId}/generate-brief`, {
+    method: 'POST',
+  });
+}
+
+/** Generate an article for a specific topical map page (requires brief first). */
+export function generateArticleForPage(
+  projectId: string,
+  pageId: string,
+): Promise<ContentPiece> {
+  return apiFetch(`/projects/${projectId}/content/pages/${pageId}/generate-article`, {
+    method: 'POST',
+  });
+}
+

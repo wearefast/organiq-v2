@@ -10,6 +10,7 @@ import {
 } from '@nestjs/common';
 import { ApiTags, ApiBearerAuth } from '@nestjs/swagger';
 import { TopicalMapsService } from './topical-maps.service';
+import { TopicalMapPagesService } from './topical-map-pages.service';
 import { ClerkGuard } from '../auth/clerk.guard';
 import { OrgMembershipGuard } from '../auth/org-membership.guard';
 
@@ -18,7 +19,10 @@ import { OrgMembershipGuard } from '../auth/org-membership.guard';
 @UseGuards(ClerkGuard, OrgMembershipGuard)
 @Controller('projects/:projectId/topical-maps')
 export class TopicalMapsController {
-  constructor(private readonly topicalMapsService: TopicalMapsService) {}
+  constructor(
+    private readonly topicalMapsService: TopicalMapsService,
+    private readonly topicalMapPagesService: TopicalMapPagesService,
+  ) {}
 
   @Get()
   async findAll(@Param('projectId') projectId: string) {
@@ -67,5 +71,42 @@ export class TopicalMapsController {
     @Param('id') id: string,
   ) {
     return this.topicalMapsService.remove(id, projectId);
+  }
+
+  // ─── Per-Page Endpoints ────────────────────────────────────────
+
+  /**
+   * Materialise pages from topicalMaps.pillars JSONB into the topical_map_pages table.
+   * Idempotent — safe to call multiple times.
+   */
+  @Post(':id/sync-pages')
+  async syncPages(
+    @Param('projectId') projectId: string,
+    @Param('id') id: string,
+  ) {
+    const pages = await this.topicalMapPagesService.syncFromMap(id, projectId);
+    return { synced: pages.length, pages };
+  }
+
+  /**
+   * Returns all pages for a topical map with their content piece status.
+   */
+  @Get(':id/pages')
+  async getPages(
+    @Param('projectId') projectId: string,
+    @Param('id') id: string,
+  ) {
+    return this.topicalMapPagesService.findAllByMap(id, projectId);
+  }
+
+  /**
+   * Returns a single topical map page with all its content pieces and images.
+   */
+  @Get(':id/pages/:pageId')
+  async getPage(
+    @Param('projectId') projectId: string,
+    @Param('pageId') pageId: string,
+  ) {
+    return this.topicalMapPagesService.findById(pageId, projectId);
   }
 }
