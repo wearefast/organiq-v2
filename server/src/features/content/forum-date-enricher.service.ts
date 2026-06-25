@@ -119,11 +119,9 @@ export class ForumDateEnricherService {
         headers: { 'User-Agent': 'OrganiqBot/1.0 (+https://app.rankorganiq.com/bot)' },
       });
       clearTimeout(timer);
-      if (!response.ok) {
-        return { url, date: null, detail: `Wayback CDX HTTP ${response.status}` };
-      }
+      if (!response.ok) return { url, date: null, detail: `Wayback CDX HTTP ${response.status}` };
       const data = await response.json() as string[][];
-      if (!data || data.length < 2) return { url, date: null, detail: `Wayback: no archive found (rows=${data?.length ?? 0})` };
+      if (!data || data.length < 2) return { url, date: null, detail: `Wayback: no archive (rows=${data?.length ?? 0})` };
       const ts = data[1]?.[0] ?? '';
       const date = ts.length >= 8 ? `${ts.substring(0,4)}-${ts.substring(4,6)}-${ts.substring(6,8)}` : null;
       return { url, date, detail: `Wayback ts=${ts} rows=${data.length}` };
@@ -133,6 +131,25 @@ export class ForumDateEnricherService {
   }
 
   private async testQuora(url: string): Promise<{ url: string; date: string | null; detail: string }> {
+    // Try Wayback first
+    const waybackDate = await (async () => {
+      const cleanUrl = url.replace(/^https?:\/\//, '').split('?')[0];
+      const cdxUrl =
+        `https://web.archive.org/cdx/search/cdx?url=${encodeURIComponent(cleanUrl)}` +
+        `&output=json&limit=1&fl=timestamp&filter=statuscode:200&from=2005&to=${new Date().getFullYear() + 1}`;
+      try {
+        const r = await fetch(cdxUrl, { headers: { 'User-Agent': 'OrganiqBot/1.0' }, signal: AbortSignal.timeout(15_000) });
+        if (!r.ok) return { date: null, detail: `CDX HTTP ${r.status}` };
+        const data = await r.json() as string[][];
+        if (!data || data.length < 2) return { date: null, detail: `CDX no archive rows=${data?.length ?? 0}` };
+        const ts = data[1]?.[0] ?? '';
+        const date = ts.length >= 8 ? `${ts.substring(0,4)}-${ts.substring(4,6)}-${ts.substring(6,8)}` : null;
+        return { date, detail: `CDX ts=${ts}` };
+      } catch (e) { return { date: null, detail: `CDX exception: ${e instanceof Error ? e.message : e}` }; }
+    })();
+    if (waybackDate.date) return { url, date: waybackDate.date, detail: waybackDate.detail };
+
+    // Fallback: Firecrawl
     try {
       const result = (await this.firecrawl.scrape(url, {
         formats: ['rawHtml'],
@@ -140,14 +157,14 @@ export class ForumDateEnricherService {
         waitFor: 2000,
       })) as { data?: { rawHtml?: string } } | null;
       const html = result?.data?.rawHtml ?? '';
-      if (!html) return { url, date: null, detail: 'firecrawl returned empty html' };
+      if (!html) return { url, date: null, detail: `wayback: ${waybackDate.detail} | firecrawl: empty` };
       const hasNextData = html.includes('__NEXT_DATA__');
       const nextDataDate = hasNextData ? this.extractQuoraNextData(html) : null;
       const fallbackDate = this.extractDateFromHtml(html);
       const date = nextDataDate ?? fallbackDate;
-      return { url, date, detail: `htmlLen=${html.length} hasNextData=${hasNextData} nextDataDate=${nextDataDate} fallback=${fallbackDate}` };
+      return { url, date, detail: `wayback: ${waybackDate.detail} | fc htmlLen=${html.length} hasNextData=${hasNextData} nextDate=${nextDataDate} fb=${fallbackDate}` };
     } catch (err) {
-      return { url, date: null, detail: `firecrawl exception: ${err instanceof Error ? err.message : err}` };
+      return { url, date: null, detail: `wayback: ${waybackDate.detail} | firecrawl exception: ${err instanceof Error ? err.message : err}` };
     }
   }
 
@@ -165,25 +182,19 @@ export class ForumDateEnricherService {
     return null;
   }
 
-  // ─── Reddit: Wayback Machine CDX API ──────────────────────────
+  // ─── Shared: Wayback Machine CDX API ──────────────────────────
 
   /**
-   * Reddit 403s all requests from AWS EC2 IP ranges.
-   * The Wayback Machine CDX API is a reliable free fallback:
-   * it returns the earliest archive date for a URL, which is a
-   * close proxy for the post creation date (typically archived
-   * within hours/days of posting).
-   *
-   * Endpoint: https://web.archive.org/cdx/search/cdx
+   * Use the Wayback Machine CDX API to find the earliest archived date
+   * for a URL. Works reliably for both Reddit and Quora from any IP.
+   * Returns YYYY-MM-DD or null if no archive exists.
    */
-  private async resolveRedditDate(url: string): Promise<string | null> {
+  private async resolveViaWayback(url: string): Promise<string | null> {
+    const cleanUrl = url.replace(/^https?:\/\//, '').split('?')[0];
+    const cdxUrl =
+      `https://web.archive.org/cdx/search/cdx?url=${encodeURIComponent(cleanUrl)}` +
+      `&output=json&limit=1&fl=timestamp&filter=statuscode:200&from=2005&to=${new Date().getFullYear() + 1}`;
     try {
-      // Normalize URL: strip protocol + query string for CDX lookup
-      const cleanUrl = url.replace(/^https?:\/\//, '').split('?')[0];
-      const cdxUrl =
-        `https://web.archive.org/cdx/search/cdx?url=${encodeURIComponent(cleanUrl)}` +
-        `&output=json&limit=1&fl=timestamp&filter=statuscode:200&from=2005&to=${new Date().getFullYear() + 1}`;
-
       const controller = new AbortController();
       const timer = setTimeout(() => controller.abort(), 15_000);
       const response = await fetch(cdxUrl, {
@@ -191,40 +202,43 @@ export class ForumDateEnricherService {
         headers: { 'User-Agent': 'OrganiqBot/1.0 (+https://app.rankorganiq.com/bot)' },
       });
       clearTimeout(timer);
-
       if (!response.ok) {
         this.logger.warn(`Wayback CDX ${response.status} for ${url}`);
         return null;
       }
-
-      // Response: [["timestamp"],["20140815090032"]] or [["timestamp"]] (no results)
       const data = await response.json() as string[][];
-      if (!data || data.length < 2) return null; // only header row, no results
-
-      const ts = data[1]?.[0]; // e.g. "20140815090032"
+      if (!data || data.length < 2) return null;
+      const ts = data[1]?.[0];
       if (!ts || ts.length < 8) return null;
-
-      // Parse YYYYMMDDHHmmss → YYYY-MM-DD
-      const year  = ts.substring(0, 4);
-      const month = ts.substring(4, 6);
-      const day   = ts.substring(6, 8);
-      return `${year}-${month}-${day}`;
+      return `${ts.substring(0, 4)}-${ts.substring(4, 6)}-${ts.substring(6, 8)}`;
     } catch (err) {
-      this.logger.warn(
-        `Wayback CDX failed for ${url}: ${err instanceof Error ? err.message : err}`,
-      );
+      this.logger.warn(`Wayback CDX failed for ${url}: ${err instanceof Error ? err.message : err}`);
     }
     return null;
   }
 
-  // ─── Quora: Firecrawl + __NEXT_DATA__ parsing ────────────────
+  // ─── Reddit: Wayback Machine CDX API ─────────────────────────
 
   /**
-   * Quora blocks plain HTTP bots. Firecrawl renders the page with a headless
-   * browser. The date is embedded in Quora's __NEXT_DATA__ JSON blob
-   * (Next.js hydration data) — not in standard OG/time meta tags.
+   * Reddit 403s all requests from AWS EC2 IP ranges.
+   * Wayback Machine CDX returns the earliest archive date as a reliable proxy.
+   */
+  private async resolveRedditDate(url: string): Promise<string | null> {
+    return this.resolveViaWayback(url);
+  }
+
+  // ─── Quora: Wayback CDX first, Firecrawl + __NEXT_DATA__ fallback ──
+
+  /**
+   * Use Wayback CDX (fast, free) then fall back to Firecrawl + __NEXT_DATA__
+   * parsing if Wayback has no archive for this URL.
    */
   private async resolveQuoraDate(url: string): Promise<string | null> {
+    // Primary: Wayback Machine
+    const waybackDate = await this.resolveViaWayback(url);
+    if (waybackDate) return waybackDate;
+
+    // Fallback: Firecrawl renders the JS page; extract from __NEXT_DATA__ or meta
     try {
       const result = (await this.firecrawl.scrape(url, {
         formats: ['rawHtml'],
@@ -235,15 +249,13 @@ export class ForumDateEnricherService {
       const html = result?.data?.rawHtml ?? '';
       if (!html) return null;
 
-      // Primary: parse __NEXT_DATA__ JSON for question creation timestamp
       const nextDataDate = this.extractQuoraNextData(html);
       if (nextDataDate) return nextDataDate;
 
-      // Fallback: standard meta / time tag extraction
       return this.extractDateFromHtml(html);
     } catch (err) {
       this.logger.warn(
-        `Firecrawl failed for ${url}: ${err instanceof Error ? err.message : err}`,
+        `Firecrawl Quora fallback failed for ${url}: ${err instanceof Error ? err.message : err}`,
       );
     }
     return null;
