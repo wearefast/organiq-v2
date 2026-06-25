@@ -407,6 +407,10 @@ export class ForumIntelligenceService {
     return this.dateEnricher.enrichMissingDates(projectId);
   }
 
+  async testEnrichUrl(url: string) {
+    return this.dateEnricher.testUrl(url);
+  }
+
   async removeTopic(id: string, projectId: string) {
     await this.db.db
       .delete(forumTopics)

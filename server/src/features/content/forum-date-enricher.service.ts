@@ -94,6 +94,15 @@ export class ForumDateEnricherService {
   // ─── Core Resolution ─────────────────────────────────────────
 
   /**
+   * Publicly test a single URL — used by the diagnostics endpoint.
+   * Returns the resolved date or null, plus detail about what happened.
+   */
+  async testUrl(url: string): Promise<{ url: string; date: string | null }> {
+    const date = await this.resolveDate(url);
+    return { url, date };
+  }
+
+  /**
    * Route to the right strategy based on source domain.
    * Returns "YYYY-MM-DD" or null.
    */
@@ -134,7 +143,7 @@ export class ForumDateEnricherService {
       clearTimeout(timer);
 
       if (!response.ok) {
-        this.logger.debug(`Reddit JSON API ${response.status} for ${url}`);
+        this.logger.warn(`Reddit JSON API ${response.status} for ${url}`);
         return null;
       }
 
@@ -153,7 +162,7 @@ export class ForumDateEnricherService {
         return new Date(createdUtc * 1000).toISOString().split('T')[0];
       }
     } catch (err) {
-      this.logger.debug(
+      this.logger.warn(
         `Reddit JSON API failed for ${url}: ${err instanceof Error ? err.message : err}`,
       );
     }
@@ -179,7 +188,7 @@ export class ForumDateEnricherService {
 
       return this.extractDateFromHtml(html);
     } catch (err) {
-      this.logger.debug(
+      this.logger.warn(
         `Firecrawl failed for ${url}: ${err instanceof Error ? err.message : err}`,
       );
     }

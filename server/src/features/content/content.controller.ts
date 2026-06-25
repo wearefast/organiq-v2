@@ -137,6 +137,14 @@ export class ContentController {
     return { status: 'enrichment_started' };
   }
 
+  @Post('forums/enrich/test')
+  async testEnrichUrl(
+    @Param('projectId') projectId: string,
+    @Body() body: { url: string },
+  ) {
+    return this.forumIntelligence.testEnrichUrl(body.url);
+  }
+
   @Get(':id')
   async findOne(
     @Param('projectId') projectId: string,
