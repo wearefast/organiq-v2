@@ -11,7 +11,7 @@ import {
   index,
   uuid,
 } from 'drizzle-orm/pg-core';
-import { relations } from 'drizzle-orm';
+import { relations, sql } from 'drizzle-orm';
 
 // ─── Enums ───────────────────────────────────────────────────
 
@@ -593,6 +593,10 @@ export const contentPieces = pgTable(
     statusIdx: index('content_pieces_status_idx').on(table.projectId, table.status),
     runStepIdx: uniqueIndex('content_pieces_run_step_idx').on(table.workflowRunId, table.sourceStepKey),
     pageIdx: index('content_pieces_page_idx').on(table.topicalMapPageId),
+    // Partial unique index: one brief + one article per topical map page (on-demand path)
+    pageTypeIdx: uniqueIndex('content_pieces_page_type_idx')
+      .on(table.topicalMapPageId, table.type)
+      .where(sql`"topical_map_page_id" IS NOT NULL`),
   }),
 );
 

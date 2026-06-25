@@ -49,7 +49,8 @@ export function PageDetailPanel({ projectId, mapId, pageId, onClose, onContentGe
 
   const brief = page?.contentPieces.find((p) => p.type === 'brief');
   const article = page?.contentPieces.find((p) => p.type === 'article');
-  const images = brief?.images ?? [];
+  // Images can be attached to any content piece for this page
+  const images = page?.contentPieces.flatMap((p) => p.images ?? []) ?? [];
   const isPublished =
     article?.status === 'published' || brief?.status === 'published';
 

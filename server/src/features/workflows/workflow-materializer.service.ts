@@ -1,5 +1,5 @@
 import { Injectable, Logger } from '@nestjs/common';
-import { eq, and, sql } from 'drizzle-orm';
+import { eq, and, or, sql } from 'drizzle-orm';
 import { DatabaseService } from '../../shared/database/database.service';
 import { KeywordsService, BulkKeywordInput } from '../keywords/keywords.service';
 import { TopicalMapsService } from '../topical-maps/topical-maps.service';
@@ -11,6 +11,7 @@ import {
   stepArtifacts,
   keywords,
   topicalMaps,
+  topicalMapPages,
   contentPieces,
   contentImages,
 } from '../../db/schema';
@@ -273,6 +274,10 @@ export class WorkflowMaterializerService {
       await this.topicalMapPagesService.syncFromMap(created.id, projectId).catch((e: unknown) =>
         this.logger.error(`Page sync failed for map ${created.id}: ${e}`),
       );
+    }
+  }
+
+  private async materializeContentBrief(
     projectId: string,
     workflowRunId: string,
     data: Record<string, unknown>,
@@ -314,6 +319,31 @@ export class WorkflowMaterializerService {
     // Advance keyword status to brief_ready (only if currently lower)
     if (keywordId) {
       await this.advanceKeywordStatus(projectId, keywordId, 'brief_ready');
+    }
+
+    // Link brief to its topical map page (BUG-3: workflow briefs must appear in per-page status)
+    if (topicalMapId && targetKeyword) {
+      const matchedPage = await this.db.db.query.topicalMapPages.findFirst({
+        where: and(
+          eq(topicalMapPages.topicalMapId, topicalMapId),
+          or(
+            eq(topicalMapPages.keyword, targetKeyword),
+            eq(topicalMapPages.title, targetKeyword),
+          ),
+        ),
+        columns: { id: true },
+      });
+      if (matchedPage) {
+        await this.db.db
+          .update(contentPieces)
+          .set({ topicalMapPageId: matchedPage.id })
+          .where(
+            and(
+              eq(contentPieces.workflowRunId, workflowRunId),
+              eq(contentPieces.sourceStepKey, 'content-brief'),
+            ),
+          );
+      }
     }
 
     this.logger.log(`Materialized content brief for keyword "${targetKeyword}"`);

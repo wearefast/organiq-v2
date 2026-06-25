@@ -7,6 +7,7 @@ import {
   Param,
   Body,
   Query,
+  Req,
   UseGuards,
 } from '@nestjs/common';
 import { ApiTags, ApiBearerAuth } from '@nestjs/swagger';
@@ -264,8 +265,9 @@ export class ContentController {
   async generateBriefForPage(
     @Param('projectId') projectId: string,
     @Param('pageId') pageId: string,
+    @Req() req: { org: { id: string } },
   ) {
-    return this.contentGenerationService.generateBriefForPage(pageId, projectId);
+    return this.contentGenerationService.generateBriefForPage(pageId, projectId, req.org.id);
   }
 
   /**
@@ -276,7 +278,8 @@ export class ContentController {
   async generateArticleForPage(
     @Param('projectId') projectId: string,
     @Param('pageId') pageId: string,
+    @Req() req: { org: { id: string } },
   ) {
-    return this.contentGenerationService.generateArticleForPage(pageId, projectId);
+    return this.contentGenerationService.generateArticleForPage(pageId, projectId, req.org.id);
   }
 }

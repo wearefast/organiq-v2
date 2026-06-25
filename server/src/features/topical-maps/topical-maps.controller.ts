@@ -105,8 +105,9 @@ export class TopicalMapsController {
   @Get(':id/pages/:pageId')
   async getPage(
     @Param('projectId') projectId: string,
+    @Param('id') id: string,
     @Param('pageId') pageId: string,
   ) {
-    return this.topicalMapPagesService.findById(pageId, projectId);
+    return this.topicalMapPagesService.findById(pageId, projectId, id);
   }
 }

@@ -1,9 +1,13 @@
-import { Injectable, Logger, ConflictException } from '@nestjs/common';
+import { Injectable, Logger, ConflictException, BadRequestException } from '@nestjs/common';
 import { eq, and } from 'drizzle-orm';
 import { DatabaseService } from '../../shared/database/database.service';
 import { contentPieces } from '../../db/schema';
 import { TopicalMapPagesService } from '../topical-maps/topical-map-pages.service';
 import { OpenAiService } from '../integrations/openai/openai.service';
+import { CreditsService } from '../credits/credits.service';
+
+/** Credits charged per on-demand generation action */
+const CREDIT_COSTS = { brief: 5, article: 10 } as const;
 
 const BRIEF_SYSTEM_PROMPT = `You are an expert SEO content strategist.
 Given a page's metadata, produce a structured content brief in JSON.
@@ -75,6 +79,7 @@ export class ContentGenerationService {
     private readonly db: DatabaseService,
     private readonly topicalMapPagesService: TopicalMapPagesService,
     private readonly openAiService: OpenAiService,
+    private readonly creditsService: CreditsService,
   ) {}
 
   /**
@@ -84,12 +89,19 @@ export class ContentGenerationService {
   async generateBriefForPage(
     pageId: string,
     projectId: string,
+    organizationId: string,
   ): Promise<typeof contentPieces.$inferSelect> {
     const page = await this.topicalMapPagesService.findById(pageId, projectId);
 
     // Return existing brief if present (idempotent)
     const existingBrief = page.contentPieces.find((p) => p.type === 'brief');
     if (existingBrief) return existingBrief;
+
+    // Credit gate — check before calling LLM
+    const hasCredits = await this.creditsService.hasCredits(organizationId, CREDIT_COSTS.brief);
+    if (!hasCredits) {
+      throw new BadRequestException(`Insufficient credits — brief generation requires ${CREDIT_COSTS.brief} credits`);
+    }
 
     this.logger.log(`Generating brief for page "${page.title}" (${pageId})`);
 
@@ -114,7 +126,7 @@ export class ContentGenerationService {
       briefData = { raw: result.message.content };
     }
 
-    const [piece] = await this.db.db
+    const inserted = await this.db.db
       .insert(contentPieces)
       .values({
         projectId,
@@ -125,7 +137,25 @@ export class ContentGenerationService {
         title: page.title,
         briefData,
       })
+      .onConflictDoNothing()
       .returning();
+
+    // If a concurrent request already inserted a brief, fetch it
+    const piece = inserted[0] ?? await this.db.db.query.contentPieces.findFirst({
+      where: (cp, { and: a, eq: e }) => a(e(cp.topicalMapPageId, pageId), e(cp.type, 'brief')),
+    });
+    if (!piece) throw new Error(`Failed to create or find brief for page ${pageId}`);
+
+    // Deduct credits only when a new brief was actually created
+    if (inserted[0]) {
+      await this.creditsService.debit({
+        organizationId,
+        amount: CREDIT_COSTS.brief,
+        description: `Content brief generated for page: ${page.title}`,
+      }).catch((e: unknown) =>
+        this.logger.error(`Credit debit failed for brief ${piece.id}: ${e}`),
+      );
+    }
 
     this.logger.log(`Brief created: ${piece.id} for page ${pageId}`);
     return piece;
@@ -138,6 +168,7 @@ export class ContentGenerationService {
   async generateArticleForPage(
     pageId: string,
     projectId: string,
+    organizationId: string,
   ): Promise<typeof contentPieces.$inferSelect> {
     const page = await this.topicalMapPagesService.findById(pageId, projectId);
 
@@ -146,13 +177,38 @@ export class ContentGenerationService {
       throw new ConflictException('Generate a brief first before generating the article');
     }
 
-    // Return existing article
+    // Return existing article (idempotent)
     const existingArticle = page.contentPieces.find((p) => p.type === 'article');
     if (existingArticle) return existingArticle;
 
+    // Credit gate — check before calling LLM
+    const hasCredits = await this.creditsService.hasCredits(organizationId, CREDIT_COSTS.article);
+    if (!hasCredits) {
+      throw new BadRequestException(`Insufficient credits — article generation requires ${CREDIT_COSTS.article} credits`);
+    }
+
     this.logger.log(`Generating article for page "${page.title}" (${pageId})`);
 
-    const briefSummary = JSON.stringify(brief.briefData ?? {}, null, 2).slice(0, 3000);
+    // Extract key fields from brief to avoid truncated JSON in the prompt
+    const briefFields = brief.briefData as Record<string, unknown> | null | undefined;
+    const briefContext = [
+      `Title: ${briefFields?.title ?? page.title}`,
+      `Primary keyword: ${briefFields?.targetKeyword ?? page.keyword ?? page.title}`,
+      `Target word count: ${briefFields?.targetWordCount ?? page.estimatedWordCount ?? 1200}`,
+      `Content type: ${briefFields?.contentType ?? page.contentType ?? 'article'}`,
+      `Tone: ${briefFields?.tone ?? 'professional'}`,
+      `Intent: ${briefFields?.intent ?? page.intent ?? 'informational'}`,
+      `Funnel stage: ${briefFields?.funnelStage ?? page.funnelStage ?? 'TOFU'}`,
+      `Meta description: ${briefFields?.metaDescription ?? ''}`,
+      `Key points: ${Array.isArray(briefFields?.keyPoints) ? (briefFields.keyPoints as string[]).join('; ') : ''}`,
+      `Call to action: ${briefFields?.callToAction ?? ''}`,
+      `Outline:\n${Array.isArray(briefFields?.outline)
+        ? (briefFields.outline as Array<{ heading: string; type: string; notes?: string; wordCount?: number }>)
+            .map((s) => `  ${s.type.toUpperCase()}: ${s.heading}${s.notes ? ` — ${s.notes}` : ''}${s.wordCount ? ` (~${s.wordCount} words)` : ''}`)
+            .join('\n')
+        : '(see brief)'
+      }`,
+    ].join('\n');
 
     const result = await this.openAiService.chatCompletion({
       messages: [
@@ -164,7 +220,7 @@ Return ONLY the markdown article — no preamble or explanation.`,
         },
         {
           role: 'user',
-          content: `Write the full article based on this brief:\n\n${briefSummary}
+          content: `Write the full article based on this brief:\n\n${briefContext}
 
 Requirements:
 - Follow the outline exactly
@@ -185,7 +241,7 @@ Requirements:
 
     // Update the brief piece to also store the article (type stays 'brief' for the record,
     // a separate article content piece is created)
-    const [articlePiece] = await this.db.db
+    const insertedArticle = await this.db.db
       .insert(contentPieces)
       .values({
         projectId,
@@ -194,11 +250,28 @@ Requirements:
         type: 'article',
         status: 'draft',
         title: page.title,
-        briefData: brief.briefData,
         articleData: { markdown: articleMarkdown },
         wordCount,
       })
+      .onConflictDoNothing()
       .returning();
+
+    // If a concurrent request already inserted an article, fetch it
+    const articlePiece = insertedArticle[0] ?? await this.db.db.query.contentPieces.findFirst({
+      where: (cp, { and: a, eq: e }) => a(e(cp.topicalMapPageId, pageId), e(cp.type, 'article')),
+    });
+    if (!articlePiece) throw new Error(`Failed to create or find article for page ${pageId}`);
+
+    // Deduct credits only when a new article was actually created
+    if (insertedArticle[0]) {
+      await this.creditsService.debit({
+        organizationId,
+        amount: CREDIT_COSTS.article,
+        description: `Article generated for page: ${page.title}`,
+      }).catch((e: unknown) =>
+        this.logger.error(`Credit debit failed for article ${articlePiece.id}: ${e}`),
+      );
+    }
 
     this.logger.log(`Article created: ${articlePiece.id} for page ${pageId}`);
     return articlePiece;

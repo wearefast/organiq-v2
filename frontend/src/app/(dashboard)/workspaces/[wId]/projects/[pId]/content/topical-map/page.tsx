@@ -31,6 +31,8 @@ export default function ContentStrategyPage() {
   const [maps, setMaps] = useState<TopicalMap[]>([]);
   const [mapsLoading, setMapsLoading] = useState(true);
   const [pageStatusMap, setPageStatusMap] = useState<PageStatusMap>({});
+  const [pagesLoading, setPagesLoading] = useState(false);
+  const [syncError, setSyncError] = useState<string | null>(null);
   const [selectedPageId, setSelectedPageId] = useState<string | null>(null);
 
   useEffect(() => {
@@ -40,17 +42,18 @@ export default function ContentStrategyPage() {
       .finally(() => setMapsLoading(false));
   }, [projectId]);
 
-  // Once maps are loaded, fetch page statuses (auto-sync if empty)
+  // Once maps are loaded, fetch page statuses (auto-sync once if empty)
   useEffect(() => {
     if (maps.length === 0) return;
     const mapId = maps[0].id;
+    setPagesLoading(true);
+    setSyncError(null);
     fetchTopicalMapPages(projectId, mapId)
       .then(async (pages: TopicalMapPage[]) => {
         if (pages.length === 0) {
-          // Auto-sync pages from JSONB on first load
+          // Auto-sync pages from JSONB on first load — only attempt once per mount
           await syncTopicalMapPages(projectId, mapId);
-          const synced = await fetchTopicalMapPages(projectId, mapId);
-          return synced;
+          return fetchTopicalMapPages(projectId, mapId);
         }
         return pages;
       })
@@ -61,8 +64,21 @@ export default function ContentStrategyPage() {
         }
         setPageStatusMap(map);
       })
-      .catch(console.error);
-  }, [maps, projectId]);
+      .catch((err: unknown) => {
+        setSyncError(err instanceof Error ? err.message : 'Failed to load page statuses');
+      })
+      .finally(() => setPagesLoading(false));
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [maps[0]?.id, projectId]);
+
+  const refreshPageStatuses = useCallback(async (mapId: string) => {
+    const pages = await fetchTopicalMapPages(projectId, mapId);
+    const map: PageStatusMap = {};
+    for (const page of pages) {
+      map[page.title] = page;
+    }
+    setPageStatusMap(map);
+  }, [projectId]);
 
   const handlePageClick = useCallback((pageId: string) => {
     setSelectedPageId(pageId);
@@ -148,29 +164,33 @@ export default function ContentStrategyPage() {
       {maps.length > 1 && (
         <p className="mb-4 text-xs text-zinc-500">{maps.length} maps available — showing latest</p>
       )}
-      <TopicalMapRenderer
-        data={maps[0]}
-        pageStatusMap={pageStatusMap}
-        onPageClick={handlePageClick}
-      />
+      {syncError && (
+        <div className="mb-4 rounded-lg border border-red-500/30 bg-red-500/5 px-4 py-3 text-sm text-red-400">
+          Failed to load page statuses: {syncError}
+        </div>
+      )}
+      <div className="relative">
+        {pagesLoading && (
+          <div className="absolute inset-0 z-10 flex items-start justify-end p-2">
+            <div className="flex items-center gap-1.5 rounded bg-zinc-900/80 px-2 py-1 text-xs text-zinc-500">
+              <div className="h-3 w-3 animate-spin rounded-full border border-zinc-600 border-t-zinc-400" />
+              Loading page statuses…
+            </div>
+          </div>
+        )}
+        <TopicalMapRenderer
+          data={maps[0]}
+          pageStatusMap={pageStatusMap}
+          onPageClick={handlePageClick}
+        />
+      </div>
       {selectedPageId && (
         <PageDetailPanel
           projectId={projectId}
           mapId={maps[0].id}
           pageId={selectedPageId}
           onClose={() => setSelectedPageId(null)}
-          onContentGenerated={() => {
-            // Refresh page statuses after content is generated
-            fetchTopicalMapPages(projectId, maps[0].id)
-              .then((pages: TopicalMapPage[]) => {
-                const map: PageStatusMap = {};
-                for (const page of pages) {
-                  map[page.title] = page;
-                }
-                setPageStatusMap(map);
-              })
-              .catch(console.error);
-          }}
+          onContentGenerated={() => refreshPageStatuses(maps[0].id).catch(console.error)}
         />
       )}
     </div>

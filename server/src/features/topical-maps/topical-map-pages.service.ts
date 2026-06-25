@@ -1,5 +1,5 @@
 import { Injectable, NotFoundException } from '@nestjs/common';
-import { eq, and, sql } from 'drizzle-orm';
+import { eq, and, sql, or } from 'drizzle-orm';
 import { DatabaseService } from '../../shared/database/database.service';
 import { topicalMaps, topicalMapPages, contentPieces, contentImages } from '../../db/schema';
 
@@ -19,31 +19,48 @@ export class TopicalMapPagesService {
     });
     if (!map) throw new NotFoundException('Topical map not found');
 
-    const pillars = (map.pillars as Record<string, unknown>[]) ?? [];
+    const mapData = map.pillars as Record<string, unknown> | Record<string, unknown>[];
     const rows: typeof topicalMapPages.$inferInsert[] = [];
     let sortOrder = 0;
 
-    for (const pillar of pillars) {
-      const clusters = (pillar.clusters as Record<string, unknown>[] | undefined) ?? [];
+    // Support both:
+    //   New format: pillars stored as an array [{ name, clusters: [{ name, pages: [...] }] }]
+    //   Old format: pillars stored as an array [{ pillar, clusters: [{ cluster, contentPieces: [...] }] }]
+    const pillarsArray = Array.isArray(mapData) ? mapData : [];
+
+    for (const pillar of pillarsArray) {
+      const pillarTitle = ((pillar.name ?? pillar.pillar) as string | undefined) ?? '';
+      const clusters = ((pillar.clusters as Record<string, unknown>[] | undefined) ?? []);
       for (const cluster of clusters) {
-        const pages = (cluster.pages as Record<string, unknown>[] | undefined) ?? [];
+        const clusterTitle = ((cluster.name ?? cluster.cluster) as string | undefined) ?? '';
+        // New format: cluster.pages; Old format: cluster.contentPieces
+        const pages = ((cluster.pages ?? cluster.contentPieces) as Record<string, unknown>[] | undefined) ?? [];
         for (const page of pages) {
+          // Old format uses targetKeyword as both title and keyword
+          const title = ((page.title ?? page.targetKeyword ?? page.keyword ?? 'Untitled') as string);
+          const keyword = ((page.keyword ?? page.targetKeyword) as string | undefined) ?? null;
+          // Old format: searchIntent; New format: intent
+          const intent = ((page.intent ?? page.searchIntent) as string | undefined) ?? null;
+          // Old format: priorityScore (number); New format: priority (string) or effort
+          const priority = ((page.priority ?? page.effort ??
+            (page.priorityScore != null ? String(page.priorityScore) : undefined)) as string | undefined) ?? null;
+
           rows.push({
             topicalMapId,
             projectId,
-            pillarTitle: (pillar.name as string) ?? '',
-            clusterTitle: (cluster.name as string) ?? '',
-            title: (page.title ?? page.keyword ?? 'Untitled') as string,
-            keyword: (page.keyword as string | undefined) ?? null,
+            pillarTitle,
+            clusterTitle,
+            title,
+            keyword,
             suggestedUrl: (page.suggestedUrl as string | undefined) ?? null,
             contentType: (page.contentType as string | undefined) ?? null,
-            intent: (page.intent as string | undefined) ?? null,
+            intent,
             funnelStage: (page.funnelStage as string | undefined) ?? null,
             volume: (page.volume as number | undefined) ?? null,
             difficulty: (page.difficulty as number | undefined) ?? null,
             estimatedWordCount: (page.estimatedWordCount as number | undefined) ?? null,
-            priority: (page.priority ?? page.effort) as string | null ?? null,
-            linksTo: (page.linksTo as string[] | undefined) ?? null,
+            priority,
+            linksTo: ((page.linksTo ?? page.internalLinking) as string[] | undefined) ?? null,
             linksFrom: (page.linksFrom as string[] | undefined) ?? null,
             sortOrder: sortOrder++,
           });
@@ -59,6 +76,8 @@ export class TopicalMapPagesService {
       .onConflictDoUpdate({
         target: [topicalMapPages.topicalMapId, topicalMapPages.title],
         set: {
+          pillarTitle: sql`excluded.pillar_title`,
+          clusterTitle: sql`excluded.cluster_title`,
           keyword: sql`excluded.keyword`,
           suggestedUrl: sql`excluded.suggested_url`,
           contentType: sql`excluded.content_type`,
@@ -68,6 +87,8 @@ export class TopicalMapPagesService {
           difficulty: sql`excluded.difficulty`,
           estimatedWordCount: sql`excluded.estimated_word_count`,
           priority: sql`excluded.priority`,
+          linksTo: sql`excluded.links_to`,
+          linksFrom: sql`excluded.links_from`,
           sortOrder: sql`excluded.sort_order`,
         },
       })
@@ -135,9 +156,13 @@ export class TopicalMapPagesService {
     }));
   }
 
-  async findById(pageId: string, projectId: string) {
+  async findById(pageId: string, projectId: string, topicalMapId?: string) {
     const page = await this.db.db.query.topicalMapPages.findFirst({
-      where: and(eq(topicalMapPages.id, pageId), eq(topicalMapPages.projectId, projectId)),
+      where: and(
+        eq(topicalMapPages.id, pageId),
+        eq(topicalMapPages.projectId, projectId),
+        topicalMapId ? eq(topicalMapPages.topicalMapId, topicalMapId) : undefined,
+      ),
     });
     if (!page) throw new NotFoundException('Topical map page not found');
 
