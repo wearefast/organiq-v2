@@ -9,6 +9,7 @@ import {
   fetchTopicalMapPage,
   generateBriefForPage,
   generateArticleForPage,
+  generateImagesForPage,
   syncTopicalMapPages,
   updateContentPiece,
   updateContentStatus,
@@ -26,7 +27,7 @@ interface PageDetailPanelProps {
   onContentGenerated?: () => void;
 }
 
-type BusyState = 'idle' | 'generating-brief' | 'generating-article' | 'approving' | 'regenerating' | 'saving';
+type BusyState = 'idle' | 'generating-brief' | 'generating-article' | 'generating-images' | 'approving' | 'regenerating' | 'saving';
 type ContentPieceWithImages = ContentPiece & { images?: ContentImage[] };
 
 // ─── Brief edit model ─────────────────────────────────────────────────────
@@ -277,6 +278,21 @@ export function PageDetailPanel({ projectId, mapId, pageId, onClose, onContentGe
     }
   }
 
+  async function handleGenerateImages() {
+    setBusy('generating-images');
+    setError(null);
+    try {
+      await generateImagesForPage(projectId, pageId);
+      await load();
+      setViewingContent('images');
+      onContentGenerated?.();
+    } catch (e) {
+      setError(e instanceof Error ? e.message : 'Image generation failed');
+    } finally {
+      setBusy('idle');
+    }
+  }
+
   // ─── Render ────────────────────────────────────────────────────────────
 
   function renderBody(): React.JSX.Element {
@@ -354,6 +370,16 @@ export function PageDetailPanel({ projectId, mapId, pageId, onClose, onContentGe
               locked={!article}
               meta={images.length > 0 ? `${images.length} images` : undefined}
               onClick={images.length > 0 ? () => setViewingContent('images') : undefined}
+              action={article?.status === 'approved' && images.length === 0 ? (
+                <button
+                  onClick={handleGenerateImages}
+                  disabled={busy !== 'idle'}
+                  className="flex items-center gap-1.5 rounded bg-violet-600 px-3 py-1.5 text-xs font-medium text-white hover:bg-violet-500 disabled:opacity-50"
+                >
+                  {busy === 'generating-images' && <Loader2 className="h-3 w-3 animate-spin" />}
+                  {busy === 'generating-images' ? 'Generating…' : 'Generate Images'}
+                </button>
+              ) : null}
             />
             <PipelineStage icon={<Globe className="h-3.5 w-3.5" />} label="Published" done={isPublished} locked={!article} />
           </div>
@@ -481,6 +507,16 @@ export function PageDetailPanel({ projectId, mapId, pageId, onClose, onContentGe
                   >
                     {busy === 'regenerating' ? <Loader2 className="h-3 w-3 animate-spin" /> : <RotateCcw className="h-3 w-3" />}
                     Regenerate
+                  </button>
+                )}
+                {!articleEditing && article.status === 'approved' && images.length === 0 && (
+                  <button
+                    onClick={handleGenerateImages}
+                    disabled={busy !== 'idle'}
+                    className="flex items-center gap-1.5 rounded bg-violet-600 px-2 py-1 text-[10px] font-medium text-white hover:bg-violet-500 disabled:opacity-50"
+                  >
+                    {busy === 'generating-images' ? <Loader2 className="h-3 w-3 animate-spin" /> : <Image className="h-3 w-3" />}
+                    {busy === 'generating-images' ? 'Generating…' : 'Generate Images'}
                   </button>
                 )}
               </div>

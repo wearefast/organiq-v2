@@ -205,3 +205,13 @@ export function generateArticleForPage(
   });
 }
 
+/** Generate images for all [IMAGE_PLACEHOLDER_N] markers in an approved article. */
+export function generateImagesForPage(
+  projectId: string,
+  pageId: string,
+): Promise<ContentImage[]> {
+  return apiFetch(`/projects/${projectId}/content/pages/${pageId}/generate-images`, {
+    method: 'POST',
+  });
+}
+

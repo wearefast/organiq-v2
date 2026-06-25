@@ -1,7 +1,7 @@
 import { Injectable, Logger, ConflictException, BadRequestException } from '@nestjs/common';
 import { eq, and } from 'drizzle-orm';
 import { DatabaseService } from '../../shared/database/database.service';
-import { contentPieces } from '../../db/schema';
+import { contentPieces, contentImages } from '../../db/schema';
 import { TopicalMapPagesService } from '../topical-maps/topical-map-pages.service';
 import { OpenAiService } from '../integrations/openai/openai.service';
 import { CreditsService } from '../credits/credits.service';
@@ -275,5 +275,126 @@ Requirements:
 
     this.logger.log(`Article created: ${articlePiece.id} for page ${pageId}`);
     return articlePiece;
+  }
+
+  /**
+   * Generates images for all [IMAGE_PLACEHOLDER_N] markers in an approved article.
+   * Uses GPT-4o-mini to craft a per-placeholder prompt, then calls DALL-E 3.
+   * Requires article to be in 'approved' status.
+   */
+  async generateImagesForPage(
+    pageId: string,
+    projectId: string,
+    organizationId: string,
+  ): Promise<Array<typeof contentImages.$inferSelect>> {
+    const page = await this.topicalMapPagesService.findById(pageId, projectId);
+
+    const article = page.contentPieces.find((p) => p.type === 'article');
+    if (!article) {
+      throw new ConflictException('Generate and approve an article before generating images');
+    }
+    if (article.status !== 'approved') {
+      throw new ConflictException('Article must be approved before generating images');
+    }
+
+    const markdown = String((article.articleData as Record<string, unknown>)?.markdown ?? '');
+    const placeholderMatches = [...markdown.matchAll(/\[IMAGE_PLACEHOLDER_(\d+)\]/g)];
+
+    if (placeholderMatches.length === 0) {
+      throw new BadRequestException('No [IMAGE_PLACEHOLDER_N] markers found in the article');
+    }
+
+    const imageCount = placeholderMatches.length;
+    const creditCost = imageCount * 10;
+    const hasCredits = await this.creditsService.hasCredits(organizationId, creditCost);
+    if (!hasCredits) {
+      throw new BadRequestException(
+        `Insufficient credits — image generation requires ${creditCost} credits (${imageCount} × 10)`,
+      );
+    }
+
+    const lines = markdown.split('\n');
+    const results: Array<typeof contentImages.$inferSelect> = [];
+
+    for (let i = 0; i < placeholderMatches.length; i++) {
+      const match = placeholderMatches[i];
+
+      // Find the line index of this placeholder in the markdown
+      const charsBeforeMatch = markdown.substring(0, match.index).split('\n').length - 1;
+
+      // Find the nearest heading above the placeholder
+      let nearestHeading = page.title;
+      for (let j = charsBeforeMatch; j >= 0; j--) {
+        const line = lines[j] ?? '';
+        if (line.startsWith('# ') || line.startsWith('## ') || line.startsWith('### ')) {
+          nearestHeading = line.replace(/^#{1,3}\s+/, '');
+          break;
+        }
+      }
+
+      // Generate a descriptive prompt via GPT-4o-mini
+      const promptResult = await this.openAiService.chatCompletion({
+        messages: [
+          {
+            role: 'system',
+            content:
+              'You are an expert at writing descriptive image generation prompts for blog articles. Write concise, vivid DALL-E prompts.',
+          },
+          {
+            role: 'user',
+            content: `Write a DALL-E 3 image generation prompt for image ${i + 1} in a blog article titled "${page.title}".
+This image illustrates the section: "${nearestHeading}".
+Return ONLY the image prompt, nothing else. Max 150 words. Photorealistic, professional style.`,
+          },
+        ],
+        model: 'gpt-4o-mini',
+        temperature: 0.7,
+        maxTokens: 200,
+      });
+
+      const imagePrompt = (promptResult.message.content ?? '').trim();
+      const altText = `Illustration for: ${nearestHeading}`;
+
+      this.logger.log(`Generating image ${i + 1}/${imageCount} for article ${article.id}`);
+
+      const imageResult = await this.openAiService.generateImage(imagePrompt, '1024x1024');
+
+      const inserted = await this.db.db
+        .insert(contentImages)
+        .values({
+          contentPieceId: article.id,
+          index: i,
+          altText,
+          prompt: imagePrompt,
+          base64: imageResult.base64,
+          revisedPrompt: imageResult.revisedPrompt,
+          size: '1024x1024',
+        })
+        .onConflictDoUpdate({
+          target: [contentImages.contentPieceId, contentImages.index],
+          set: {
+            altText,
+            prompt: imagePrompt,
+            base64: imageResult.base64,
+            revisedPrompt: imageResult.revisedPrompt,
+          },
+        })
+        .returning();
+
+      results.push(inserted[0]);
+    }
+
+    await this.creditsService
+      .debit({
+        organizationId,
+        amount: creditCost,
+        description: `${imageCount} image(s) generated for article: ${page.title}`,
+      })
+      .catch((e: unknown) =>
+        this.logger.error(`Credit debit failed for images on article ${article.id}: ${e}`),
+      );
+
+    this.logger.log(`Generated ${results.length} images for article ${article.id}`);
+    return results;
   }
 }

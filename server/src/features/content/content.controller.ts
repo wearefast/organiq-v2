@@ -282,4 +282,17 @@ export class ContentController {
   ) {
     return this.contentGenerationService.generateArticleForPage(pageId, projectId, req.org.id);
   }
+
+  /**
+   * Generate images for all [IMAGE_PLACEHOLDER_N] markers in an approved article.
+   * Calls DALL-E 3 per placeholder, stores results in content_images.
+   */
+  @Post('pages/:pageId/generate-images')
+  async generateImagesForPage(
+    @Param('projectId') projectId: string,
+    @Param('pageId') pageId: string,
+    @Req() req: { org: { id: string } },
+  ) {
+    return this.contentGenerationService.generateImagesForPage(pageId, projectId, req.org.id);
+  }
 }
