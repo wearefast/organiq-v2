@@ -131,8 +131,10 @@ export class ContentController {
 
   @Post('forums/enrich')
   async enrichForumDates(@Param('projectId') projectId: string) {
-    const count = await this.forumIntelligence.enrichMissingDates(projectId);
-    return { enriched: count };
+    // Fire-and-forget: enrichment scrapes many URLs and takes minutes.
+    // Return immediately so the load balancer doesn't time out.
+    void this.forumIntelligence.enrichMissingDates(projectId);
+    return { status: 'enrichment_started' };
   }
 
   @Get(':id')

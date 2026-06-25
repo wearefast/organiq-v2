@@ -83,7 +83,7 @@ export class ForumDateEnricherService {
       .select({ id: forumOpportunities.id })
       .from(forumOpportunities)
       .where(and(eq(forumOpportunities.projectId, projectId), isNull(forumOpportunities.publishedDate)))
-      .limit(100); // cap to avoid runaway enrichment on large backlogs
+      .limit(50); // cap per batch to keep memory bounded
 
     const ids = undated.map((r) => r.id);
     await this.enrichBatch(ids);
