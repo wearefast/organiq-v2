@@ -107,25 +107,26 @@ export class ForumDateEnricherService {
   }
 
   private async testReddit(url: string): Promise<{ url: string; date: string | null; detail: string }> {
-    const base = url.split('?')[0].replace(/\/?$/, '/');
-    const jsonUrl = `${base}.json?raw_json=1&limit=1`;
+    const cleanUrl = url.replace(/^https?:\/\//, '').split('?')[0];
+    const cdxUrl =
+      `https://web.archive.org/cdx/search/cdx?url=${encodeURIComponent(cleanUrl)}` +
+      `&output=json&limit=1&fl=timestamp&filter=statuscode:200&from=2005&to=${new Date().getFullYear() + 1}`;
     try {
       const controller = new AbortController();
-      const timer = setTimeout(() => controller.abort(), 10_000);
-      const response = await fetch(jsonUrl, {
+      const timer = setTimeout(() => controller.abort(), 15_000);
+      const response = await fetch(cdxUrl, {
         signal: controller.signal,
-        headers: { 'User-Agent': this.REDDIT_UA, 'Accept': 'application/json' },
+        headers: { 'User-Agent': 'OrganiqBot/1.0 (+https://app.rankorganiq.com/bot)' },
       });
       clearTimeout(timer);
       if (!response.ok) {
-        const text = await response.text();
-        return { url, date: null, detail: `HTTP ${response.status}: ${text.substring(0, 200)}` };
+        return { url, date: null, detail: `Wayback CDX HTTP ${response.status}` };
       }
-      // eslint-disable-next-line @typescript-eslint/no-explicit-any
-      const data = await response.json() as any;
-      const createdUtc = data?.[0]?.data?.children?.[0]?.data?.created_utc;
-      const date = typeof createdUtc === 'number' ? new Date(createdUtc * 1000).toISOString().split('T')[0] : null;
-      return { url, date, detail: `created_utc=${createdUtc}` };
+      const data = await response.json() as string[][];
+      if (!data || data.length < 2) return { url, date: null, detail: `Wayback: no archive found (rows=${data?.length ?? 0})` };
+      const ts = data[1]?.[0] ?? '';
+      const date = ts.length >= 8 ? `${ts.substring(0,4)}-${ts.substring(4,6)}-${ts.substring(6,8)}` : null;
+      return { url, date, detail: `Wayback ts=${ts} rows=${data.length}` };
     } catch (err) {
       return { url, date: null, detail: `exception: ${err instanceof Error ? err.message : err}` };
     }
@@ -140,10 +141,11 @@ export class ForumDateEnricherService {
       })) as { data?: { rawHtml?: string } } | null;
       const html = result?.data?.rawHtml ?? '';
       if (!html) return { url, date: null, detail: 'firecrawl returned empty html' };
-      const date = this.extractDateFromHtml(html);
-      const ogHint = html.includes('article:published_time') ? 'has og:date' : 'no og:date';
-      const timeHint = html.match(/<time[^>]+datetime/i)?.[0]?.substring(0, 80) ?? 'no time tag';
-      return { url, date, detail: `htmlLen=${html.length} ${ogHint} timeTag=${timeHint}` };
+      const hasNextData = html.includes('__NEXT_DATA__');
+      const nextDataDate = hasNextData ? this.extractQuoraNextData(html) : null;
+      const fallbackDate = this.extractDateFromHtml(html);
+      const date = nextDataDate ?? fallbackDate;
+      return { url, date, detail: `htmlLen=${html.length} hasNextData=${hasNextData} nextDataDate=${nextDataDate} fallback=${fallbackDate}` };
     } catch (err) {
       return { url, date: null, detail: `firecrawl exception: ${err instanceof Error ? err.message : err}` };
     }
@@ -163,64 +165,64 @@ export class ForumDateEnricherService {
     return null;
   }
 
-  // ─── Reddit: Public JSON API ──────────────────────────────────
+  // ─── Reddit: Wayback Machine CDX API ──────────────────────────
 
   /**
-   * Reddit's public JSON API returns `created_utc` (Unix seconds) reliably.
-   * No authentication needed. Append `.json` to any thread URL.
+   * Reddit 403s all requests from AWS EC2 IP ranges.
+   * The Wayback Machine CDX API is a reliable free fallback:
+   * it returns the earliest archive date for a URL, which is a
+   * close proxy for the post creation date (typically archived
+   * within hours/days of posting).
    *
-   * e.g. https://www.reddit.com/r/x/comments/abc/title/.json
+   * Endpoint: https://web.archive.org/cdx/search/cdx
    */
   private async resolveRedditDate(url: string): Promise<string | null> {
     try {
-      // Build the .json URL — strip query string first, ensure trailing slash before .json
-      const base = url.split('?')[0].replace(/\/?$/, '/');
-      const jsonUrl = `${base}.json?raw_json=1&limit=1`;
+      // Normalize URL: strip protocol + query string for CDX lookup
+      const cleanUrl = url.replace(/^https?:\/\//, '').split('?')[0];
+      const cdxUrl =
+        `https://web.archive.org/cdx/search/cdx?url=${encodeURIComponent(cleanUrl)}` +
+        `&output=json&limit=1&fl=timestamp&filter=statuscode:200&from=2005&to=${new Date().getFullYear() + 1}`;
 
       const controller = new AbortController();
-      const timer = setTimeout(() => controller.abort(), 10_000);
-
-      const response = await fetch(jsonUrl, {
+      const timer = setTimeout(() => controller.abort(), 15_000);
+      const response = await fetch(cdxUrl, {
         signal: controller.signal,
-        headers: {
-          'User-Agent': this.REDDIT_UA,
-          'Accept': 'application/json',
-        },
+        headers: { 'User-Agent': 'OrganiqBot/1.0 (+https://app.rankorganiq.com/bot)' },
       });
       clearTimeout(timer);
 
       if (!response.ok) {
-        this.logger.warn(`Reddit JSON API ${response.status} for ${url}`);
+        this.logger.warn(`Wayback CDX ${response.status} for ${url}`);
         return null;
       }
 
-      // Reddit JSON API returns an array: [listing, comments_listing]
-      // The post data is in [0].data.children[0].data.created_utc
-      const data = await response.json() as Array<{
-        data?: {
-          children?: Array<{
-            data?: { created_utc?: number };
-          }>;
-        };
-      }>;
+      // Response: [["timestamp"],["20140815090032"]] or [["timestamp"]] (no results)
+      const data = await response.json() as string[][];
+      if (!data || data.length < 2) return null; // only header row, no results
 
-      const createdUtc = data?.[0]?.data?.children?.[0]?.data?.created_utc;
-      if (typeof createdUtc === 'number' && createdUtc > 0) {
-        return new Date(createdUtc * 1000).toISOString().split('T')[0];
-      }
+      const ts = data[1]?.[0]; // e.g. "20140815090032"
+      if (!ts || ts.length < 8) return null;
+
+      // Parse YYYYMMDDHHmmss → YYYY-MM-DD
+      const year  = ts.substring(0, 4);
+      const month = ts.substring(4, 6);
+      const day   = ts.substring(6, 8);
+      return `${year}-${month}-${day}`;
     } catch (err) {
       this.logger.warn(
-        `Reddit JSON API failed for ${url}: ${err instanceof Error ? err.message : err}`,
+        `Wayback CDX failed for ${url}: ${err instanceof Error ? err.message : err}`,
       );
     }
     return null;
   }
 
-  // ─── Quora: Firecrawl (renders JS, bypasses bot detection) ───
+  // ─── Quora: Firecrawl + __NEXT_DATA__ parsing ────────────────
 
   /**
    * Quora blocks plain HTTP bots. Firecrawl renders the page with a headless
-   * browser and returns rawHtml that contains Open Graph or JSON-LD date metadata.
+   * browser. The date is embedded in Quora's __NEXT_DATA__ JSON blob
+   * (Next.js hydration data) — not in standard OG/time meta tags.
    */
   private async resolveQuoraDate(url: string): Promise<string | null> {
     try {
@@ -233,12 +235,55 @@ export class ForumDateEnricherService {
       const html = result?.data?.rawHtml ?? '';
       if (!html) return null;
 
+      // Primary: parse __NEXT_DATA__ JSON for question creation timestamp
+      const nextDataDate = this.extractQuoraNextData(html);
+      if (nextDataDate) return nextDataDate;
+
+      // Fallback: standard meta / time tag extraction
       return this.extractDateFromHtml(html);
     } catch (err) {
       this.logger.warn(
         `Firecrawl failed for ${url}: ${err instanceof Error ? err.message : err}`,
       );
     }
+    return null;
+  }
+
+  /**
+   * Quora embeds all page data in a <script id="__NEXT_DATA__"> JSON blob.
+   * Extract the question's creation time from it.
+   */
+  private extractQuoraNextData(html: string): string | null {
+    const match = html.match(/<script[^>]+id=["']__NEXT_DATA__["'][^>]*>(\{[\s\S]*?\})<\/script>/);
+    if (!match) return null;
+
+    try {
+      const json = JSON.parse(match[1]);
+      const text = JSON.stringify(json);
+
+      // Quora uses several possible timestamp fields (Unix seconds or ms)
+      const patterns = [
+        /"createdTime"\s*:\s*(\d{9,13})/,
+        /"questionCreatedTime"\s*:\s*(\d{9,13})/,
+        /"created_time"\s*:\s*(\d{9,13})/,
+        /"creationTime"\s*:\s*(\d{9,13})/,
+        /"addedTime"\s*:\s*(\d{9,13})/,
+      ];
+
+      for (const pat of patterns) {
+        const m = text.match(pat);
+        if (m) {
+          const ts = parseInt(m[1], 10);
+          // Auto-detect seconds vs ms by magnitude
+          const ms = ts < 1e11 ? ts * 1000 : ts;
+          const d = new Date(ms);
+          if (!isNaN(d.getTime()) && d.getFullYear() > 2009) {
+            return d.toISOString().split('T')[0];
+          }
+        }
+      }
+    } catch { /* malformed JSON */ }
+
     return null;
   }
 
