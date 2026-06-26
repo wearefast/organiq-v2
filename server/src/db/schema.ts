@@ -371,6 +371,7 @@ export const projectSitemapUrls = pgTable(
   {
     id: uuid('id').primaryKey().defaultRandom(),
     projectId: uuid('project_id').notNull().references(() => projects.id, { onDelete: 'cascade' }),
+    organizationId: uuid('organization_id').notNull().references(() => organizations.id, { onDelete: 'cascade' }),
     url: text('url').notNull(),
     position: integer('position').notNull().default(0),
     /** From sitemap.xml: 0.0–1.0 crawl priority (null when discovered via firecrawl mapSite) */
@@ -383,6 +384,7 @@ export const projectSitemapUrls = pgTable(
   },
   (table) => ({
     projectIdx: index('idx_psu_project_id').on(table.projectId),
+    orgIdx: index('idx_psu_organization_id').on(table.organizationId),
     discoveredAtIdx: index('idx_psu_discovered_at').on(table.projectId, table.discoveredAt),
     uniqueProjectUrl: uniqueIndex('project_sitemap_url_unique').on(table.projectId, table.url),
   }),

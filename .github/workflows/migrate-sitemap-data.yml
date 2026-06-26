@@ -80,7 +80,7 @@ jobs:
 
                   while (true) {
                     const { rows: projects } = await client.query(`
-                      SELECT id, domain, sitemap_urls
+                      SELECT id, domain, organization_id, sitemap_urls
                       FROM projects
                       WHERE sitemap_urls IS NOT NULL
                         AND cardinality(sitemap_urls) > 0
@@ -104,13 +104,13 @@ jobs:
                       for (let i = 0; i < urls.length; i += INSERT_CHUNK) {
                         const chunk = urls.slice(i, i + INSERT_CHUNK);
                         const placeholders = chunk.map((_, j) => {
-                          const base = j * 4;
-                          return "($" + (base+1) + ", $" + (base+2) + ", $" + (base+3) + ", $" + (base+4) + ", now(), now())";
+                          const base = j * 5;
+                          return "($" + (base+1) + ", $" + (base+2) + ", $" + (base+3) + ", $" + (base+4) + ", $" + (base+5) + ", now(), now())";
                         }).join(", ");
-                        const params = chunk.flatMap((u, j) => [project.id, u, i + j, batchId]);
+                        const params = chunk.flatMap((u, j) => [project.id, project.organization_id, u, i + j, batchId]);
 
                         const result = await client.query(
-                          "INSERT INTO project_sitemap_urls (project_id, url, position, discovery_batch_id, discovered_at, updated_at) VALUES " +
+                          "INSERT INTO project_sitemap_urls (project_id, organization_id, url, position, discovery_batch_id, discovered_at, updated_at) VALUES " +
                           placeholders + " ON CONFLICT (project_id, url) DO NOTHING",
                           params
                         );

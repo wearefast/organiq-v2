@@ -82,8 +82,20 @@ export class SitemapRepository {
     options?: { batchId?: string; organizationId?: string },
   ): Promise<void> {
     const batchId = options?.batchId ?? randomUUID();
-    const organizationId = options?.organizationId;
     const now = new Date();
+
+    // Resolve organizationId — required for the new table column.
+    // Use the caller-supplied value when available (saves a DB round-trip);
+    // otherwise look it up from the projects table.
+    let organizationId = options?.organizationId;
+    if (!organizationId) {
+      const proj = await this.db.db.query.projects.findFirst({
+        where: eq(projects.id, projectId),
+        columns: { organizationId: true },
+      });
+      if (!proj) throw new Error(`setUrls: project ${projectId} not found`);
+      organizationId = proj.organizationId;
+    }
 
     await this.db.db.transaction(async (tx) => {
       // 1. Replace all rows for this project in the normalised table
@@ -95,6 +107,7 @@ export class SitemapRepository {
         // Insert in batches of INSERT_BATCH_SIZE to avoid multi-MB SQL for large sitemaps
         const rows = urls.map((url, idx) => ({
           projectId,
+          organizationId,
           url,
           position: idx,
           discoveredAt: now,
@@ -150,12 +163,13 @@ export class SitemapRepository {
 
     const project = await this.db.db.query.projects.findFirst({
       where: eq(projects.id, projectId),
-      columns: { sitemapUrls: true, sitemapDiscoveredAt: true },
+      columns: { organizationId: true, sitemapUrls: true, sitemapDiscoveredAt: true },
     });
 
     const legacyUrls = project?.sitemapUrls ?? [];
     if (legacyUrls.length === 0) return 0;
 
+    const organizationId = project!.organizationId;
     const discoveredAt = project?.sitemapDiscoveredAt ?? new Date();
     const batchId = randomUUID();
 
@@ -163,6 +177,7 @@ export class SitemapRepository {
       await tx.insert(projectSitemapUrls).values(
         legacyUrls.map((url, idx) => ({
           projectId,
+          organizationId,
           url,
           position: idx,
           discoveredAt,
