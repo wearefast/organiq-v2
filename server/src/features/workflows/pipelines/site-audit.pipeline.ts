@@ -49,9 +49,16 @@ export class SiteAuditPipeline implements Pipeline {
     const start = Date.now();
     const errors: string[] = [];
 
-    this.logger.log(`site-audit pipeline: fetching data for ${domain}`);
+    // Reuse sitemap URLs already discovered during business profile generation
+    // (seeded into run context by workflow.service.ts:startRun() from the project cache).
+    // Only call firecrawl.mapSite() when the cache is absent (first run or stale > 30 days).
+    const cachedSitemapUrls = (context.sitemapUrls as string[] | undefined) ?? [];
+    const sitemapSource = cachedSitemapUrls.length > 0 ? 'cache' : 'live';
+    this.logger.log(
+      `site-audit pipeline: fetching data for ${domain} (sitemap source: ${sitemapSource}, ${cachedSitemapUrls.length} cached URLs)`,
+    );
 
-    // All six API calls fire in parallel — Promise.allSettled so a single
+    // All API calls fire in parallel — Promise.allSettled so a single
     // failure (e.g. CrUX 403, PageSpeed 400) doesn't abort the whole run.
     const [
       siteMapResult,
@@ -61,7 +68,11 @@ export class SiteAuditPipeline implements Pipeline {
       cruxResult,
       onPageResult,
     ] = await Promise.allSettled([
-      this.firecrawl.mapSite(origin),
+      // Use cached URLs when available — avoids a redundant firecrawl.mapSite() call.
+      // The resolve shape matches firecrawl.mapSite() output so extract() works unchanged.
+      cachedSitemapUrls.length > 0
+        ? Promise.resolve({ links: cachedSitemapUrls, urls: cachedSitemapUrls })
+        : this.firecrawl.mapSite(origin),
       this.firecrawl.crawl(origin, 20),
       this.pageSpeed.analyze(homepage, 'mobile'),
       this.pageSpeed.analyze(homepage, 'desktop'),
@@ -112,7 +123,7 @@ export class SiteAuditPipeline implements Pipeline {
         homepage,
         pagesDiscovered,
         pagesCrawled: crawledPages.length,
-        apiCallCount: 6,
+        apiCallCount: cachedSitemapUrls.length > 0 ? 5 : 6,
         durationMs: Date.now() - start,
         errors,
       },

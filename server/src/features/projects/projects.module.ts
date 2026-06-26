@@ -5,6 +5,7 @@ import { ProjectsService } from './projects.service';
 import { BusinessProfileService } from './business-profile.service';
 import { ProjectIntelligenceService } from './project-intelligence.service';
 import { BusinessProfileProcessor } from './business-profile.processor';
+import { SitemapRepository } from './sitemap.repository';
 import { CreditsModule } from '../credits/credits.module';
 import { IntegrationsModule } from '../integrations/integrations.module';
 import { PlanLimitGuard } from '../billing/plan-limit.guard';
@@ -22,7 +23,7 @@ import { PlanLimitGuard } from '../billing/plan-limit.guard';
     }),
   ],
   controllers: [ProjectsController],
-  providers: [ProjectsService, BusinessProfileService, ProjectIntelligenceService, BusinessProfileProcessor, PlanLimitGuard],
-  exports: [ProjectsService, ProjectIntelligenceService],
+  providers: [ProjectsService, BusinessProfileService, ProjectIntelligenceService, BusinessProfileProcessor, PlanLimitGuard, SitemapRepository],
+  exports: [ProjectsService, ProjectIntelligenceService, SitemapRepository],
 })
 export class ProjectsModule {}

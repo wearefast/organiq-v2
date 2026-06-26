@@ -3,6 +3,7 @@ import { eq, desc } from 'drizzle-orm';
 import * as cheerio from 'cheerio';
 import { DatabaseService } from '../../shared/database/database.service';
 import { WebCrawlerService } from '../../shared/web-crawler/web-crawler.service';
+import { SitemapRepository } from '../projects/sitemap.repository';
 import { llmAuditResults, projects } from '../../db/schema';
 import { randomUUID } from 'crypto';
 
@@ -125,6 +126,7 @@ export class LlmAuditService {
   constructor(
     private readonly db: DatabaseService,
     private readonly webCrawler: WebCrawlerService,
+    private readonly sitemapRepository: SitemapRepository,
   ) {}
 
   // ─── Main entry point ────────────────────────────────────
@@ -161,8 +163,9 @@ export class LlmAuditService {
     let pageUrls: string[];
     let sitemapXml = '';
 
-    if (project.sitemapUrls && project.sitemapUrls.length > 0) {
-      pageUrls = project.sitemapUrls;
+    const storedUrls = await this.sitemapRepository.getUrls(projectId);
+    if (storedUrls.length > 0) {
+      pageUrls = storedUrls;
       this.logger.log(
         `runAudit: using ${pageUrls.length} stored sitemap URL(s) for ${origin}`,
       );

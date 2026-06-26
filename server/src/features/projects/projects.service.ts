@@ -2,6 +2,7 @@ import { Injectable, Logger, NotFoundException } from '@nestjs/common';
 import { eq, and, inArray } from 'drizzle-orm';
 import { DatabaseService } from '../../shared/database/database.service';
 import { WebCrawlerService } from '../../shared/web-crawler/web-crawler.service';
+import { SitemapRepository } from './sitemap.repository';
 import { projects } from '../../db/schema';
 import { sanitizeDomain } from '../../shared/utils/sanitize-domain';
 
@@ -12,6 +13,7 @@ export class ProjectsService {
   constructor(
     private readonly db: DatabaseService,
     private readonly webCrawler: WebCrawlerService,
+    private readonly sitemapRepository: SitemapRepository,
   ) {}
 
   async findAllByWorkspace(workspaceId: string, allowedIds?: string[]) {
@@ -115,10 +117,9 @@ export class ProjectsService {
     const siteUrl = `https://${domain}`;
     this.logger.log(`Discovering sitemap for ${domain} (country=${hints?.country ?? 'none'}, lang=${hints?.language ?? 'none'}, customSitemapUrl=${hints?.customSitemapUrl ?? 'none'})`);
     const { pageUrls } = await this.webCrawler.discoverSitePages(siteUrl, 100, hints);
-    await this.db.db
-      .update(projects)
-      .set({ sitemapUrls: pageUrls, sitemapDiscoveredAt: new Date(), updatedAt: new Date() })
-      .where(eq(projects.id, projectId));
+    // SitemapRepository.setUrls() dual-writes to both project_sitemap_urls (new) and
+    // projects.sitemap_urls (legacy) atomically during the migration transition period.
+    await this.sitemapRepository.setUrls(projectId, pageUrls);
     this.logger.log(`Stored ${pageUrls.length} sitemap URL(s) for project ${projectId}`);
   }
 

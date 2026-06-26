@@ -11,6 +11,7 @@ import { WebCrawlerService } from '../../shared/web-crawler/web-crawler.service'
 import { AhrefsService } from '../integrations/ahrefs/ahrefs.service';
 import { SerperService } from '../integrations/serper/serper.service';
 import { ApiUsageContextService } from '../api-usage/api-usage-context.service';
+import { SitemapRepository } from './sitemap.repository';
 import { projects } from '../../db/schema';
 const BUSINESS_PROFILE_CREDIT_COST = 30;
 const BUSINESS_PROFILE_PROMPT_PATH = 'discovery/business-profile.prompt.md';
@@ -32,6 +33,7 @@ export class BusinessProfileService {
     private readonly serper: SerperService,
     private readonly config: ConfigService,
     private readonly apiUsageContext: ApiUsageContextService,
+    private readonly sitemapRepository: SitemapRepository,
   ) {}
 
   async getProfile(projectId: string, organizationId: string) {
@@ -70,7 +72,7 @@ export class BusinessProfileService {
     // Re-discover sitemap only when the project has none yet (first profile generation)
     // or when explicitly refreshing. On project creation, ProjectsService.discoverAndStoreSitemap
     // runs concurrently with limit=100 — re-running here with a second write would race.
-    let sitemapUrls = project.sitemapUrls ?? [];
+    let sitemapUrls = await this.sitemapRepository.getUrls(project.id);
     if (sitemapUrls.length === 0 || forceRediscover) {
       try {
         const siteUrl = domain.startsWith('http') ? domain : `https://${domain}`;
@@ -81,10 +83,10 @@ export class BusinessProfileService {
           customSitemapUrl: project.customSitemapUrl ?? undefined,
         });
         sitemapUrls = pageUrls;
-        await this.db.db
-          .update(projects)
-          .set({ sitemapUrls: pageUrls, sitemapDiscoveredAt: new Date(), updatedAt: new Date() })
-          .where(and(eq(projects.id, projectId), eq(projects.organizationId, organizationId)));
+        // SitemapRepository.setUrls() dual-writes to project_sitemap_urls (new) and
+        // projects.sitemap_urls (legacy) atomically during the migration transition period.
+        // organizationId is passed to preserve the cross-org write guard from the original code.
+        await this.sitemapRepository.setUrls(project.id, pageUrls, { organizationId });
         this.logger.log(`Sitemap discovered: ${pageUrls.length} pages for project ${projectId}`);
       } catch (err) {
         this.logger.warn(`Sitemap discovery failed for ${domain}: ${(err as Error).message}`);

@@ -15,6 +15,7 @@ import {
 } from '../../db/schema';
 import { AgentRegistry } from '../../agents/agent.registry';
 import { CreditsService } from '../credits/credits.service';
+import { SitemapRepository } from '../projects/sitemap.repository';
 
 /** The 17-step workflow definition: stepKey → [stepNumber, phase, dependsOn[]] */
 export const STEP_DEFINITIONS: Array<[string, number, number, string[]]> = [
@@ -45,6 +46,7 @@ export class WorkflowService implements OnModuleInit, OnApplicationBootstrap {
     private readonly db: DatabaseService,
     private readonly agentRegistry: AgentRegistry,
     private readonly creditsService: CreditsService,
+    private readonly sitemapRepository: SitemapRepository,
     @InjectQueue('workflow-steps') private readonly workflowQueue: Queue,
   ) {}
 
@@ -473,6 +475,25 @@ export class WorkflowService implements OnModuleInit, OnApplicationBootstrap {
     await this.setContext(runId, 'industry', project.industry ?? '');
     await this.setContext(runId, 'business-profile', project.businessProfile);
     await this.setContext(runId, 'projectId', project.id);
+
+    // Seed cached sitemap URLs into run context so downstream pipeline steps
+    // (site-audit, ai-intelligence) can reuse them without calling firecrawl.mapSite() again.
+    // Only seed if the cache is fresh (< 30 days). Stale or missing: let the pipeline fetch live.
+    // Wrapped in try/catch: a DB failure here must not leave the run stuck in 'running'.
+    try {
+      const sitemapDiscoveredAt = project.sitemapDiscoveredAt;
+      const sitemapIsFresh = sitemapDiscoveredAt &&
+        (Date.now() - sitemapDiscoveredAt.getTime()) < THIRTY_DAYS_MS;
+      if (sitemapIsFresh) {
+        const sitemapUrls = await this.sitemapRepository.getUrls(project.id);
+        if (sitemapUrls.length > 0) {
+          await this.setContext(runId, 'sitemapUrls', sitemapUrls);
+        }
+      }
+    } catch (err) {
+      // Non-fatal: site-audit pipeline has a live firecrawl.mapSite() fallback
+      this.logger.warn(`startRun: failed to seed sitemapUrls for run ${runId}: ${(err as Error).message}`);
+    }
 
     // Enqueue the first step(s) — those with no dependencies
     const enqueued = await this.enqueuePendingSteps(runId);

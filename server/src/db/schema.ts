@@ -345,6 +345,8 @@ export const projects = pgTable(
     sitemapUrls: text('sitemap_urls').array(),
     /** When the sitemap was last crawled */
     sitemapDiscoveredAt: timestamp('sitemap_discovered_at'),
+    /** Cached count of URLs in project_sitemap_urls — updated on every sitemap write */
+    sitemapUrlCount: integer('sitemap_url_count'),
     /** AI-synthesized business profile — populated via the project-level refresh action */
     businessProfile: jsonb('business_profile'),
     /** When the business profile was last generated */
@@ -357,6 +359,32 @@ export const projects = pgTable(
   (table) => ({
     workspaceIdx: index('projects_workspace_idx').on(table.workspaceId),
     orgIdx: index('projects_org_idx').on(table.organizationId),
+  }),
+);
+
+// ─── Project Sitemap URLs ────────────────────────────────────
+// Normalized storage replacing the projects.sitemap_urls text[] column.
+// Dual-write is active during migration: legacy columns kept until Phase 5.
+
+export const projectSitemapUrls = pgTable(
+  'project_sitemap_urls',
+  {
+    id: uuid('id').primaryKey().defaultRandom(),
+    projectId: uuid('project_id').notNull().references(() => projects.id, { onDelete: 'cascade' }),
+    url: text('url').notNull(),
+    position: integer('position').notNull().default(0),
+    /** From sitemap.xml: 0.0–1.0 crawl priority (null when discovered via firecrawl mapSite) */
+    priority: decimal('priority', { precision: 2, scale: 1 }),
+    changeFrequency: text('change_frequency'),
+    lastModified: timestamp('last_modified'),
+    discoveredAt: timestamp('discovered_at').defaultNow().notNull(),
+    discoveryBatchId: uuid('discovery_batch_id'),
+    updatedAt: timestamp('updated_at').defaultNow().notNull(),
+  },
+  (table) => ({
+    projectIdx: index('idx_psu_project_id').on(table.projectId),
+    discoveredAtIdx: index('idx_psu_discovered_at').on(table.projectId, table.discoveredAt),
+    uniqueProjectUrl: uniqueIndex('project_sitemap_url_unique').on(table.projectId, table.url),
   }),
 );
 
@@ -788,6 +816,11 @@ export const projectsRelations = relations(projects, ({ one, many }) => ({
   refreshSuggestions: many(refreshSuggestions),
   assets: many(projectAssets),
   accessGrants: many(accessGrants),
+  sitemapUrls: many(projectSitemapUrls),
+}));
+
+export const projectSitemapUrlsRelations = relations(projectSitemapUrls, ({ one }) => ({
+  project: one(projects, { fields: [projectSitemapUrls.projectId], references: [projects.id] }),
 }));
 
 export const projectAssetsRelations = relations(projectAssets, ({ one }) => ({
