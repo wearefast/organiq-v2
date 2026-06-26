@@ -541,22 +541,7 @@ export function PageDetailPanel({ projectId, mapId, pageId, onClose, onContentGe
 
         {/* ── Images section ────────────────────────────────────────── */}
         {images.length > 0 && viewingContent === 'images' && (
-          <div className="border-t border-zinc-800/60 px-5 pb-6 pt-4">
-            <h3 className="mb-4 text-sm font-semibold text-zinc-200">Images ({images.length})</h3>
-            <div className="grid gap-4 sm:grid-cols-2">
-              {images.map((img, idx) => (
-                <div key={img.id} className="overflow-hidden rounded-lg border border-zinc-800 bg-zinc-900/50">
-                  {img.base64 && (
-                    <img src={img.base64} alt={img.altText || `Image ${idx + 1}`} className="h-40 w-full object-cover" />
-                  )}
-                  <div className="p-2">
-                    <p className="text-[10px] font-medium text-zinc-400">{img.altText || `Image ${idx + 1}`}</p>
-                    {img.prompt && <p className="mt-1 text-[9px] text-zinc-600">{img.prompt}</p>}
-                  </div>
-                </div>
-              ))}
-            </div>
-          </div>
+          <ImagesView images={images} />
         )}
 
         {/* Keyword & internal links */}
@@ -616,6 +601,89 @@ export function PageDetailPanel({ projectId, mapId, pageId, onClose, onContentGe
 }
 
 // ─── Article Formatter (HTML rendering with image placeholders) ────────────
+
+// ─── ImagesView ──────────────────────────────────────────────────────────────
+
+/** Normalise a base64 string so it can be used as an <img> src.
+ *  The OpenAI service stores raw base64 (no prefix); older records may already
+ *  have a data: URI prefix. */
+function toImgSrc(base64?: string | null): string | undefined {
+  if (!base64) return undefined;
+  if (base64.startsWith('data:')) return base64;
+  return `data:image/png;base64,${base64}`;
+}
+
+function ImagesView({ images }: { images: ContentImage[] }) {
+  const [expanded, setExpanded] = useState<ContentImage | null>(null);
+
+  return (
+    <div className="border-t border-zinc-800/60 px-5 pb-6 pt-4">
+      <h3 className="mb-4 text-sm font-semibold text-zinc-200">Images ({images.length})</h3>
+      <div className="grid gap-4 sm:grid-cols-2">
+        {images.map((img, idx) => {
+          const src = toImgSrc(img.base64);
+          return (
+            <div key={img.id} className="rounded-lg border border-zinc-800 bg-zinc-900/50">
+              {src ? (
+                <button
+                  type="button"
+                  onClick={() => setExpanded(img)}
+                  className="group relative block w-full overflow-hidden rounded-t-lg"
+                  title="Click to expand"
+                >
+                  <img
+                    src={src}
+                    alt={img.altText || `Image ${idx + 1}`}
+                    className="w-full rounded-t-lg object-contain transition-opacity group-hover:opacity-90"
+                  />
+                  <div className="absolute inset-0 flex items-center justify-center opacity-0 transition-opacity group-hover:opacity-100">
+                    <span className="rounded bg-black/60 px-2 py-1 text-[10px] text-white">Expand</span>
+                  </div>
+                </button>
+              ) : (
+                <div className="flex h-32 items-center justify-center rounded-t-lg bg-zinc-800">
+                  <p className="text-[10px] text-zinc-500">No image data</p>
+                </div>
+              )}
+              <div className="p-2">
+                <p className="text-[10px] font-medium text-zinc-400">{img.altText || `Image ${idx + 1}`}</p>
+                {img.prompt && <p className="mt-0.5 line-clamp-2 text-[9px] text-zinc-600">{img.prompt}</p>}
+              </div>
+            </div>
+          );
+        })}
+      </div>
+
+      {/* Lightbox */}
+      {expanded && (
+        <div
+          className="fixed inset-0 z-50 flex items-center justify-center bg-black/80 p-4"
+          onClick={() => setExpanded(null)}
+        >
+          <div
+            className="relative max-h-[90vh] max-w-[90vw] overflow-auto rounded-xl bg-zinc-900 p-1 shadow-2xl"
+            onClick={(e) => e.stopPropagation()}
+          >
+            <button
+              onClick={() => setExpanded(null)}
+              className="absolute right-2 top-2 z-10 rounded-full bg-black/60 p-1 text-white hover:bg-black/80"
+            >
+              <X className="h-4 w-4" />
+            </button>
+            <img
+              src={toImgSrc(expanded.base64)}
+              alt={expanded.altText || 'Generated image'}
+              className="max-h-[85vh] max-w-full rounded-lg object-contain"
+            />
+            {expanded.altText && (
+              <p className="mt-2 px-2 pb-2 text-center text-xs text-zinc-400">{expanded.altText}</p>
+            )}
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}
 
 interface ArticleFormatterProps {
   data: Record<string, unknown>;
