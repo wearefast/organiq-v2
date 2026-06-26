@@ -85,7 +85,7 @@ function RedditLogo({ className = 'h-5 w-5' }: { className?: string }) {
 function QuoraLogo({ className = 'h-5 w-5' }: { className?: string }) {
   return (
     <img
-      src="https://cdn.jsdelivr.net/gh/simple-icons/simple-icons@v9/icons/quora.svg"
+      src="https://upload.wikimedia.org/wikipedia/commons/0/09/Quora_icon.svg"
       alt="Quora"
       className={className}
       style={{ objectFit: 'contain' }}
