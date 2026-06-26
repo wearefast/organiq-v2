@@ -298,13 +298,20 @@ Requirements:
     }
 
     const markdown = String((article.articleData as Record<string, unknown>)?.markdown ?? '');
-    const placeholderMatches = [...markdown.matchAll(/\[IMAGE_PLACEHOLDER_(\d+)\]/g)];
+    const lines = markdown.split('\n');
 
-    if (placeholderMatches.length === 0) {
-      throw new BadRequestException('No [IMAGE_PLACEHOLDER_N] markers found in the article');
-    }
+    // Use explicit [IMAGE_PLACEHOLDER_N] markers if the user inserted them,
+    // otherwise fall back to the same auto-count the frontend uses (1 per ~300 lines, min 1)
+    const explicitMatches = [...markdown.matchAll(/\[IMAGE_PLACEHOLDER_(\d+)\]/g)];
+    const imageCount = explicitMatches.length > 0
+      ? explicitMatches.length
+      : Math.max(1, Math.ceil(lines.length / 300));
 
-    const imageCount = placeholderMatches.length;
+    // For explicit markers, record which line each is on; for auto mode use -1 (no line hint)
+    const placeholderLineHints: number[] = explicitMatches.length > 0
+      ? explicitMatches.map((m) => markdown.substring(0, m.index).split('\n').length - 1)
+      : Array.from({ length: imageCount }, (_, i) => Math.floor(i * lines.length / imageCount));
+
     const creditCost = imageCount * 10;
     const hasCredits = await this.creditsService.hasCredits(organizationId, creditCost);
     if (!hasCredits) {
@@ -313,18 +320,14 @@ Requirements:
       );
     }
 
-    const lines = markdown.split('\n');
     const results: Array<typeof contentImages.$inferSelect> = [];
 
-    for (let i = 0; i < placeholderMatches.length; i++) {
-      const match = placeholderMatches[i];
+    for (let i = 0; i < imageCount; i++) {
+      const placeholderLine = placeholderLineHints[i];
 
-      // Find the line index of this placeholder in the markdown
-      const charsBeforeMatch = markdown.substring(0, match.index).split('\n').length - 1;
-
-      // Find the nearest heading above the placeholder
+      // Find the nearest heading above the placeholder position
       let nearestHeading = page.title;
-      for (let j = charsBeforeMatch; j >= 0; j--) {
+      for (let j = placeholderLine; j >= 0; j--) {
         const line = lines[j] ?? '';
         if (line.startsWith('# ') || line.startsWith('## ') || line.startsWith('### ')) {
           nearestHeading = line.replace(/^#{1,3}\s+/, '');
