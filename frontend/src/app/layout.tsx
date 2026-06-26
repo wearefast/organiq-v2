@@ -1,6 +1,7 @@
 import type { Metadata } from 'next';
 import { Inter, JetBrains_Mono } from 'next/font/google';
 import { ClerkProvider } from '@clerk/nextjs';
+import { OfflineIndicator } from '@/shared/components/offline-indicator';
 import './globals.css';
 
 const inter = Inter({
@@ -30,6 +31,7 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
     >
       <html lang="en" className={`${inter.variable} ${jetbrainsMono.variable} dark`}>
         <body className="min-h-screen bg-shell text-zinc-100 antialiased">
+          <OfflineIndicator />
           {children}
         </body>
       </html>

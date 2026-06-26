@@ -84,6 +84,29 @@ const API_URL = resolveApiUrl();
 /** The resolved API base URL. Import this instead of hardcoding the URL. */
 export { API_URL };
 
+/**
+ * Retries a fetch on network failure (TypeError) for safe (GET) requests.
+ * HTTP error responses (4xx/5xx) are NOT retried — only complete connection failures.
+ * Non-GET methods are never retried to avoid duplicate writes.
+ */
+async function fetchWithRetry(url: string, init?: RequestInit): Promise<Response> {
+  const isReadOnly = !init?.method || init.method.toUpperCase() === 'GET';
+  const maxAttempts = isReadOnly ? 3 : 1;
+
+  for (let attempt = 0; attempt < maxAttempts; attempt++) {
+    try {
+      return await fetch(url, init);
+    } catch (err) {
+      const isLast = attempt === maxAttempts - 1;
+      if (isLast) throw err;
+      // Exponential backoff: 500ms, 1000ms
+      await new Promise<void>((r) => setTimeout(r, 500 * Math.pow(2, attempt)));
+    }
+  }
+  // unreachable
+  throw new Error('fetchWithRetry: exhausted attempts');
+}
+
 export async function apiFetch<T>(path: string, init?: RequestInit): Promise<T> {
   // If Clerk hasn't initialized yet, wait up to 5s for the first token.
   // This prevents 401s on initial page load before AuthSync has run.
@@ -102,7 +125,7 @@ export async function apiFetch<T>(path: string, init?: RequestInit): Promise<T> 
     headers['Authorization'] = `Bearer ${_authToken}`;
   }
 
-  const res = await fetch(`${API_URL}${path}`, {
+  const res = await fetchWithRetry(`${API_URL}${path}`, {
     ...init,
     headers: {
       ...headers,
