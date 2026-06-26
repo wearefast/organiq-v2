@@ -1,0 +1,139 @@
+name: Migrate sitemap data to project_sitemap_urls
+
+# One-time data migration — Phase 3 of sitemap normalization.
+# Copies legacy projects.sitemap_urls text[] into project_sitemap_urls table.
+# IDEMPOTENT: safe to run multiple times.
+# Trigger manually from GitHub Actions → "Run workflow".
+
+on:
+  workflow_dispatch:
+
+env:
+  AWS_REGION: ap-southeast-1
+  ECR_REPOSITORY: organiq-server-prod
+
+jobs:
+  migrate:
+    name: Run sitemap data migration on production RDS
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Configure AWS credentials
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
+          aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+          aws-region: ${{ env.AWS_REGION }}
+
+      - name: Run migration on EC2
+        uses: appleboy/ssh-action@v1
+        with:
+          host: ${{ secrets.EC2_HOST }}
+          username: ec2-user
+          key: ${{ secrets.EC2_SSH_KEY }}
+          command_timeout: 15m
+          script: |
+            set -e
+
+            echo "=== Sitemap Data Migration: Phase 3 ==="
+            echo "Copying legacy projects.sitemap_urls into project_sitemap_urls table..."
+
+            docker run --rm \
+              --env-file /opt/organiq/.env \
+              ${{ secrets.ECR_REGISTRY }}/${{ env.ECR_REPOSITORY }}:latest \
+              node -e '
+                const { Pool } = require("pg");
+                const { randomUUID } = require("crypto");
+
+                const url = process.env.DATABASE_URL;
+                if (!url) { console.error("DATABASE_URL not set"); process.exit(1); }
+
+                const ssl = url.includes("rds.amazonaws.com") ? { rejectUnauthorized: false } : undefined;
+                const pool = new Pool({ connectionString: url, ssl });
+
+                const BATCH_SIZE = 50;
+                const INSERT_CHUNK = 500;
+
+                async function sleep(ms) { return new Promise(r => setTimeout(r, ms)); }
+
+                async function main() {
+                  const client = await pool.connect();
+
+                  const { rows: [{ count: total }] } = await client.query(`
+                    SELECT count(*)::int AS count
+                    FROM projects
+                    WHERE sitemap_urls IS NOT NULL
+                      AND cardinality(sitemap_urls) > 0
+                      AND id NOT IN (SELECT DISTINCT project_id FROM project_sitemap_urls)
+                  `);
+                  console.log("Projects pending migration: " + total);
+
+                  if (parseInt(total) === 0) {
+                    console.log("Nothing to migrate — all projects already up to date.");
+                    client.release();
+                    await pool.end();
+                    return;
+                  }
+
+                  let totalMigrated = 0;
+                  let totalSkipped = 0;
+
+                  while (true) {
+                    const { rows: projects } = await client.query(`
+                      SELECT id, domain, sitemap_urls
+                      FROM projects
+                      WHERE sitemap_urls IS NOT NULL
+                        AND cardinality(sitemap_urls) > 0
+                        AND id NOT IN (SELECT DISTINCT project_id FROM project_sitemap_urls)
+                      LIMIT $1
+                    `, [BATCH_SIZE]);
+
+                    if (projects.length === 0) break;
+
+                    for (const project of projects) {
+                      const urls = project.sitemap_urls || [];
+                      if (urls.length === 0) {
+                        console.log("[SKIP] " + project.id + " (" + project.domain + ") — no legacy URLs");
+                        totalSkipped++;
+                        continue;
+                      }
+
+                      const batchId = randomUUID();
+                      let inserted = 0;
+
+                      for (let i = 0; i < urls.length; i += INSERT_CHUNK) {
+                        const chunk = urls.slice(i, i + INSERT_CHUNK);
+                        const placeholders = chunk.map((_, j) => {
+                          const base = j * 4;
+                          return "($" + (base+1) + ", $" + (base+2) + ", $" + (base+3) + ", $" + (base+4) + ", now(), now())";
+                        }).join(", ");
+                        const params = chunk.flatMap((u, j) => [project.id, u, i + j, batchId]);
+
+                        const result = await client.query(
+                          "INSERT INTO project_sitemap_urls (project_id, url, position, discovery_batch_id, discovered_at, updated_at) VALUES " +
+                          placeholders + " ON CONFLICT (project_id, url) DO NOTHING",
+                          params
+                        );
+                        inserted += result.rowCount || 0;
+                      }
+
+                      console.log("[MIGRATED] " + project.id + " (" + project.domain + ") — " + inserted + "/" + urls.length + " URLs inserted");
+                      totalMigrated++;
+                    }
+
+                    await sleep(100);
+                  }
+
+                  client.release();
+                  await pool.end();
+                  console.log("=== Done: " + totalMigrated + " migrated, " + totalSkipped + " skipped ===");
+                }
+
+                main().catch(e => {
+                  console.error("Migration failed:", e.message);
+                  process.exitCode = 1;
+                  pool.end();
+                });
+              '
+
+            echo "Migration step complete."
