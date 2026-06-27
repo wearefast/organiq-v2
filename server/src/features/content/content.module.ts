@@ -9,6 +9,7 @@ import { ForumIntelligenceProcessor } from './forum-intelligence.processor';
 import { ForumDateEnricherService } from './forum-date-enricher.service';
 import { TopicalMapsModule } from '../topical-maps/topical-maps.module';
 import { CreditsModule } from '../credits/credits.module';
+import { ApiUsageModule } from '../api-usage/api-usage.module';
 import { DataForSeoModule } from '../integrations/dataforseo/dataforseo.module';
 import { FirecrawlModule } from '../integrations/firecrawl/firecrawl.module';
 import { OpenAiModule } from '../integrations/openai/openai.module';
@@ -17,6 +18,7 @@ import { OpenAiModule } from '../integrations/openai/openai.module';
   imports: [
     TopicalMapsModule,
     CreditsModule,
+    ApiUsageModule,
     DataForSeoModule,
     FirecrawlModule,
     OpenAiModule,

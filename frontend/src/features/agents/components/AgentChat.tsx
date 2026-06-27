@@ -8,13 +8,13 @@ interface AgentChatProps {
 }
 
 const QUICK_PROMPTS = [
-  { label: 'Content Refresh', prompt: 'Which pages need to be refreshed?', type: 'content-refresh' },
-  { label: 'AI Visibility', prompt: 'How am I performing in AI search?', type: 'ai-search-visibility' },
-  { label: 'Technical Issues', prompt: 'What are my most critical technical issues?', type: 'technical-issues' },
-  { label: 'Content Ideas', prompt: 'What content should I write next?', type: 'keyword-opportunity' },
-  { label: 'Google vs AI', prompt: 'How does my Google traffic compare to AI search?', type: 'google-vs-ai' },
-  { label: 'Keyword Decay', prompt: 'Which keywords are losing rankings?', type: 'keyword-decay' },
-  { label: 'Competitors', prompt: 'How do I compare to competitors?', type: 'competitor-analysis' },
+  { label: 'Content Refresh', prompt: 'Which pages need to be refreshed?', type: 'content-refresh', creditMin: 5, creditMax: 7 },
+  { label: 'AI Visibility', prompt: 'How am I performing in AI search?', type: 'ai-search-visibility', creditMin: 5, creditMax: 7 },
+  { label: 'Technical Issues', prompt: 'What are my most critical technical issues?', type: 'technical-issues', creditMin: 3, creditMax: 4 },
+  { label: 'Content Ideas', prompt: 'What content should I write next?', type: 'keyword-opportunity', creditMin: 5, creditMax: 7 },
+  { label: 'Google vs AI', prompt: 'How does my Google traffic compare to AI search?', type: 'google-vs-ai', creditMin: 4, creditMax: 6 },
+  { label: 'Keyword Decay', prompt: 'Which keywords are losing rankings?', type: 'keyword-decay', creditMin: 3, creditMax: 4 },
+  { label: 'Competitors', prompt: 'How do I compare to competitors?', type: 'competitor-analysis', creditMin: 5, creditMax: 7 },
 ];
 
 interface ChatMessage {
@@ -77,9 +77,10 @@ export function AgentChat({ projectId }: AgentChatProps) {
                 <button
                   key={qp.type}
                   onClick={() => handleSubmit(qp.prompt, qp.type)}
-                  className="px-3 py-2 bg-indigo-50 text-indigo-700 rounded-lg text-sm hover:bg-indigo-100 transition-colors"
+                  className="flex flex-col items-start px-3 py-2 bg-indigo-50 text-indigo-700 rounded-lg text-sm hover:bg-indigo-100 transition-colors"
                 >
-                  {qp.label}
+                  <span>{qp.label}</span>
+                  <span className="text-[10px] text-indigo-400 mt-0.5">{qp.creditMin}–{qp.creditMax} credits</span>
                 </button>
               ))}
             </div>

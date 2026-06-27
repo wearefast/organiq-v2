@@ -3,6 +3,7 @@ import { eq, and, desc, sql, inArray } from 'drizzle-orm';
 import { DatabaseService } from '../../shared/database/database.service';
 import { DataForSeoService } from '../integrations/dataforseo/dataforseo.service';
 import { ForumDateEnricherService } from './forum-date-enricher.service';
+import { ApiUsageContextService } from '../api-usage/api-usage-context.service';
 import {
   forumTopics,
   forumOpportunities,
@@ -27,6 +28,7 @@ export class ForumIntelligenceService {
     private readonly db: DatabaseService,
     private readonly dataForSeo: DataForSeoService,
     private readonly dateEnricher: ForumDateEnricherService,
+    private readonly apiUsageContext: ApiUsageContextService,
   ) {}
 
   // ─── Topic Generation ────────────────────────────────────────
@@ -162,7 +164,7 @@ export class ForumIntelligenceService {
 
     const project = await this.db.db.query.projects.findFirst({
       where: eq(projects.id, projectId),
-      columns: { country: true, industry: true, businessProfile: true, domain: true },
+      columns: { country: true, industry: true, businessProfile: true, domain: true, organizationId: true },
     });
 
     // Build relevance context for filtering
@@ -178,7 +180,7 @@ export class ForumIntelligenceService {
 
     for (const topic of topics) {
       try {
-        const newCount = await this.scanTopic(topic.id, topic.topic, projectId, project?.country ?? 'us', relevanceKeywords);
+        const newCount = await this.scanTopic(topic.id, topic.topic, projectId, project?.country ?? 'us', relevanceKeywords, project?.organizationId ?? null);
         totalNew += newCount;
 
         // Update last scanned timestamp
@@ -254,11 +256,15 @@ export class ForumIntelligenceService {
     return relevanceKeywords.some(kw => text.includes(kw));
   }
 
-  private async scanTopic(topicId: string, topic: string, projectId: string, country: string, relevanceKeywords: string[]): Promise<number> {
-    const [redditResult, quoraResult] = await Promise.allSettled([
+  private async scanTopic(topicId: string, topic: string, projectId: string, country: string, relevanceKeywords: string[], organizationId: string | null): Promise<number> {
+    const doSearch = () => Promise.allSettled([
       this.dataForSeo.searchRedditThreads(topic, country),
       this.dataForSeo.searchQuoraThreads(topic, country),
     ]);
+
+    const [redditResult, quoraResult] = organizationId
+      ? await this.apiUsageContext.run({ organizationId, projectId }, doSearch)
+      : await doSearch();
 
     if (redditResult.status === 'rejected') {
       this.logger.warn(`Reddit scan failed for "${topic}": ${redditResult.reason}`);

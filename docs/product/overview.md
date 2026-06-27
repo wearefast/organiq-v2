@@ -45,7 +45,7 @@ The workflow is organized into **4 phases**, each building on the previous. Ever
 | Step | Agent | Purpose | Credit Cost |
 |------|-------|---------|-------------|
 | 1 | `business-profile` | Discovery & profiling (enhanced with Firecrawl) | 30 |
-| 2 | `seed-keywords` | Initial keyword discovery from business context | 40 |
+| 2 | `seed-keywords` | Initial keyword discovery from business context | 100 |
 | 3 | `site-audit` | GEO citability + technical SEO audit | 60 |
 | 4 | `ai-intelligence` | AI search intelligence (Brand Radar + DataForSEO) | 50 |
 | 5 | `serp-niche-map` | SERP & niche landscape mapping | 45 |
@@ -53,7 +53,7 @@ The workflow is organized into **4 phases**, each building on the previous. Ever
 | 7 | `competitor-metrics` | Competitor traffic, keyword, and content gap analysis (enhanced with AI SoV) | 55 |
 | 8 | `search-demand` | Search demand & seasonality (DataForSEO + Ahrefs) | 50 |
 
-**Phase 1 subtotal: 365 credits**
+**Phase 1 subtotal: 425 credits**
 
 ### Phase 2 — Keyword Research (Steps 9–13)
 
@@ -63,9 +63,9 @@ The workflow is organized into **4 phases**, each building on the previous. Ever
 | 10 | `method01-competitor-pages` | Method 01 — Extract keywords from competitor pages | 55 |
 | 11 | `method02-seed-expansion` | Method 02 — Expand seed keywords with related terms | 50 |
 | 12 | `method03-content-gap-import` | Method 03 — Content gap import (manual) | 30 |
-| 13 | `consolidated-keywords` | Merge all keywords into final taxonomy | 40 |
+| 13 | `consolidated-keywords` | Merge all keywords into final taxonomy | 0 |
 
-**Phase 2 subtotal: 220 credits**
+**Phase 2 subtotal: 180 credits**
 
 ### Phase 3 — Strategy & Planning (Steps 14–15)
 
@@ -86,7 +86,7 @@ The workflow is organized into **4 phases**, each building on the previous. Ever
 
 **Phase 4 subtotal: 80 credits per content unit**
 
-**Total credits per full workflow run: ~740** (Phases 1–3: 660 fixed + Phase 4: 80 per content unit)
+**Total credits per full workflow run: ~760** (Phases 1–3: 680 fixed + Phase 4: 80 per content unit)
 
 ## Key Concepts
 

@@ -164,6 +164,11 @@ export function StepRail({ steps, activeStepKey, onStepClick, stepPhases = {} }:
                         )}
                       </div>
                     )}
+                    {status === 'pending' && def.creditMin > 0 && (
+                      <p className="mt-0.5 text-[10px] text-zinc-600">
+                        {def.creditMin}–{def.creditMax} credits
+                      </p>
+                    )}
                   </div>
                 </button>
               );

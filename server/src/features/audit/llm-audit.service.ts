@@ -1,9 +1,10 @@
-import { Injectable, Logger } from '@nestjs/common';
+import { Injectable, Logger, BadRequestException } from '@nestjs/common';
 import { eq, desc } from 'drizzle-orm';
 import * as cheerio from 'cheerio';
 import { DatabaseService } from '../../shared/database/database.service';
 import { WebCrawlerService } from '../../shared/web-crawler/web-crawler.service';
 import { SitemapRepository } from '../projects/sitemap.repository';
+import { CreditsService } from '../credits/credits.service';
 import { llmAuditResults, projects } from '../../db/schema';
 import { randomUUID } from 'crypto';
 
@@ -119,6 +120,9 @@ const LLM_BOTS = [
 /** Batch size for concurrent page fetches — keeps concurrency sane without hammering the target site */
 const AUDIT_BATCH_SIZE = 5;
 
+/** Credit cost charged per LLM Crawlability Audit run */
+const LLM_AUDIT_CREDIT_COST = 15;
+
 @Injectable()
 export class LlmAuditService {
   private readonly logger = new Logger(LlmAuditService.name);
@@ -127,6 +131,7 @@ export class LlmAuditService {
     private readonly db: DatabaseService,
     private readonly webCrawler: WebCrawlerService,
     private readonly sitemapRepository: SitemapRepository,
+    private readonly credits: CreditsService,
   ) {}
 
   // ─── Main entry point ────────────────────────────────────
@@ -144,6 +149,16 @@ export class LlmAuditService {
       where: eq(projects.id, projectId),
     });
     if (!project) throw new Error(`Project ${projectId} not found`);
+
+    // ── Credit gate ───────────────────────────────────────────
+    const { organizationId } = project;
+    const hasCredits = await this.credits.hasCredits(organizationId, LLM_AUDIT_CREDIT_COST);
+    if (!hasCredits) {
+      throw new BadRequestException(
+        `Insufficient credits. LLM Crawlability Audit requires ${LLM_AUDIT_CREDIT_COST} credits.`,
+      );
+    }
+    // ─────────────────────────────────────────────────────────
 
     const siteUrl = `https://${project.domain}`;
     const origin = new URL(siteUrl).origin;
@@ -223,6 +238,11 @@ export class LlmAuditService {
     const overallScore = Math.round(
       results.reduce((sum, r) => sum + r.aiIndexabilityScore, 0) / results.length,
     );
+
+    // Debit credits after a successful audit (non-fatal if this fails — audit result is preserved)
+    await this.credits
+      .debit({ organizationId, amount: LLM_AUDIT_CREDIT_COST, description: 'LLM Crawlability Audit' })
+      .catch((err) => this.logger.error(`Failed to debit ${LLM_AUDIT_CREDIT_COST} credits for LLM audit (project ${projectId}): ${err?.message}`));
 
     return {
       auditRunId,

@@ -84,4 +84,27 @@ Credits are debited atomically inside a database transaction:
 
 ## Credit Costs by Step
 
-See [Product Overview](../product/overview.md) for the full table of credit costs per workflow step. Total cost for a full 18-step run: ~740 credits.
+See [Product Overview](../product/overview.md) for the full table of credit costs per workflow step. Total cost for a full 18-step run: ~760 credits (Phases 1–3: 680 fixed + Phase 4: 80 per content unit).
+
+Key values from code (source of truth):
+
+| Agent | Credit Cost |
+|-------|-------------|
+| `business-profile` | 30 |
+| `seed-keywords` | 100 |
+| `site-audit` | 60 |
+| `ai-intelligence` | 50 |
+| `serp-niche-map` | 45 |
+| `competitor-buckets` | 35 |
+| `competitor-metrics` | 55 |
+| `search-demand` | 50 |
+| `phase1-baseline` | 45 |
+| `method01-competitor-pages` | 55 |
+| `method02-seed-expansion` | 50 |
+| `method03-content-gap-import` | 30 |
+| `consolidated-keywords` | **0** (no external API calls; pure data merge) |
+| `verdict-strategy` | 35 |
+| `topical-map` | 40 |
+| `content-brief` | 25 |
+| `content-article` | 30 |
+| `content-images` | 25 |
